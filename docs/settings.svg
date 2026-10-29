@@ -28,8 +28,8 @@
 
   <!-- header -->
   <text class="en" x="40" y="48" text-anchor="start" font-size="11" fill="#8E8BAD">RIX &#183; v1.0.3</text>
-  <text class="fa" x="860" y="52" direction="rtl" text-anchor="end" font-size="22" font-weight="700" fill="#EFEDFF">تنظیمات</text>
-  <text class="fa" x="860" y="76" direction="rtl" text-anchor="end" font-size="11" fill="#8E8BAD">پنج پریست آماده، هر کدام یک بستهٔ هماهنگ از تنظیمات</text>
+  <text class="fa" x="450" y="52" direction="rtl" text-anchor="middle" font-size="22" font-weight="700" fill="#EFEDFF">تنظیمات</text>
+  <text class="fa" x="450" y="78" direction="rtl" text-anchor="middle" font-size="11" fill="#8E8BAD">پنج پریست آماده، هر کدام یک بستهٔ هماهنگ از تنظیمات</text>
 
   <!-- preset 1: default -->
   <g>
@@ -37,8 +37,8 @@
     <circle cx="72" cy="160" r="9" fill="none" stroke="#23233C" stroke-width="1.5"/>
     <rect x="794" y="145" width="30" height="30" rx="9" fill="#8E8BAD" fill-opacity="0.12" stroke="#8E8BAD" stroke-opacity="0.3"/>
     <circle cx="809" cy="160" r="6" fill="none" stroke="#8E8BAD" stroke-width="1.6"/>
-    <text class="fa name" x="772" y="157" direction="rtl" text-anchor="end">پیش‌فرض</text>
-    <text class="fa hint" x="772" y="176" direction="rtl" text-anchor="end">MASQUE/HTTP-3 • اسکن پیش‌فرض</text>
+    <text class="fa name" x="449" y="157" direction="rtl" text-anchor="middle">پیش‌فرض</text>
+    <text class="fa hint" x="449" y="176" direction="rtl" text-anchor="middle">MASQUE/HTTP-3 • اسکن پیش‌فرض</text>
     <rect x="850" y="142" width="4" height="36" rx="2" fill="#8E8BAD" fill-opacity="0.35"/>
   </g>
 
@@ -49,11 +49,9 @@
     <path d="M 68.5 228 l 2.6 2.7 l 4.6 -5.4" fill="none" stroke="#0B0616" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
     <text class="en" x="112" y="232" text-anchor="start" font-size="10" fill="#2BD9C4">ACTIVE</text>
     <rect x="794" y="213" width="30" height="30" rx="9" fill="#FFC46B" fill-opacity="0.14" stroke="#FFC46B" stroke-opacity="0.4"/>
-    <g transform="translate(809 228)" fill="none" stroke="#FFC46B" stroke-width="1.6" stroke-linejoin="round">
-      <path d="M 0 -7 L 6 -4 V 0.5 C 6 4.5 3 6.6 0 7.4 C -3 6.6 -6 4.5 -6 0.5 V -4 Z"/>
-    </g>
-    <text class="fa name" x="772" y="225" direction="rtl" text-anchor="end" fill="#FFC46B">ایران (مقاوم)</text>
-    <text class="fa hint" x="772" y="244" direction="rtl" text-anchor="end">MASQUE/HTTP-2 روی TCP 443، با Fragment و اسکن کامل</text>
+    <path d="M 809 221 L 815 224 V 228.5 C 815 232.5 812 234.6 809 235.4 C 806 234.6 803 232.5 803 228.5 V 224 Z" fill="none" stroke="#FFC46B" stroke-width="1.6" stroke-linejoin="round"/>
+    <text class="fa name" x="449" y="225" direction="rtl" text-anchor="middle" fill="#FFC46B">ایران (مقاوم)</text>
+    <text class="fa hint" x="449" y="244" direction="rtl" text-anchor="middle">MASQUE/HTTP-2 روی TCP 443، با Fragment و اسکن کامل</text>
     <rect x="850" y="210" width="4" height="36" rx="2" fill="#FFC46B"/>
   </g>
 
@@ -62,11 +60,9 @@
     <rect x="40" y="266" width="820" height="60" rx="16" fill="#10101F" stroke="#23233C"/>
     <circle cx="72" cy="296" r="9" fill="none" stroke="#23233C" stroke-width="1.5"/>
     <rect x="794" y="281" width="30" height="30" rx="9" fill="#2BD9C4" fill-opacity="0.12" stroke="#2BD9C4" stroke-opacity="0.3"/>
-    <g transform="translate(809 296)">
-      <path d="M 2 -7 L -4 0.5 L -0.4 0.5 L -2 7 L 4.4 -1 L 0.8 -1 Z" fill="#2BD9C4"/>
-    </g>
-    <text class="fa name" x="772" y="293" direction="rtl" text-anchor="end">سریع‌ترین</text>
-    <text class="fa hint" x="772" y="312" direction="rtl" text-anchor="end">MASQUE/HTTP-3 با اسکن Turbo و پروفایل پرقدرت</text>
+    <path d="M 811 289 L 805 296.5 L 808.6 296.5 L 807 303 L 813.4 295 L 809.8 295 Z" fill="#2BD9C4"/>
+    <text class="fa name" x="449" y="293" direction="rtl" text-anchor="middle">سریع‌ترین</text>
+    <text class="fa hint" x="449" y="312" direction="rtl" text-anchor="middle">MASQUE/HTTP-3 با اسکن Turbo و پروفایل پرقدرت</text>
     <rect x="850" y="278" width="4" height="36" rx="2" fill="#2BD9C4" fill-opacity="0.35"/>
   </g>
 
@@ -75,11 +71,9 @@
     <rect x="40" y="334" width="820" height="60" rx="16" fill="#10101F" stroke="#23233C"/>
     <circle cx="72" cy="364" r="9" fill="none" stroke="#23233C" stroke-width="1.5"/>
     <rect x="794" y="349" width="30" height="30" rx="9" fill="#8F7BFF" fill-opacity="0.12" stroke="#8F7BFF" stroke-opacity="0.3"/>
-    <g transform="translate(809 364)">
-      <rect x="-5.2" y="-5.2" width="10.4" height="10.4" rx="1.6" fill="none" stroke="#8F7BFF" stroke-width="1.6" transform="rotate(45)"/>
-    </g>
-    <text class="fa name" x="772" y="361" direction="rtl" text-anchor="end">ضد DPI</text>
-    <text class="fa hint" x="772" y="380" direction="rtl" text-anchor="end">MASQUE در MASQUE، اسکن کامل و Fragment</text>
+    <rect x="803.8" y="358.8" width="10.4" height="10.4" rx="1.6" fill="none" stroke="#8F7BFF" stroke-width="1.6" transform="rotate(45 809 364)"/>
+    <text class="fa name" x="449" y="361" direction="rtl" text-anchor="middle">ضد DPI</text>
+    <text class="fa hint" x="449" y="380" direction="rtl" text-anchor="middle">MASQUE در MASQUE، اسکن کامل و Fragment</text>
     <rect x="850" y="346" width="4" height="36" rx="2" fill="#8F7BFF" fill-opacity="0.35"/>
   </g>
 
@@ -88,12 +82,10 @@
     <rect x="40" y="402" width="820" height="60" rx="16" fill="#10101F" stroke="#23233C"/>
     <circle cx="72" cy="432" r="9" fill="none" stroke="#23233C" stroke-width="1.5"/>
     <rect x="794" y="417" width="30" height="30" rx="9" fill="#FFC46B" fill-opacity="0.12" stroke="#FFC46B" stroke-opacity="0.3"/>
-    <g transform="translate(809 432)" fill="none" stroke="#FFC46B" stroke-width="1.6">
-      <rect x="-6" y="-4" width="11" height="8" rx="2"/>
-      <path d="M 6.6 -1.4 V 1.4" stroke-linecap="round"/>
-    </g>
-    <text class="fa name" x="772" y="429" direction="rtl" text-anchor="end">کم‌مصرف</text>
-    <text class="fa hint" x="772" y="448" direction="rtl" text-anchor="end">WireGuard، پروفایل کم‌مصرف و Keepalive بلند</text>
+    <rect x="803" y="428" width="11" height="8" rx="2" fill="none" stroke="#FFC46B" stroke-width="1.6"/>
+    <path d="M 815.6 430.6 V 433.4" fill="none" stroke="#FFC46B" stroke-width="1.6" stroke-linecap="round"/>
+    <text class="fa name" x="449" y="429" direction="rtl" text-anchor="middle">کم‌مصرف</text>
+    <text class="fa hint" x="449" y="448" direction="rtl" text-anchor="middle">WireGuard، پروفایل کم‌مصرف و Keepalive بلند</text>
     <rect x="850" y="414" width="4" height="36" rx="2" fill="#FFC46B" fill-opacity="0.35"/>
   </g>
 
@@ -102,7 +94,7 @@
     <rect x="40" y="478" width="820" height="66" rx="16" fill="#141230" stroke="#5B45D6" stroke-width="1.5"/>
     <rect x="64" y="498" width="48" height="26" rx="13" fill="#5B45D6"/>
     <circle cx="99" cy="511" r="10" fill="#EFEDFF"/>
-    <text class="fa name" x="772" y="505" direction="rtl" text-anchor="end" font-size="13.5">چرخش خودکار پروتکل</text>
-    <text class="fa hint" x="772" y="525" direction="rtl" text-anchor="end">اگر پروتکل انتخابی تونل را برقرار نکرد، MASQUE/HTTP-2 و بعد Gool و MASQUE در MASQUE امتحان می‌شوند</text>
+    <text class="fa name" x="449" y="505" direction="rtl" text-anchor="middle" font-size="13.5">چرخش خودکار پروتکل</text>
+    <text class="fa hint" x="449" y="525" direction="rtl" text-anchor="middle">اگر پروتکل انتخابی تونل را برقرار نکرد، MASQUE/HTTP-2 و بعد Gool و MASQUE در MASQUE امتحان می‌شوند</text>
   </g>
 </svg>

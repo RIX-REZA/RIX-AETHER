@@ -44,15 +44,15 @@
   <g>
     <rect class="box" x="60" y="90" width="500" height="62" rx="16"/>
     <text class="en step" x="84" y="115" text-anchor="start">STARTING</text>
-    <text class="fa" x="540" y="118" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۱. تونل ساخته می‌شود</text>
-    <text class="fa sub" x="540" y="138" direction="rtl" text-anchor="end">TUN بالا می‌آید و hev به SOCKS5 هسته وصل می‌شود</text>
+    <text class="fa" x="355" y="118" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">۱. تونل ساخته می‌شود</text>
+    <text class="fa sub" x="355" y="138" direction="rtl" text-anchor="middle">TUN بالا می‌آید و hev به SOCKS5 هسته وصل می‌شود</text>
   </g>
 
-  <!-- B: candidate -->
+  <!-- B: candidate chain -->
   <g>
     <rect class="box" x="60" y="175" width="500" height="80" rx="16"/>
     <text class="en step" x="84" y="200" text-anchor="start">CONNECTING</text>
-    <text class="fa" x="540" y="203" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۲. کاندید بعدی از زنجیره بالا می‌آید</text>
+    <text class="fa" x="355" y="203" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">۲. کاندید بعدی از زنجیره بالا می‌آید</text>
     <rect x="84" y="215" width="148" height="26" rx="13" fill="#1A1730" stroke="#5B45D6"/>
     <text class="fa" x="158" y="232" direction="rtl" text-anchor="middle" font-size="10" fill="#C9C4E8">انتخاب تو</text>
     <rect x="240" y="215" width="148" height="26" rx="13" fill="#1A1730" stroke="#5B45D6"/>
@@ -65,9 +65,9 @@
   <g>
     <rect x="60" y="280" width="500" height="80" rx="16" fill="#141230" stroke="#5B45D6" stroke-width="1.5"/>
     <text class="en step" x="84" y="305" text-anchor="start">VERIFY</text>
-    <text class="fa" x="540" y="308" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۳. یک درخواست واقعی از داخل تونل</text>
-    <text class="mono" x="540" y="330" text-anchor="end" font-size="10" fill="#8F7BFF">cloudflare.com/cdn-cgi/trace</text>
-    <text class="fa sub" x="540" y="349" direction="rtl" text-anchor="end">پاسخ باید ip= و colo= و یک کد ۲۰۰ داشته باشد</text>
+    <text class="fa" x="355" y="308" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">۳. یک درخواست واقعی از داخل تونل</text>
+    <text class="mono" x="355" y="330" text-anchor="middle" font-size="10" fill="#8F7BFF">cloudflare.com/cdn-cgi/trace</text>
+    <text class="fa sub" x="355" y="349" direction="rtl" text-anchor="middle">پاسخ باید ip= و colo= و یک کد ۲۰۰ داشته باشد</text>
   </g>
 
   <!-- D: decision -->
@@ -91,19 +91,19 @@
   <g>
     <rect x="620" y="325" width="320" height="120" rx="18" fill="#0D2422" stroke="#12A08F" stroke-width="1.5"/>
     <text class="en step" x="644" y="352" text-anchor="start" fill="#2BD9C4">RUNNING</text>
-    <text class="fa" x="916" y="358" direction="rtl" text-anchor="end" font-size="18" font-weight="700" fill="#2BD9C4">متصل</text>
-    <text class="fa" x="916" y="386" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">آیپی خروجی · لبهٔ Cloudflare · کشور</text>
-    <text class="fa" x="916" y="406" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">پروتکل برنده ذخیره می‌شود</text>
-    <text class="fa" x="916" y="430" direction="rtl" text-anchor="end" font-size="10.5" fill="#8E8BAD">ساعت جلسه از همین‌جا شروع می‌شود</text>
+    <text class="fa" x="810" y="358" direction="rtl" text-anchor="middle" font-size="18" font-weight="700" fill="#2BD9C4">متصل</text>
+    <text class="fa" x="810" y="386" direction="rtl" text-anchor="middle" font-size="10" fill="#EFEDFF">آیپی خروجی · لبهٔ Cloudflare · کشور</text>
+    <text class="fa" x="810" y="406" direction="rtl" text-anchor="middle" font-size="10" fill="#EFEDFF">پروتکل برنده ذخیره می‌شود</text>
+    <text class="fa" x="810" y="430" direction="rtl" text-anchor="middle" font-size="10" fill="#8E8BAD">ساعت جلسه از همین‌جا شروع می‌شود</text>
   </g>
 
   <!-- F: error -->
   <g>
     <rect x="620" y="465" width="320" height="90" rx="18" fill="#251114" stroke="#FF5C7A" stroke-width="1.5"/>
     <text class="en step" x="644" y="492" text-anchor="start" fill="#FF5C7A">ERROR</text>
-    <text class="fa" x="916" y="497" direction="rtl" text-anchor="end" font-size="15" font-weight="700" fill="#FF5C7A">خطا</text>
-    <text class="fa" x="916" y="524" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">دلیل واقعی روی صفحه می‌ماند</text>
-    <text class="fa" x="916" y="544" direction="rtl" text-anchor="end" font-size="10.5" fill="#8E8BAD">هیچ‌وقت الکی «متصل» نشان نمی‌دهیم</text>
+    <text class="fa" x="810" y="497" direction="rtl" text-anchor="middle" font-size="15" font-weight="700" fill="#FF5C7A">خطا</text>
+    <text class="fa" x="810" y="524" direction="rtl" text-anchor="middle" font-size="10" fill="#EFEDFF">دلیل واقعی روی صفحه می‌ماند</text>
+    <text class="fa" x="810" y="544" direction="rtl" text-anchor="middle" font-size="10" fill="#8E8BAD">هیچ‌وقت الکی «متصل» نشان نمی‌دهیم</text>
   </g>
 
   <!-- arrows to outcomes -->
