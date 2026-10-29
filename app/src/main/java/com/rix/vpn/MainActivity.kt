@@ -191,8 +191,8 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
         }
     }
 
-    val onConfirmApps: (Set<String>) -> Unit = remember {
-        { apps: Set<String> ->
+    val onConfirmApps: (List<String>) -> Unit = remember {
+        { apps: List<String> ->
             showPicker = false
             onOptionsChange(options.copy(splitApps = apps))
         }
