@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RIX</string>
+
+    <string name="channel_status">وضعیت اتصال</string>
+    <string name="channel_status_desc">اعلان پایدار هنگام فعال‌بودن تونل یا پروکسی</string>
+
+    <string name="notif_starting">در حال آماده‌سازی…</string>
+    <string name="notif_running">متصل — SOCKS5 روی پورت %1$d</string>
+    <string name="notif_proxy_running">پروکسی فعال — پورت %1$d</string>
+    <string name="notif_error">اتصال قطع شد</string>
+
+    <string name="action_stop">قطع</string>
+
+    <string name="state_starting">در حال اتصال…</string>
+
+    <string name="error_no_tun">ساخت رابط شبکه (TUN) ناموفق بود</string>
+    <string name="error_socks_timeout">هسته در زمان مقرر پروکسی را بالا نیاورد</string>
+    <string name="error_engine_stopped">موتور tun2socks متوقف شد</string>
+    <string name="error_core_stopped">هستهٔ اتصال بسته شد</string>
+    <string name="error_unknown">خطای نامشخص</string>
+</resources>

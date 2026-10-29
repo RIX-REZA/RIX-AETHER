@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Platform theme so the window paints the same near-black as Compose
+         before the first frame; no XML Material Components dependency. -->
+    <style name="Theme.Rix" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/rix_background</item>
+        <item name="android:statusBarColor">@color/rix_background</item>
+        <item name="android:navigationBarColor">@color/rix_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

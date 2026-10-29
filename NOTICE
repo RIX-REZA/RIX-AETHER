@@ -1,0 +1,44 @@
+RIX — NOTICE
+
+This application is a derivative work of:
+
+  Aether — a Rust userspace WARP core for censored networks, built around
+  MASQUE over HTTP/3 and HTTP/2.
+  Copyright (c) CluvexStudio and the Aether project contributors.
+  https://github.com/CluvexStudio/Aether
+  Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
+
+RIX is licensed under AGPL-3.0-only. The complete corresponding source is this
+repository:  projects/rix/  plus the build description in
+.github/workflows/android-rix.yml, which fetches the upstream core at build time.
+
+Bundled native components and their licences:
+
+  libaether.so
+      Built from CluvexStudio/Aether (AGPL-3.0-only).
+      Includes quiche (BSD-2-Clause), BoringSSL (OpenSSL/SSLeay licence),
+      boringtun (BSD-3-Clause), smoltcp (0BSD), ring (ISC-style) and other
+      crates listed by `cargo metadata` for that revision. Upstream ships a
+      machine-generated inventory at third-party-notices.py and in each
+      release archive's LICENSES/THIRD-PARTY-NOTICES.txt.
+
+  libhev-socks5-tunnel.so
+      hev-socks5-tunnel, Copyright (c) hev <r@hev.cc>, MIT licence.
+      Bundles lwIP (BSD-3-Clause) and libyaml (MIT).
+
+Trademarks:
+
+  "Aether", the Aether logo and confusingly similar names are trademarks of
+  CluvexStudio and the Aether project. They are NOT used as the name or
+  branding of this application, and nothing here implies endorsement by or
+  affiliation with the Aether project. See upstream TRADEMARK.md.
+
+No warranty:
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+  for more details.
+
+  Circumvention software can be restricted or unlawful in some jurisdictions.
+  You are responsible for how you use it.
