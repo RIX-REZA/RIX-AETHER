@@ -40,37 +40,37 @@
 
   <g>
     <rect class="box" x="30"  y="112" width="156" height="86" rx="16"/>
-    <text class="fa" x="108" y="146" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">همهٔ برنامه‌ها</text>
-    <text class="en sub" x="108" y="168" text-anchor="middle">every app</text>
-    <text class="en sub" x="108" y="184" text-anchor="middle">Wi-Fi · mobile data</text>
+    <text class="fa" x="108" y="140" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">همهٔ برنامه‌ها</text>
+    <text class="en sub" x="108" y="162" text-anchor="middle">every app</text>
+    <text class="en sub" x="108" y="178" text-anchor="middle">Wi-Fi · mobile data</text>
   </g>
 
   <g>
     <rect class="box" x="226" y="112" width="156" height="86" rx="16"/>
-    <text class="en" x="304" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#EFEDFF">TUN</text>
-    <text class="en sub" x="304" y="168" text-anchor="middle">VpnService</text>
-    <text class="fa sub" x="304" y="184" direction="rtl" text-anchor="middle">۱۰.۸۷.۰.۲/۳۰</text>
+    <text class="en" x="304" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#EFEDFF">TUN</text>
+    <text class="en sub" x="304" y="162" text-anchor="middle">VpnService</text>
+    <text class="fa sub" x="304" y="178" direction="rtl" text-anchor="middle">۱۰.۸۷.۰.۲/۳۰</text>
   </g>
 
   <g>
     <rect class="box" x="422" y="112" width="156" height="86" rx="16"/>
-    <text class="en" x="500" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#EFEDFF">hev</text>
-    <text class="en sub" x="500" y="168" text-anchor="middle">lwip tun2socks</text>
-    <text class="fa sub" x="500" y="184" direction="rtl" text-anchor="middle">پل TCP/IP فضای کاربر</text>
+    <text class="en" x="500" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#EFEDFF">hev</text>
+    <text class="en sub" x="500" y="162" text-anchor="middle">lwip tun2socks</text>
+    <text class="fa sub" x="500" y="178" direction="rtl" text-anchor="middle">پل TCP/IP فضای کاربر</text>
   </g>
 
   <g>
     <rect x="618" y="112" width="156" height="86" rx="16" fill="#141230" stroke="#5B45D6"/>
-    <text class="en" x="696" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#8F7BFF">aether</text>
-    <text class="en sub" x="696" y="168" text-anchor="middle">Rust core</text>
-    <text class="fa sub" x="696" y="184" direction="rtl" text-anchor="middle">MASQUE / WireGuard</text>
+    <text class="en" x="696" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#8F7BFF">aether</text>
+    <text class="en sub" x="696" y="162" text-anchor="middle">Rust core</text>
+    <text class="fa sub" x="696" y="178" direction="rtl" text-anchor="middle">MASQUE / WireGuard</text>
   </g>
 
   <g>
     <rect x="814" y="112" width="156" height="86" rx="16" fill="#0D2422" stroke="#12A08F"/>
-    <text class="en" x="892" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#2BD9C4">WARP</text>
-    <text class="en sub" x="892" y="168" text-anchor="middle">Cloudflare edge</text>
-    <text class="en sub" x="892" y="184" text-anchor="middle">internet</text>
+    <text class="en" x="892" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#2BD9C4">WARP</text>
+    <text class="en sub" x="892" y="162" text-anchor="middle">Cloudflare edge</text>
+    <text class="en sub" x="892" y="178" text-anchor="middle">internet</text>
   </g>
 
   <g stroke="#8F7BFF" stroke-opacity="0.65" marker-end="url(#arrow)">
@@ -87,23 +87,23 @@
 
   <g>
     <rect class="box" x="50" y="298" width="240" height="88" rx="16"/>
-    <text class="fa" x="170" y="332" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">یک برنامه یا مرورگر</text>
-    <text class="en sub" x="170" y="354" text-anchor="middle">no TUN, no capture</text>
-    <text class="fa sub" x="170" y="370" direction="rtl" text-anchor="middle">هیچ بسته‌ای گرفته نمی‌شود</text>
+    <text class="fa" x="170" y="328" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">یک برنامه یا مرورگر</text>
+    <text class="en sub" x="170" y="350" text-anchor="middle">no TUN, no capture</text>
+    <text class="fa sub" x="170" y="366" direction="rtl" text-anchor="middle">هیچ بسته‌ای گرفته نمی‌شود</text>
   </g>
 
   <g>
     <rect x="350" y="298" width="300" height="88" rx="16" fill="#141230" stroke="#5B45D6"/>
-    <text class="en" x="500" y="330" text-anchor="middle" font-size="15" font-weight="700" fill="#8F7BFF">aether</text>
-    <text class="mono" x="500" y="352" text-anchor="middle" font-size="10" fill="#EFEDFF">SOCKS5 127.0.0.1:1819</text>
-    <text class="fa sub" x="500" y="370" direction="rtl" text-anchor="middle">خودِ هسته پروکسی را سرو می‌کند</text>
+    <text class="en" x="500" y="326" text-anchor="middle" font-size="15" font-weight="700" fill="#8F7BFF">aether</text>
+    <text class="mono" x="500" y="348" text-anchor="middle" font-size="10" fill="#EFEDFF">SOCKS5 127.0.0.1:1819</text>
+    <text class="fa sub" x="500" y="366" direction="rtl" text-anchor="middle">خودِ هسته پروکسی را سرو می‌کند</text>
   </g>
 
   <g>
     <rect x="710" y="298" width="240" height="88" rx="16" fill="#0D2422" stroke="#12A08F"/>
-    <text class="en" x="830" y="332" text-anchor="middle" font-size="15" font-weight="700" fill="#2BD9C4">WARP</text>
-    <text class="en sub" x="830" y="356" text-anchor="middle">Cloudflare edge</text>
-    <text class="en sub" x="830" y="372" text-anchor="middle">internet</text>
+    <text class="en" x="830" y="328" text-anchor="middle" font-size="15" font-weight="700" fill="#2BD9C4">WARP</text>
+    <text class="en sub" x="830" y="352" text-anchor="middle">Cloudflare edge</text>
+    <text class="en sub" x="830" y="368" text-anchor="middle">internet</text>
   </g>
 
   <g stroke="#8F7BFF" stroke-opacity="0.65" marker-end="url(#arrow)">
