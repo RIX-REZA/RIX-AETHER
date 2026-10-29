@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
+import com.rix.vpn.data.ThemeMode
 import kotlinx.coroutines.delay
 
 @Composable
@@ -49,6 +50,8 @@ fun HomeScreen(
     options: RixOptions,
     state: RixRuntime.State,
     diagnostics: String,
+    theme: ThemeMode,
+    onCycleTheme: () -> Unit,
     onModeChange: (RixMode) -> Unit,
     onToggle: () -> Unit,
     onOpenOptions: () -> Unit,
@@ -94,6 +97,8 @@ fun HomeScreen(
                         fontSize = 11.5.sp
                     )
                 }
+                ThemeIconButton(theme, onCycleTheme)
+                Spacer(Modifier.width(10.dp))
                 StatusBadge(state)
             }
 

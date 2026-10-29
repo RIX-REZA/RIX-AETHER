@@ -29,6 +29,8 @@ import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.Prefs
+import com.rix.vpn.data.ThemeMode
+import com.rix.vpn.data.UiPrefs
 import com.rix.vpn.service.RixProxyService
 import com.rix.vpn.service.RixVpnService
 import com.rix.vpn.ui.AppPickerDialog
@@ -43,8 +45,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            RixTheme {
-                RixRoot()
+            // The theme lives outside RixOptions: it is a UI preference, not a
+            // core argument, so it is stored in its own DataStore and read here.
+            val uiPrefs = remember { UiPrefs(applicationContext) }
+            val scope = rememberCoroutineScope()
+            val themeMode by uiPrefs.theme.collectAsState(initial = ThemeMode.SYSTEM)
+
+            RixTheme(mode = themeMode) {
+                RixRoot(
+                    themeMode = themeMode,
+                    onCycleTheme = { scope.launch { uiPrefs.saveTheme(themeMode.next()) } }
+                )
             }
         }
     }
@@ -53,7 +64,7 @@ class MainActivity : ComponentActivity() {
 private enum class Screen { HOME, OPTIONS, LOGS }
 
 @Composable
-private fun RixRoot() {
+private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { Prefs(context.applicationContext) }
@@ -139,6 +150,8 @@ private fun RixRoot() {
             options = options,
             state = runtimeState,
             diagnostics = diagnostics,
+            theme = themeMode,
+            onCycleTheme = onCycleTheme,
             onModeChange = { mode -> onOptionsChange(options.copy(mode = mode)) },
             onToggle = onToggle,
             onOpenOptions = { screen = Screen.OPTIONS },
