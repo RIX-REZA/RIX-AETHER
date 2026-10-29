@@ -4,9 +4,9 @@
 
 <br>
 
-[![release](https://img.shields.io/github/v/release/amirmayeli1211/hermes-data?style=flat-square&color=8F7BFF&label=release)](https://github.com/amirmayeli1211/hermes-data/releases)
-[![downloads](https://img.shields.io/github/downloads/amirmayeli1211/hermes-data/total?style=flat-square&color=2BD9C4&label=downloads)](https://github.com/amirmayeli1211/hermes-data/releases)
-[![build](https://github.com/amirmayeli1211/hermes-data/actions/workflows/android-rix.yml/badge.svg?branch=main)](https://github.com/amirmayeli1211/hermes-data/actions/workflows/android-rix.yml)
+[![release](https://img.shields.io/github/v/release/RIX-REZA/RIX-AETHER?style=flat-square&color=8F7BFF&label=release)](https://github.com/RIX-REZA/RIX-AETHER/releases)
+[![downloads](https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=flat-square&color=2BD9C4&label=downloads)](https://github.com/RIX-REZA/RIX-AETHER/releases)
+[![build](https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml/badge.svg?branch=main)](https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--only-8F7BFF?style=flat-square)](LICENSE)
 
 [![android](https://img.shields.io/badge/Android-7.0%2B%20·%20API%2024-3DDC84?style=flat-square&logo=android&logoColor=white)](#سازگاری)
@@ -52,9 +52,9 @@ RIX خودِ تونل را از نو نساخته. هستهٔ اصلی را به
 
 | | |
 |---|---|
-| **APK** | [`RIX-1.0.3-debug.apk`](https://github.com/amirmayeli1211/hermes-data/releases/download/v1.0.3/RIX-1.0.3-debug.apk) · ۲۲.۲ مگابایت |
-| **بستهٔ کامل** | [`RIX-1.0.3.zip`](https://github.com/amirmayeli1211/hermes-data/releases/download/v1.0.3/RIX-1.0.3.zip) · APK + راهنمای نصب + یادداشت انتشار |
-| **انتشار** | [v1.0.3](https://github.com/amirmayeli1211/hermes-data/releases/tag/v1.0.3) |
+| **APK** | [`RIX-1.0.3-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3-debug.apk) · ۲۲.۲ مگابایت |
+| **بستهٔ کامل** | [`RIX-1.0.3.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3.zip) · APK + راهنمای نصب + یادداشت انتشار |
+| **انتشار** | [v1.0.3](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.3) |
 | **sha256** | `925499d185d674269160ec69c4e5b3e766ccfa0f402cbc99cd2da410ccd25328` |
 
 > [!IMPORTANT]
@@ -116,6 +116,10 @@ RIX خودِ تونل را از نو نساخته. هستهٔ اصلی را به
 tun2socks است. RIX خودش TUN را می‌سازد، توصیفگر خام را به `hev` می‌دهد، و `hev` برای هر
 جریان یک اتصال SOCKS5 تازه باز می‌کند.
 
+<div align="center">
+<img src="docs/architecture.svg" alt="مسیر بسته‌ها: برنامه‌ها به TUN، به hev، به پورت SOCKS5 هسته، به لبهٔ WARP؛ حالت پروکسی بدون TUN" width="1000">
+</div>
+
 ### ترتیب اتصال
 
 ```text
@@ -154,6 +158,10 @@ tun2socks است. RIX خودش TUN را می‌سازد، توصیفگر خام 
 
 پروتکل برنده در `SharedPreferences` ذخیره می‌شود تا اتصال بعدی مستقیم سراغش برود و دوباره
 یاد نگیرد که شبکه چه چیزی را می‌بندد.
+
+<div align="center">
+<img src="docs/connection.svg" alt="وضعیت‌های اتصال: تونل ساخته می‌شود، یک کاندید بالا می‌آید، با یک درخواست واقعی اثبات می‌شود، بعد یا متصل یا کاندید بعدی، و در پایان خطا" width="1000">
+</div>
 
 ### قفل tun2socks
 
@@ -197,6 +205,10 @@ WARP هسته به داخل TUN برمی‌گشتند و بن‌بست می‌ش
 | **سریع‌ترین** | MASQUE/HTTP-3، اسکن Turbo، پروفایل پرقدرت. |
 | **ضد DPI** | MASQUE در MASQUE، اسکن کامل، Fragment. |
 | **کم‌مصرف** | WireGuard، پروفایل کم‌مصرف، Keepalive بلند. |
+
+<div align="center">
+<img src="docs/settings.svg" alt="صفحهٔ تنظیمات: پنج پیش‌تنظیم با ایران (مقاوم) فعال، و کلید چرخش خودکار پروتکل" width="900">
+</div>
 
 ### گروه‌های تنظیمات
 
@@ -263,7 +275,7 @@ WARP هسته به داخل TUN برمی‌گشتند و بن‌بست می‌ش
 
 ساخت را CI انجام می‌دهد و این یک سلیقه نیست — `libaether.so` به BoringSSL و quiche و
 boringtun نیاز دارد که باید با NDK کراس‌کامپایل شوند و در یک کانتینر کوچک جا نمی‌شوند.
-ورک‌فلو [`android-rix.yml`](../../.github/workflows/android-rix.yml) است و سه کار را از
+ورک‌فلو [`.github/workflows/android-rix.yml`](.github/workflows/android-rix.yml) است و سه کار را از
 ارزان به گران اجرا می‌کند: **kotlin** در حدود ۴ دقیقه تایپ‌چک می‌کند تا یک غلط تایپی
 ۴۰ دقیقه ساخت بومی را نسوزاند، **native** کتابخانه‌ها را به‌ازای هر معماری می‌سازد، و
 **apk** آن‌ها را بسته‌بندی می‌کند و تا وقتی هر سه فایل `.so` واقعاً داخل APK نباشند اجازهٔ
@@ -280,7 +292,6 @@ gh workflow run android-rix.yml -f abis=arm64-v8a,armeabi-v7a,x86_64
 محلی، وقتی کتابخانه‌های بومی از قبل در `app/src/main/jniLibs/<abi>/` هستند:
 
 ```sh
-cd projects/rix
 gradle :app:assembleDebug -PrixAbis=arm64-v8a     # API 24+، هدف JVM 17
 ```
 
@@ -301,9 +312,10 @@ JDK 21 در CI، هدف JVM 17.
 APK با یک **کلید ثابت که در همین مخزن کامیت شده** امضا می‌شود
 (`keystore/rix.p12`، نام مستعار `rix`) تا نسخه‌های پشت‌سرهم امضای یکسان داشته باشند —
 دقیقاً همین باعث می‌شود اندروید حالا برنامه را در جای خودش به‌روزرسانی کند و حذف کردن
-نخواهد. CI اگر secret با نام `RIX_KEYSTORE_B64` وجود داشته باشد همان فایل را جایگزین
-می‌کند؛ پس رفتن به کلید خصوصی بعداً هیچ تغییری در کد لازم ندارد. ساخت، گواهی استفاده‌شده
-را چاپ می‌کند:
+نخواهد. CI کلید را اول از secret با نام `RIX_KEYSTORE_B64`، بعد از متغیر مخزن با همان نام، و در آخر از فایل کامیت‌شده
+می‌خواند؛ پس رفتن به کلید خصوصی بعداً هیچ تغییری در کد نمی‌خواهد. اگر هر سه جا خالی باشند، ساخت
+را رد می‌کند و به کلید دیباگ Android برنمی‌گردد — چون آن نسخه بدون مشکل نصب می‌شود و بعد
+نمی‌تواند به‌روزرسانی کند. هر ساخت، گواهی استفاده‌شده را چاپ می‌کند:
 
 ```text
 V2 Signer: certificate DN: C=IR, O=RIX, CN=RIX VPN
@@ -374,7 +386,8 @@ Aether استفاده از نام «Aether» یا نامی گمراه‌کنند
 ## ساختار پروژه
 
 ```text
-projects/rix/
+RIX-AETHER/
+├── .github/workflows/android-rix.yml    کل بیلد: kotlin → native → apk
 ├── app/src/main/cpp/
 │   ├── CMakeLists.txt                  ساخت librixjni.so
 │   └── jni_bridge.c                    پل dlopen به هر دو کتابخانهٔ بومی
@@ -390,9 +403,8 @@ projects/rix/
 │   │   ├── RixVpnService.kt            تونل کامل
 │   │   └── RixProxyService.kt          فقط پروکسی
 │   └── ui/                             صفحه‌های Compose و سیستم طراحی
-├── docs/                               بنر و طرح رابط کاربری که همین README استفاده می‌کند
-├── keystore/rix.p12                    کلید ثابت امضای انتشار
-└── ../../.github/workflows/android-rix.yml
+├── docs/                               بنر، دیاگرام‌ها و طرح رابط کاربری همین README
+└── keystore/rix.p12                    کلید ثابت امضای انتشار
 ```
 
 <div align="center">

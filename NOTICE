@@ -9,7 +9,7 @@ This application is a derivative work of:
   Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
 
 RIX is licensed under AGPL-3.0-only. The complete corresponding source is this
-repository:  projects/rix/  plus the build description in
+repository — everything under app/ and the build description in
 .github/workflows/android-rix.yml, which fetches the upstream core at build time.
 
 Bundled native components and their licences:

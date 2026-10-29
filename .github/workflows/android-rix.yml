@@ -1,0 +1,358 @@
+name: RIX Android build
+
+# Three jobs, cheapest first:
+#   kotlin  type-checks the app in ~4 min so a Kotlin typo never burns a 40 min
+#           native build
+#   native  builds libaether.so (BoringSSL + quiche + boringtun, cross-compiled)
+#           and libhev-socks5-tunnel.so per ABI
+#   apk     packages both into the APK and refuses to upload unless all three
+#           .so files are actually inside it
+#
+# The native half needs BoringSSL, quiche and boringtun cross-compiled with the
+# NDK, which wants a real runner: several GB of disk and ~40 minutes of CPU. If
+# you build locally instead, gradle.properties allows a 3 GB heap, so give the
+# daemon more than that or `:app:compileDebugKotlin` will be killed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      abis:
+        description: "Comma-separated ABIs to build"
+        required: false
+        default: "arm64-v8a"
+  push:
+    branches: ["main"]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "keystore/**"
+      - ".github/workflows/android-rix.yml"
+
+permissions:
+  contents: read
+
+env:
+  AETHER_REPO: https://github.com/CluvexStudio/Aether
+  AETHER_REF: main
+  HEV_TAG: "2.19.3"
+  NDK_VERSION: "26.1.10909125"
+
+jobs:
+  kotlin:
+    name: kotlin compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        # android-actions/setup-android@v3 is unusable here: it runs
+        # `sdkmanager tools`, and the deprecated `tools` package no longer exists
+        # in the SDK repository ("Failed to find package 'tools'"). The runner
+        # image already ships an SDK, so drive sdkmanager directly.
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMGR"
+
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+          ls "${ANDROID_HOME}/ndk"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compile Kotlin
+        working-directory: .
+        run: |
+          gradle :app:compileDebugKotlin -PrixAbis=arm64-v8a --no-daemon --stacktrace
+
+  native:
+    name: native (${{ matrix.abi }})
+    needs: kotlin
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            rust: aarch64-linux-android
+          - abi: armeabi-v7a
+            rust: armv7-linux-androideabi
+          - abi: x86_64
+            rust: x86_64-linux-android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Select ABIs
+        id: sel
+        env:
+          REQUESTED: ${{ github.event.inputs.abis || 'arm64-v8a' }}
+        run: |
+          if echo ",${REQUESTED}," | grep -q ",${{ matrix.abi }},"; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust
+        if: steps.sel.outputs.enabled == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+
+      - name: Install Go (BoringSSL build)
+        if: steps.sel.outputs.enabled == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake, Ninja and Perl
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build cmake perl
+
+      - name: Install Android NDK
+        if: steps.sel.outputs.enabled == 'true'
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Install cargo-ndk
+        if: steps.sel.outputs.enabled == 'true'
+        run: cargo install cargo-ndk --locked
+
+      - name: Fetch Aether
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          git clone --depth 1 --branch "${AETHER_REF}" "${AETHER_REPO}" aether-src
+          echo "aether $(git -C aether-src rev-parse --short HEAD)"
+          test -f aether-src/quiche/quiche/Cargo.toml
+
+      - name: Cache Rust artifacts
+        if: steps.sel.outputs.enabled == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "aether-src/aether -> target"
+          key: ${{ matrix.abi }}
+
+      - name: Build libaether.so
+        if: steps.sel.outputs.enabled == 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_PROFILE_RELEASE_LTO: thin
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+        run: |
+          set -euo pipefail
+          under=$(echo "${{ matrix.rust }}" | tr '-' '_')
+          export "BORING_BSSL_RUST_CPPLIB_${under}=static:-bundle=c++"
+
+          cd aether-src/aether
+          cargo ndk -t ${{ matrix.abi }} --platform 29 build --release --lib
+
+          so="target/${{ matrix.rust }}/release/libaether.so"
+          ls -lh "$so"
+          file "$so"
+          readelf -d "$so" | grep NEEDED || true
+
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}"
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Fetch hev-socks5-tunnel
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          curl -sSL -o hev.tar.xz \
+            "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_TAG}/hev-socks5-tunnel-${HEV_TAG}.tar.xz"
+          tar -xJf hev.tar.xz
+          mv "hev-socks5-tunnel-${HEV_TAG}" hev-src
+
+      - name: Build libhev-socks5-tunnel.so
+        if: steps.sel.outputs.enabled == 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cd hev-src
+          "$ANDROID_NDK_HOME/ndk-build" \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=Android.mk \
+            NDK_APPLICATION_MK=Application.mk \
+            APP_ABI=${{ matrix.abi }} \
+            APP_PLATFORM=android-29 \
+            -j"$(nproc)"
+
+          so="libs/${{ matrix.abi }}/libhev-socks5-tunnel.so"
+          ls -lh "$so"
+          file "$so"
+
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Upload native libraries
+        if: steps.sel.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-native-${{ matrix.abi }}
+          path: app/src/main/jniLibs/${{ matrix.abi }}/*.so
+          if-no-files-found: error
+
+  apk:
+    name: apk
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        # Same reason as the kotlin job: setup-android@v3 is broken upstream.
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMGR"
+
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+
+      - name: Collect native libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rix-native-*
+          path: _native
+
+      - name: Place libraries into jniLibs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          count=0
+          for dir in _native/rix-native-*; do
+            abi="${dir##*rix-native-}"
+            mkdir -p "app/src/main/jniLibs/${abi}"
+            cp "${dir}"/*.so "app/src/main/jniLibs/${abi}/"
+            echo "collected ${abi}: $(ls "${dir}" | tr '\n' ' ')"
+            count=$((count + 1))
+          done
+          if [ "$count" -eq 0 ]; then
+            echo "ERROR: no native artifacts were downloaded"; exit 1
+          fi
+          abis=$(ls _native | sed 's/^rix-native-//' | paste -sd, -)
+          echo "RIX_ABIS=${abis}" >> "$GITHUB_ENV"
+          find app/src/main/jniLibs -name '*.so' -exec ls -lh {} \;
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Restore signing key
+        # The repository ships a fixed key so every build carries the same
+        # signature and installs over the previous version.
+        #
+        # The key is read from a secret if one exists, then from a repository
+        # variable, and only then from the committed file. The file is the
+        # fragile source: a `ghstore` sync commit mirrors the sandbox tree and
+        # deletes files the sandbox does not have, which has already removed
+        # this key from main once. A secret or variable lives outside the tree
+        # and survives that.
+        #
+        # Missing everywhere is a hard failure on purpose. Falling back to the
+        # Android debug keystore would produce an APK that installs fine and
+        # then refuses to update over the last one -- precisely the bug the
+        # fixed key exists to prevent -- and it would do so silently.
+        env:
+          RIX_KEYSTORE_SECRET: ${{ secrets.RIX_KEYSTORE_B64 }}
+          RIX_KEYSTORE_VAR: ${{ vars.RIX_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          key="keystore/rix.p12"
+
+          b64="${RIX_KEYSTORE_SECRET:-}"
+          origin="secret RIX_KEYSTORE_B64"
+          if [ -z "$b64" ]; then
+            b64="${RIX_KEYSTORE_VAR:-}"
+            origin="repository variable RIX_KEYSTORE_B64"
+          fi
+
+          if [ -n "$b64" ]; then
+            mkdir -p "$(dirname "$key")"
+            printf '%s' "$b64" | base64 -d > "$key"
+            echo "signing key written from $origin"
+          elif [ -f "$key" ]; then
+            echo "signing key taken from the committed file; set RIX_KEYSTORE_B64 to make this durable"
+          else
+            echo "::error::$key is missing and neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
+            echo "::error::An unsigned build cannot update an installed app. Restore the key before releasing; see README.md."
+            exit 1
+          fi
+
+          ls -l "$key"
+
+      - name: Assemble debug APK
+        working-directory: .
+        run: |
+          gradle :app:assembleDebug -PrixAbis="${RIX_ABIS}" --no-daemon --stacktrace
+
+      - name: Verify APK contents
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "APK=$apk"
+          unzip -l "$apk" | grep -E 'lib/.*\.so' || { echo "ERROR: no .so in APK"; exit 1; }
+          for need in libaether.so libhev-socks5-tunnel.so librixjni.so; do
+            unzip -l "$apk" | grep -q "$need" || { echo "ERROR: $need missing from APK"; exit 1; }
+          done
+
+          # The signature is what lets an update install over the previous
+          # version; print it so a key change shows up in the build log.
+          apksigner=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
+          "$apksigner" verify --print-certs "$apk" | head -6
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

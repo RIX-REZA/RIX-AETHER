@@ -4,9 +4,9 @@
 
 <br>
 
-[![release](https://img.shields.io/github/v/release/amirmayeli1211/hermes-data?style=flat-square&color=8F7BFF&label=release)](https://github.com/amirmayeli1211/hermes-data/releases)
-[![downloads](https://img.shields.io/github/downloads/amirmayeli1211/hermes-data/total?style=flat-square&color=2BD9C4&label=downloads)](https://github.com/amirmayeli1211/hermes-data/releases)
-[![build](https://github.com/amirmayeli1211/hermes-data/actions/workflows/android-rix.yml/badge.svg?branch=main)](https://github.com/amirmayeli1211/hermes-data/actions/workflows/android-rix.yml)
+[![release](https://img.shields.io/github/v/release/RIX-REZA/RIX-AETHER?style=flat-square&color=8F7BFF&label=release)](https://github.com/RIX-REZA/RIX-AETHER/releases)
+[![downloads](https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=flat-square&color=2BD9C4&label=downloads)](https://github.com/RIX-REZA/RIX-AETHER/releases)
+[![build](https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml/badge.svg?branch=main)](https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--only-8F7BFF?style=flat-square)](LICENSE)
 
 [![android](https://img.shields.io/badge/Android-7.0%2B%20·%20API%2024-3DDC84?style=flat-square&logo=android&logoColor=white)](#compatibility)
@@ -53,9 +53,9 @@ back through the tunnel.**
 
 | | |
 |---|---|
-| **APK** | [`RIX-1.0.3-debug.apk`](https://github.com/amirmayeli1211/hermes-data/releases/download/v1.0.3/RIX-1.0.3-debug.apk) · 22.2 MB |
-| **Bundle** | [`RIX-1.0.3.zip`](https://github.com/amirmayeli1211/hermes-data/releases/download/v1.0.3/RIX-1.0.3.zip) · APK + install notes + release notes |
-| **Release** | [v1.0.3](https://github.com/amirmayeli1211/hermes-data/releases/tag/v1.0.3) |
+| **APK** | [`RIX-1.0.3-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3-debug.apk) · 22.2 MB |
+| **Bundle** | [`RIX-1.0.3.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3.zip) · APK + install notes + release notes |
+| **Release** | [v1.0.3](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.3) |
 | **sha256** | `925499d185d674269160ec69c4e5b3e766ccfa0f402cbc99cd2da410ccd25328` |
 
 > [!IMPORTANT]
@@ -120,6 +120,10 @@ The upstream core does **not** create a TUN device — it only serves SOCKS5 —
 which is why the tun2socks layer exists at all. RIX builds the TUN, hands the
 raw descriptor to `hev`, and lets `hev` open a fresh SOCKS5 connection per flow.
 
+<div align="center">
+<img src="docs/architecture.svg" alt="Packet path: apps to TUN to hev to the core's SOCKS5 port to the WARP edge; proxy mode skips the TUN" width="1000">
+</div>
+
 ### Connection sequence
 
 ```text
@@ -158,6 +162,10 @@ IDLE ─▶ STARTING ─▶ CONNECTING ─▶ RUNNING
 
 The winning transport is written to `SharedPreferences`, so a second connect
 goes straight to it instead of re-learning what the network blocks.
+
+<div align="center">
+<img src="docs/connection.svg" alt="Connection states: build the tunnel, raise a candidate from the chain, verify it with a real request out through the tunnel, then either RUNNING or the next candidate, and ERROR when the chain is exhausted" width="1000">
+</div>
 
 ### The tun2socks latch
 
@@ -201,6 +209,10 @@ that the core's WARP sockets would be routed back into the TUN and deadlock.
 | **سریعترین** | MASQUE/HTTP-3, turbo scan, high-performance profile. |
 | **ضد DPI** | MASQUE-in-MASQUE, thorough scan, fragmentation. |
 | **کممصرف** | WireGuard, low-power profile, long keepalive. |
+
+<div align="center">
+<img src="docs/settings.svg" alt="The settings screen: five preset rows with the Iran (resistant) preset active, and the automatic protocol rotation switch" width="900">
+</div>
 
 ### Settings groups
 
@@ -270,7 +282,7 @@ it wins over everything the UI set.
 CI does it, and that is not a preference — `libaether.so` needs BoringSSL,
 quiche and boringtun cross-compiled with the NDK, which does not fit in a small
 container. The workflow is
-[`android-rix.yml`](../../.github/workflows/android-rix.yml) and runs three jobs
+[`.github/workflows/android-rix.yml`](.github/workflows/android-rix.yml) and runs three jobs
 cheapest-first: **kotlin** type-checks in ~4 minutes so a typo never burns a
 40-minute native build, **native** builds the libraries per ABI in a matrix, and
 **apk** packages them and refuses to upload unless all three `.so` files are
@@ -287,7 +299,6 @@ gh workflow run android-rix.yml -f abis=arm64-v8a,armeabi-v7a,x86_64
 Locally, with the native libraries already in `app/src/main/jniLibs/<abi>/`:
 
 ```sh
-cd projects/rix
 gradle :app:assembleDebug -PrixAbis=arm64-v8a     # API 24+, JDK 17 target
 ```
 
@@ -308,9 +319,12 @@ CMake 3.22.1 · JDK 21 in CI, JVM target 17.
 The APK is signed with a **fixed key committed to this repository**
 (`keystore/rix.p12`, alias `rix`) so that consecutive releases share a
 signature — that is the whole reason Android will now update the app in place
-instead of demanding an uninstall. CI overwrites that file from the
-`RIX_KEYSTORE_B64` secret when one exists, so moving to a private key later
-needs no code change, and the build prints the certificate it used:
+instead of demanding an uninstall. CI reads the key from the `RIX_KEYSTORE_B64`
+secret, then from the repository variable of the same name, and only then from
+the committed file — so a private key later needs no code change — and it fails
+the build outright rather than falling back to the Android debug keystore, which
+would produce an APK that installs cleanly and then cannot be updated. Every
+build prints the certificate it used:
 
 ```text
 V2 Signer: certificate DN: C=IR, O=RIX, CN=RIX VPN
@@ -385,7 +399,8 @@ CluvexStudio, changing the display name is a one-line edit in
 ## Layout
 
 ```text
-projects/rix/
+RIX-AETHER/
+├── .github/workflows/android-rix.yml    the whole build: kotlin → native → apk
 ├── app/src/main/cpp/
 │   ├── CMakeLists.txt                  builds librixjni.so
 │   └── jni_bridge.c                    dlopen bridge to both native libraries
@@ -401,13 +416,9 @@ projects/rix/
 │   │   ├── RixVpnService.kt            full tunnel
 │   │   └── RixProxyService.kt          proxy only
 │   └── ui/                             Compose screens and the design system
-├── docs/                               banner and UI artwork used by this README
+├── docs/                               banner and diagram artwork used by this README
 └── keystore/rix.p12                    the fixed release signing key
 ```
-
-The build workflow itself lives at the repository root, in
-`.github/workflows/android-rix.yml`, because GitHub only reads workflows from
-there.
 
 <div align="center">
 <sub>ساخته شده برای شبکه‌هایی که به‌سختی کار می‌کنند · built for networks that fight back</sub>

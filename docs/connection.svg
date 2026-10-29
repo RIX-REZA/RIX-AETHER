@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600" role="img" aria-label="How RIX decides a tunnel is really connected: build the tunnel, raise a candidate from the chain, verify it with a real request out through the tunnel, then either RUNNING or the next candidate, and ERROR once the chain is exhausted">
+  <title>RIX — connection sequence and fallback</title>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B0B16"/>
+      <stop offset="100%" stop-color="#07070D"/>
+    </linearGradient>
+    <radialGradient id="wellV" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8F7BFF" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#8F7BFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="wellT" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8F7BFF" fill-opacity="0.7"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2BD9C4" fill-opacity="0.85"/>
+    </marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF5C7A" fill-opacity="0.85"/>
+    </marker>
+    <style>
+      .fa { font-family: Vazirmatn, 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif; }
+      .en { font-family: 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .box { fill: #10101F; stroke: #23233C; }
+      .sub { font-size: 10px; fill: #8E8BAD; }
+      .step { font-size: 9.5px; fill: #8F7BFF; letter-spacing: 1.2px; }
+    </style>
+  </defs>
+
+  <rect width="1000" height="600" rx="28" fill="url(#bg)" stroke="#23233C"/>
+  <ellipse cx="120" cy="60" rx="400" ry="220" fill="url(#wellV)"/>
+  <ellipse cx="880" cy="490" rx="400" ry="230" fill="url(#wellT)"/>
+
+  <text class="fa" x="500" y="44" direction="rtl" text-anchor="middle" font-size="19" font-weight="600" fill="#EFEDFF">کِی واقعاً «متصل» می‌شویم؟</text>
+  <text class="en" x="500" y="66" text-anchor="middle" font-size="11" fill="#8E8BAD">how RIX decides it is connected</text>
+
+  <!-- A: tunnel -->
+  <g>
+    <rect class="box" x="60" y="90" width="500" height="62" rx="16"/>
+    <text class="en step" x="84" y="115" text-anchor="start">STARTING</text>
+    <text class="fa" x="540" y="118" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۱. تونل ساخته می‌شود</text>
+    <text class="fa sub" x="540" y="138" direction="rtl" text-anchor="end">TUN بالا می‌آید و hev به SOCKS5 هسته وصل می‌شود</text>
+  </g>
+
+  <!-- B: candidate -->
+  <g>
+    <rect class="box" x="60" y="175" width="500" height="80" rx="16"/>
+    <text class="en step" x="84" y="200" text-anchor="start">CONNECTING</text>
+    <text class="fa" x="540" y="203" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۲. کاندید بعدی از زنجیره بالا می‌آید</text>
+    <rect x="84" y="215" width="148" height="26" rx="13" fill="#1A1730" stroke="#5B45D6"/>
+    <text class="fa" x="158" y="232" direction="rtl" text-anchor="middle" font-size="10" fill="#C9C4E8">انتخاب تو</text>
+    <rect x="240" y="215" width="148" height="26" rx="13" fill="#1A1730" stroke="#5B45D6"/>
+    <text class="fa" x="314" y="232" direction="rtl" text-anchor="middle" font-size="10" fill="#C9C4E8">آخرین موفق</text>
+    <rect x="396" y="215" width="148" height="26" rx="13" fill="#1A1730" stroke="#5B45D6"/>
+    <text class="en" x="470" y="232" text-anchor="middle" font-size="10" fill="#C9C4E8">MASQUE / H2</text>
+  </g>
+
+  <!-- C: verification gate -->
+  <g>
+    <rect x="60" y="280" width="500" height="80" rx="16" fill="#141230" stroke="#5B45D6" stroke-width="1.5"/>
+    <text class="en step" x="84" y="305" text-anchor="start">VERIFY</text>
+    <text class="fa" x="540" y="308" direction="rtl" text-anchor="end" font-size="13" fill="#EFEDFF">۳. یک درخواست واقعی از داخل تونل</text>
+    <text class="mono" x="540" y="330" text-anchor="end" font-size="10" fill="#8F7BFF">cloudflare.com/cdn-cgi/trace</text>
+    <text class="fa sub" x="540" y="349" direction="rtl" text-anchor="end">پاسخ باید ip= و colo= و یک کد ۲۰۰ داشته باشد</text>
+  </g>
+
+  <!-- D: decision -->
+  <g>
+    <rect class="box" x="60" y="385" width="500" height="60" rx="16"/>
+    <text class="fa" x="310" y="421" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">پاسخ از تونل برگشت؟</text>
+  </g>
+
+  <!-- straight flow arrows -->
+  <g stroke="#8F7BFF" stroke-opacity="0.7" marker-end="url(#av)">
+    <line x1="310" y1="152" x2="310" y2="171"/>
+    <line x1="310" y1="255" x2="310" y2="276"/>
+    <line x1="310" y1="360" x2="310" y2="381"/>
+  </g>
+
+  <!-- loop back -->
+  <path d="M 60 415 H 30 V 215 H 56" fill="none" stroke="#8F7BFF" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#av)"/>
+  <text class="en" x="18" y="315" text-anchor="middle" font-size="9" fill="#8F7BFF" transform="rotate(-90 18 315)">no &#183; next candidate</text>
+
+  <!-- E: connected -->
+  <g>
+    <rect x="620" y="325" width="320" height="120" rx="18" fill="#0D2422" stroke="#12A08F" stroke-width="1.5"/>
+    <text class="en step" x="644" y="352" text-anchor="start" fill="#2BD9C4">RUNNING</text>
+    <text class="fa" x="916" y="358" direction="rtl" text-anchor="end" font-size="18" font-weight="700" fill="#2BD9C4">متصل</text>
+    <text class="fa" x="916" y="386" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">آیپی خروجی · لبهٔ Cloudflare · کشور</text>
+    <text class="fa" x="916" y="406" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">پروتکل برنده ذخیره می‌شود</text>
+    <text class="fa" x="916" y="430" direction="rtl" text-anchor="end" font-size="10.5" fill="#8E8BAD">ساعت جلسه از همین‌جا شروع می‌شود</text>
+  </g>
+
+  <!-- F: error -->
+  <g>
+    <rect x="620" y="465" width="320" height="90" rx="18" fill="#251114" stroke="#FF5C7A" stroke-width="1.5"/>
+    <text class="en step" x="644" y="492" text-anchor="start" fill="#FF5C7A">ERROR</text>
+    <text class="fa" x="916" y="497" direction="rtl" text-anchor="end" font-size="15" font-weight="700" fill="#FF5C7A">خطا</text>
+    <text class="fa" x="916" y="524" direction="rtl" text-anchor="end" font-size="10.5" fill="#EFEDFF">دلیل واقعی روی صفحه می‌ماند</text>
+    <text class="fa" x="916" y="544" direction="rtl" text-anchor="end" font-size="10.5" fill="#8E8BAD">هیچ‌وقت الکی «متصل» نشان نمی‌دهیم</text>
+  </g>
+
+  <!-- arrows to outcomes -->
+  <path d="M 560 400 H 590 V 365 H 616" fill="none" stroke="#2BD9C4" stroke-opacity="0.8" stroke-width="1.5" marker-end="url(#at)"/>
+  <text class="fa" x="574" y="390" direction="rtl" text-anchor="middle" font-size="10" fill="#2BD9C4">بله</text>
+
+  <path d="M 310 445 V 490 H 616" fill="none" stroke="#FF5C7A" stroke-opacity="0.75" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#ad)"/>
+  <text class="fa" x="430" y="482" direction="rtl" text-anchor="middle" font-size="10" fill="#FF5C7A">نه، و کاندیدی نمانده (سقف ۳ کاندید)</text>
+</svg>
