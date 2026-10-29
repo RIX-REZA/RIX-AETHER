@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Icon
@@ -37,13 +38,22 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -282,8 +292,16 @@ fun RixChip(
  * The connect orb.
  *
  * Three expanding rings tied to one infinite transition: they stay in phase so
- * the pulse reads as a single heartbeat instead of noise, and they are only
- * drawn while [active] so an idle screen is perfectly still.
+ * the pulse reads as a single heartbeat instead of noise.
+ *
+ * Two deliberate performance choices, because this composable is on screen the
+ * whole time the user is looking at the app:
+ *  - the infinite transition is only *created* while there is something to
+ *    animate. A transition left running on an idle screen keeps a frame
+ *    callback and a redraw alive forever for a picture that never changes;
+ *  - the animated value is kept as a [State] and read inside the draw lambda,
+ *    so a frame invalidates drawing only. Reading it in the composable body
+ *    would recompose this whole subtree sixty times a second.
  */
 @Composable
 fun PowerOrb(
@@ -292,16 +310,21 @@ fun PowerOrb(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "orb")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse"
-    )
+    val animating = active || busy
+    val pulse: State<Float>? = if (animating) {
+        val transition = rememberInfiniteTransition(label = "orb")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "pulse"
+        )
+    } else {
+        null
+    }
 
     val accent = if (active) RixColors.Teal else RixColors.Violet
 
@@ -312,9 +335,10 @@ fun PowerOrb(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val base = size.minDimension / 2f
 
-            if (active || busy) {
+            if (animating) {
+                val phase0 = pulse?.value ?: 0f
                 repeat(3) { index ->
-                    val phase = (pulse + index / 3f) % 1f
+                    val phase = (phase0 + index / 3f) % 1f
                     val radius = base * (0.58f + 0.42f * phase)
                     val alpha = (1f - phase) * 0.28f
                     drawCircle(
@@ -470,6 +494,195 @@ fun SelectCard(
             tint = if (selected) accent else RixColors.TextMuted.copy(alpha = 0.45f),
             modifier = Modifier.size(20.dp)
         )
+    }
+}
+
+/**
+ * The app's profile mark: a gradient ring around the RIX bolt.
+ *
+ * Drawn in Compose rather than shipped as a bitmap so it stays sharp at any
+ * size, follows the palette when the skin changes, and costs no APK weight.
+ * It is the same mark as the launcher icon, so the icon the user taps and the
+ * badge inside the app read as one identity.
+ */
+@Composable
+fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
+    val violet = RixColors.Violet
+    val teal = RixColors.Teal
+    val disc = RixColors.BackgroundLift
+
+    Canvas(modifier = modifier.size(sizeDp.dp)) {
+        val d = size.minDimension
+        val mid = Offset(size.width / 2f, size.height / 2f)
+
+        // Sweep ring: violet on one side, teal on the other.
+        drawCircle(brush = Brush.sweepGradient(listOf(violet, teal, violet)), radius = d / 2f)
+        drawCircle(color = disc, radius = d / 2f - d * 0.06f)
+
+        // Soft inner glow so the mark does not look like a flat sticker.
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(violet.copy(alpha = 0.38f), Color.Transparent),
+                center = mid,
+                radius = d * 0.42f
+            ),
+            radius = d * 0.42f,
+            center = mid
+        )
+
+        val bolt = Path().apply {
+            moveTo(mid.x + d * 0.085f, mid.y - d * 0.215f)
+            lineTo(mid.x - d * 0.115f, mid.y + d * 0.030f)
+            lineTo(mid.x - d * 0.005f, mid.y + d * 0.030f)
+            lineTo(mid.x - d * 0.075f, mid.y + d * 0.220f)
+            lineTo(mid.x + d * 0.120f, mid.y - d * 0.040f)
+            lineTo(mid.x + d * 0.010f, mid.y - d * 0.040f)
+            close()
+        }
+        drawPath(bolt, brush = Brush.linearGradient(listOf(teal, violet)))
+    }
+}
+
+/**
+ * The address the far end sees, shown between the up and down tiles.
+ *
+ * Reads as a placeholder until the first probe answers, so the row never
+ * collapses and the layout does not jump when the address arrives.
+ */
+@Composable
+fun IpTile(
+    ip: String,
+    colo: String?,
+    loc: String?,
+    live: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val accent = if (ip.isNotBlank()) RixColors.Teal else RixColors.TextMuted
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(RixColors.Surface.copy(alpha = 0.75f))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.Public,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(Modifier.width(5.dp))
+            Text("آی‌پی خروجی", color = RixColors.TextMuted, fontSize = 10.5.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = if (ip.isNotBlank()) ip else if (live) "..." else "—",
+            color = if (ip.isNotBlank()) RixColors.Text else RixColors.TextMuted,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            style = TextStyle(textDirection = TextDirection.Ltr)
+        )
+        if (!colo.isNullOrBlank()) {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = listOfNotNull(colo, loc?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                color = RixColors.TextMuted,
+                fontSize = 9.5.sp,
+                maxLines = 1,
+                style = TextStyle(textDirection = TextDirection.Ltr)
+            )
+        }
+    }
+}
+
+/**
+ * A settings group that folds away.
+ *
+ * The options screen had grown to nine stacked cards of equal weight, which is
+ * a wall of controls with no hierarchy. Folding the rarely-touched groups keeps
+ * the common ones visible and makes the screen scannable.
+ */
+@Composable
+fun ExpandableCard(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    initiallyExpanded: Boolean = false,
+    accent: Color = RixColors.Violet,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    val arrow by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(200),
+        label = "chevron"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        RixColors.SurfaceHigh.copy(alpha = 0.92f),
+                        RixColors.Surface.copy(alpha = 0.86f)
+                    )
+                )
+            )
+            .border(1.dp, RixColors.Stroke.copy(alpha = 0.75f), RoundedCornerShape(22.dp))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(accent.copy(alpha = if (RixColors.isDark) 0.16f else 0.11f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(17.dp))
+                }
+                Spacer(Modifier.width(11.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = RixColors.Text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (subtitle != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(subtitle, color = RixColors.TextMuted, fontSize = 11.sp)
+                }
+            }
+            Icon(
+                Icons.Rounded.ExpandMore,
+                contentDescription = null,
+                tint = RixColors.TextMuted,
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(arrow)
+            )
+        }
+
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                content()
+            }
+        }
     }
 }
 

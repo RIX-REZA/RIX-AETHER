@@ -19,4 +19,10 @@
     <string name="error_engine_stopped">موتور tun2socks متوقف شد</string>
     <string name="error_core_stopped">هستهٔ اتصال بسته شد</string>
     <string name="error_unknown">خطای نامشخص</string>
+    <!-- The engine being up is not the same as the tunnel working; these cover
+         the window in which traffic is being pushed through to prove it. -->
+    <string name="notif_connecting">در حال برقراری تونل...</string>
+    <string name="state_verifying">آزمودن تونل با ترافیک واقعی...</string>
+    <string name="state_verifying_attempt">آزمودن تونل... تلاش %1$d</string>
+    <string name="error_tunnel_unverified">تونل برقرار نشد؛ ترافیک از هسته عبور نکرد</string>
 </resources>

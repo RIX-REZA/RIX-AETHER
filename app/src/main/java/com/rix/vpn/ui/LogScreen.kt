@@ -28,6 +28,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,15 +40,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rix.vpn.data.LogBus
 
 @Composable
 fun LogScreen(
-    lines: List<String>,
     onBack: () -> Unit,
     onClear: () -> Unit
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
+
+    // Collected here rather than in the root composable: a log line used to
+    // invalidate the whole tree, so every core message recomposed the home
+    // screen behind it. Now only this screen reacts.
+    val lines by LogBus.lines.collectAsState()
 
     // Follow the tail as new lines arrive.
     LaunchedEffect(lines.size) {

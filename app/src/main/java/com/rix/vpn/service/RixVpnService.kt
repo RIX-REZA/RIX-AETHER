@@ -134,7 +134,34 @@ class RixVpnService : VpnService() {
                 throw IllegalStateException(getString(R.string.error_engine_stopped))
             }
 
-            RixRuntime.markRunning(options.bindPort, tun2socks = true)
+            // An alive engine is still not a working tunnel: neither it nor the
+            // listening SOCKS5 port says anything about WARP. Hold the UI in
+            // "connecting" and push a real request through before claiming
+            // success, otherwise the caller sees متصل over a dead tunnel.
+            RixRuntime.markConnecting(
+                options.bindPort,
+                tun2socks = true,
+                message = getString(R.string.state_verifying)
+            )
+            startForegroundSafely(getString(R.string.notif_connecting))
+
+            val egress = RixRuntime.awaitTunnel(options.bindPort) { attempt ->
+                if (attempt > 1 && session.get() == mine) {
+                    LogBus.i("vpn", "tunnel probe, attempt $attempt")
+                    RixRuntime.markConnecting(
+                        options.bindPort,
+                        tun2socks = true,
+                        message = getString(R.string.state_verifying_attempt, attempt)
+                    )
+                }
+            } ?: throw IllegalStateException(getString(R.string.error_tunnel_unverified))
+
+            // A stop (or a fresh start) during the probe owns the service now.
+            if (session.get() != mine) return
+
+            LogBus.i("vpn", "tunnel verified: egress ${egress.ip} via ${egress.colo ?: "?"}")
+
+            RixRuntime.markRunning(options.bindPort, tun2socks = true, egress = egress)
             startForegroundSafely(getString(R.string.notif_running, options.bindPort))
             startTicker()
             startCoreWatch(options)
@@ -227,18 +254,29 @@ class RixVpnService : VpnService() {
     }
 
     private suspend fun failAndStop(message: String) {
-        RixRuntime.markError(message)
         runCatching {
             startForegroundSafely(getString(R.string.notif_error))
         }
-        shutdown()
+        shutdown(preserveError = message)
     }
 
     // --------------------------------------------------------------- shutdown
 
-    fun shutdown() {
+    /**
+     * Tears the session down.
+     *
+     * [preserveError] keeps a failure on screen. A plain stop returns the UI to
+     * idle, but a failed start used to do the same thing through markIdle() a
+     * few hundred milliseconds after markError(), so the reason flashed once
+     * and then the screen said «آماده به اتصال» with no explanation.
+     */
+    fun shutdown(preserveError: String? = null) {
         val mine = session.get()
-        RixRuntime.markStopping()
+        if (preserveError != null) {
+            RixRuntime.markError(preserveError)
+        } else {
+            RixRuntime.markStopping()
+        }
         ticker?.cancel()
         ticker = null
         // Without this a failed attempt leaves its poll loop running; it then
@@ -261,7 +299,9 @@ class RixVpnService : VpnService() {
                 runCatching { tun?.close() }
                 tun = null
                 ServiceCompat.stopForeground(this@RixVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                RixRuntime.markIdle()
+                // Only a clean stop resets the phase; a failure keeps the error
+                // that shutdown() already published.
+                if (preserveError == null) RixRuntime.markIdle()
                 stopSelf()
             }
         }

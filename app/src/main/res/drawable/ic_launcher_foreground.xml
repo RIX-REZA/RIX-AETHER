@@ -1,16 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    RIX app mark.
+
+    The same construction as ui/Components.kt#RixLogo: a sweep-gradient ring
+    (violet -> teal -> violet) around a lifted disc, a soft violet well inside,
+    and the bolt filled with a teal/violet linear gradient. Drawn instead of
+    shipped as a bitmap so it stays crisp at every density and adds no weight.
+
+    Everything sits inside the adaptive-icon safe zone (centre 66dp of the
+    108dp viewport, i.e. radius 33 from the centre): the outer ring is at 30.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Shield outline -->
+
+    <!-- Disc behind the bolt, one step up from the icon background. -->
     <path
-        android:pathData="M54,24L34,32v14c0,11.6 8.2,22.4 20,25.6 11.8,-3.2 20,-14 20,-25.6V32L54,24z"
-        android:strokeColor="#8F7BFF"
-        android:strokeWidth="3.2"
-        android:fillColor="#1A1533" />
-    <!-- Inner bolt / link -->
+        android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 Z"
+        android:fillColor="#0B0B16" />
+
+    <!-- Soft violet well, so the mark does not read as a flat sticker. -->
+    <path android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="28"
+                android:startColor="#66907BFF"
+                android:endColor="#00907BFF" />
+        </aapt:attr>
+    </path>
+
+    <!-- Gradient ring: violet on one side, teal on the other. -->
     <path
-        android:pathData="M56.5,38L44,58h9.5L50,74l14,-22h-9.5L56.5,38z"
-        android:fillColor="#2BD9C4" />
+        android:fillType="evenOdd"
+        android:pathData="M54,24 A30,30 0 1,0 54,84 A30,30 0 1,0 54,24 Z M54,28 A26,26 0 1,0 54,80 A26,26 0 1,0 54,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="sweep"
+                android:centerX="54"
+                android:centerY="54"
+                android:startColor="#8F7BFF"
+                android:centerColor="#2BD9C4"
+                android:endColor="#8F7BFF" />
+        </aapt:attr>
+    </path>
+
+    <!-- The bolt. -->
+    <path android:pathData="M61.80,34.26 L43.44,56.75 L53.54,56.75 L47.12,74.20 L65.02,50.33 L54.92,50.33 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="43"
+                android:startY="34"
+                android:endX="65"
+                android:endY="74"
+                android:startColor="#2BD9C4"
+                android:endColor="#A58BFF" />
+        </aapt:attr>
+    </path>
 </vector>

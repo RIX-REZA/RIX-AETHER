@@ -21,8 +21,8 @@ android {
         applicationId = "com.rix.vpn"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
 
         ndk {
             // Driven by -PrixAbis so the ABI list here can never drift from the

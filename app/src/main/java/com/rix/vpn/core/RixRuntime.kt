@@ -22,7 +22,12 @@ import java.net.Socket
  */
 object RixRuntime {
 
-    enum class Phase { IDLE, STARTING, RUNNING, STOPPING, ERROR }
+    /**
+     * [CONNECTING] is the state the UI was missing: the core is listening and
+     * the engine is alive, but no packet has crossed the tunnel yet. Only
+     * [RUNNING] means traffic actually flows.
+     */
+    enum class Phase { IDLE, STARTING, CONNECTING, RUNNING, STOPPING, ERROR }
 
     data class State(
         val phase: Phase = Phase.IDLE,
@@ -32,6 +37,12 @@ object RixRuntime {
         val startedAt: Long = 0L,
         val socksPort: Int = 0,
         val tun2socks: Boolean = false,
+        /** Public address the far end sees; empty until the first probe succeeds. */
+        val egressIp: String = "",
+        /** Cloudflare edge that answered, e.g. "FRA". */
+        val egressColo: String = "",
+        /** Two-letter country the edge placed us in, e.g. "DE". */
+        val egressLoc: String = "",
         val txBytes: Long = 0L,
         val rxBytes: Long = 0L,
         val txPackets: Long = 0L,
@@ -73,7 +84,27 @@ object RixRuntime {
         update { it.copy(phase = Phase.STARTING, mode = mode, message = message, error = null) }
     }
 
-    fun markRunning(port: Int, tun2socks: Boolean) {
+    /**
+     * The engine is up and listening, but the tunnel is not proven yet. The
+     * clock deliberately does not start here: the session timer must measure
+     * time connected, not time spent connecting.
+     */
+    fun markConnecting(port: Int, tun2socks: Boolean, message: String) {
+        update {
+            it.copy(
+                phase = Phase.CONNECTING,
+                message = message,
+                error = null,
+                socksPort = port,
+                tun2socks = tun2socks,
+                egressIp = "",
+                egressColo = "",
+                egressLoc = ""
+            )
+        }
+    }
+
+    fun markRunning(port: Int, tun2socks: Boolean, egress: TunnelProbe.Egress? = null) {
         update {
             it.copy(
                 phase = Phase.RUNNING,
@@ -81,7 +112,10 @@ object RixRuntime {
                 error = null,
                 startedAt = System.currentTimeMillis(),
                 socksPort = port,
-                tun2socks = tun2socks
+                tun2socks = tun2socks,
+                egressIp = egress?.ip ?: it.egressIp,
+                egressColo = egress?.colo ?: it.egressColo,
+                egressLoc = egress?.loc ?: it.egressLoc
             )
         }
     }
@@ -219,6 +253,34 @@ object RixRuntime {
             }
             false
         }
+
+    /**
+     * Waits until the tunnel really carries traffic, and reports the egress IP.
+     *
+     * A listening SOCKS5 port is not a working tunnel, so this is the gate the
+     * UI calls "connected". The WARP handshake has no API to wait on, so the
+     * only honest test is to send a request and see it come back; each attempt
+     * is a full end-to-end round trip through the core.
+     */
+    suspend fun awaitTunnel(
+        port: Int,
+        timeoutMs: Long = 45_000,
+        onProgress: (Int) -> Unit = {}
+    ): TunnelProbe.Egress? = withContext(Dispatchers.IO) {
+        // A deadline rather than a fixed attempt count: a refused connection
+        // returns in milliseconds while a blackholed one eats the full socket
+        // timeout, so counting attempts made the worst case several minutes of
+        // «در حال اتصال» before it gave up.
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+        while (System.currentTimeMillis() < deadline) {
+            attempt += 1
+            onProgress(attempt)
+            TunnelProbe.probe(port, timeoutMs = 6_000)?.let { return@withContext it }
+            delay(500)
+        }
+        null
+    }
 
     // ------------------------------------------------------------ tun2socks
 

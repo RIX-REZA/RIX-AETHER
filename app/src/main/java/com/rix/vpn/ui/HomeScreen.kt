@@ -1,5 +1,12 @@
 package com.rix.vpn.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
@@ -58,7 +68,10 @@ fun HomeScreen(
     onOpenLogs: () -> Unit
 ) {
     val running = state.phase == RixRuntime.Phase.RUNNING
-    val busy = state.phase == RixRuntime.Phase.STARTING || state.phase == RixRuntime.Phase.STOPPING
+    val connecting = state.phase == RixRuntime.Phase.CONNECTING
+    val busy = state.phase == RixRuntime.Phase.STARTING ||
+        connecting ||
+        state.phase == RixRuntime.Phase.STOPPING
 
     var elapsed by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.startedAt, running) {
@@ -84,17 +97,19 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                RixLogo(sizeDp = 46)
+                Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "RIX",
                         color = RixColors.Text,
-                        fontSize = 26.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "تونل امن WARP / MASQUE",
                         color = RixColors.TextMuted,
-                        fontSize = 11.5.sp
+                        fontSize = 11.sp
                     )
                 }
                 ThemeIconButton(theme, onCycleTheme)
@@ -144,6 +159,11 @@ fun HomeScreen(
                     size = 12
                 )
                 Spacer(Modifier.height(18.dp))
+            } else if (connecting) {
+                // The clock belongs to time connected, so it stays at zero here
+                // and the wait gets an explicit indicator instead.
+                ConnectingDots(RixColors.Warning)
+                Spacer(Modifier.height(18.dp))
             } else {
                 Spacer(Modifier.height(10.dp))
             }
@@ -185,6 +205,13 @@ fun HomeScreen(
                     accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowDownward,
                     modifier = Modifier.weight(1f)
+                )
+                IpTile(
+                    ip = state.egressIp,
+                    colo = state.egressColo,
+                    loc = state.egressLoc,
+                    live = running || connecting,
+                    modifier = Modifier.weight(1.35f)
                 )
                 StatTile(
                     label = "ارسال",
@@ -243,9 +270,10 @@ fun HomeScreen(
 @Composable
 private fun StatusBadge(state: RixRuntime.State) {
     val (label, color) = when (state.phase) {
-        RixRuntime.Phase.RUNNING -> "فعال" to RixColors.Teal
-        RixRuntime.Phase.STARTING -> "اتصال…" to RixColors.Warning
-        RixRuntime.Phase.STOPPING -> "قطع…" to RixColors.Warning
+        RixRuntime.Phase.RUNNING -> "متصل" to RixColors.Teal
+        RixRuntime.Phase.CONNECTING -> "در حال اتصال" to RixColors.Warning
+        RixRuntime.Phase.STARTING -> "آماده‌سازی" to RixColors.Warning
+        RixRuntime.Phase.STOPPING -> "قطع..." to RixColors.Warning
         RixRuntime.Phase.ERROR -> "خطا" to RixColors.Danger
         RixRuntime.Phase.IDLE -> "خاموش" to RixColors.TextMuted
     }
@@ -299,18 +327,71 @@ private fun NavButton(
 private fun statusTitle(state: RixRuntime.State): String = when (state.phase) {
     RixRuntime.Phase.RUNNING ->
         if (state.tun2socks) "تونل برقرار است" else "پروکسی آماده است"
-    RixRuntime.Phase.STARTING -> "در حال اتصال…"
-    RixRuntime.Phase.STOPPING -> "در حال قطع…"
+    RixRuntime.Phase.CONNECTING -> "در حال اتصال..."
+    RixRuntime.Phase.STARTING -> "در حال آماده‌سازی..."
+    RixRuntime.Phase.STOPPING -> "در حال قطع..."
     RixRuntime.Phase.ERROR -> "اتصال ناموفق"
     RixRuntime.Phase.IDLE -> "آماده به اتصال"
 }
 
 private fun statusSubtitle(state: RixRuntime.State, options: RixOptions): String = when (state.phase) {
     RixRuntime.Phase.ERROR -> state.error ?: "خطای نامشخص"
-    RixRuntime.Phase.STARTING -> state.message.ifBlank { "جست‌وجوی گیت‌وی و ساخت تونل" }
-    RixRuntime.Phase.RUNNING -> "${options.transport.label} • ${options.scanMode.label}"
+    // The wait is stated in terms of what is actually being waited for:
+    // a real request has to come back through the tunnel before this screen
+    // is allowed to say متصل.
+    RixRuntime.Phase.CONNECTING -> state.message.ifBlank { "آزمودن تونل با ترافیک واقعی..." }
+    RixRuntime.Phase.STARTING -> state.message.ifBlank { "جست‌وجوی گیتوی و ساخت تونل" }
+    RixRuntime.Phase.RUNNING -> buildString {
+        append(options.transport.label)
+        append(" • ")
+        append(options.scanMode.label)
+        if (state.egressColo.isNotBlank()) {
+            append(" • لبهٔ ")
+            append(state.egressColo)
+        }
+    }
     RixRuntime.Phase.IDLE -> "برای شروع دکمهٔ بالا را بزن"
     RixRuntime.Phase.STOPPING -> "کمی صبر کن"
+}
+
+/**
+ * Three dots that breathe while the tunnel is being proven.
+ *
+ * Same rule as the orb: the animated value is held as [State] and read inside
+ * the draw scope, so a frame costs a redraw rather than a recomposition of the
+ * screen this sits on.
+ */
+@Composable
+private fun ConnectingDots(color: Color) {
+    val transition = rememberInfiniteTransition(label = "connecting")
+    val phase: State<Float> = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dots"
+    )
+    Canvas(
+        modifier = Modifier
+            .width(52.dp)
+            .height(14.dp)
+    ) {
+        val p = phase.value
+        val radius = size.height * 0.20f
+        repeat(3) { index ->
+            // Triangle wave: ramp up then down, so the dots read as a wave
+            // travelling along the row instead of three independent blinks.
+            val offset = (p + index / 3f) % 1f
+            val wave = if (offset < 0.5f) offset * 2f else (1f - offset) * 2f
+            drawCircle(
+                color = color.copy(alpha = 0.30f + 0.65f * wave),
+                radius = radius * (1f + 0.25f * wave),
+                center = Offset(size.width * (0.18f + 0.32f * index), size.height / 2f)
+            )
+        }
+    }
 }
 
 private fun formatDuration(seconds: Long): String {

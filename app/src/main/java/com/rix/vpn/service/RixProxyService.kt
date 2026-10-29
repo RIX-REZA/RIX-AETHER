@@ -60,31 +60,49 @@ class RixProxyService : LifecycleService() {
             if (!RixRuntime.awaitSocks(options.bindPort)) {
                 throw IllegalStateException(getString(R.string.error_socks_timeout))
             }
-            RixRuntime.markRunning(options.bindPort, tun2socks = false)
+
+            // Same gate as tunnel mode: a listening port is not a working
+            // connection, so the proxy is only reported ready once a real
+            // request has been through it.
+            RixRuntime.markConnecting(
+                options.bindPort,
+                tun2socks = false,
+                message = getString(R.string.state_verifying)
+            )
+            startForegroundSafely(getString(R.string.notif_connecting))
+
+            val egress = RixRuntime.awaitTunnel(options.bindPort)
+                ?: throw IllegalStateException(getString(R.string.error_tunnel_unverified))
+
+            LogBus.i("proxy", "SOCKS5 verified on 127.0.0.1:${options.bindPort}, egress ${egress.ip}")
+            RixRuntime.markRunning(options.bindPort, tun2socks = false, egress = egress)
             startForegroundSafely(getString(R.string.notif_proxy_running, options.bindPort))
-            LogBus.i("proxy", "SOCKS5 ready on 127.0.0.1:${options.bindPort}")
 
             while (lifecycleScope.isActive) {
                 delay(2000)
                 val report = runCatching { RixRuntime.poll() }.getOrNull() ?: continue
                 if (report.failed || !report.running) {
-                    RixRuntime.markError(report.detail ?: getString(R.string.error_core_stopped))
-                    shutdown()
+                    shutdown(preserveError = report.detail ?: getString(R.string.error_core_stopped))
                     return
                 }
             }
         } catch (t: Throwable) {
-            RixRuntime.markError(t.message ?: getString(R.string.error_unknown))
-            shutdown()
+            shutdown(preserveError = t.message ?: getString(R.string.error_unknown))
         }
     }
 
-    private fun shutdown() {
-        RixRuntime.markStopping()
+    private fun shutdown(preserveError: String? = null) {
+        if (preserveError != null) {
+            // Published before the teardown so the reason survives it: markIdle()
+            // at the end of this method used to wipe it a moment later.
+            RixRuntime.markError(preserveError)
+        } else {
+            RixRuntime.markStopping()
+        }
         lifecycleScope.launch {
             RixRuntime.stopCore()
             ServiceCompat.stopForeground(this@RixProxyService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            RixRuntime.markIdle()
+            if (preserveError == null) RixRuntime.markIdle()
             stopSelf()
         }
         worker?.cancel()
