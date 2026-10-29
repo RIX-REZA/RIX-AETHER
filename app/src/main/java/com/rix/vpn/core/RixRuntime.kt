@@ -242,9 +242,6 @@ object RixRuntime {
      */
     private val hevLock = Any()
 
-    @Volatile
-    private var hevThread: Thread? = null
-
     /** True only while [NativeHev.run] is executing inside the library. */
     @Volatile
     private var hevInFlight = false
@@ -257,7 +254,12 @@ object RixRuntime {
     /** Whether a tunnel engine is currently blocking inside hev. */
     fun hevActive(): Boolean = hevInFlight
 
-    fun startTun2Socks(context: Context, options: RixOptions, tunFd: Int, onExit: (Int) -> Unit) {
+    fun startTun2Socks(
+        context: Context,
+        options: RixOptions,
+        tunFd: Int,
+        onExit: (Int) -> Unit
+    ): Int {
         val config = writeHevConfig(context, options)
         val generation: Int
         synchronized(hevLock) {
@@ -306,6 +308,7 @@ object RixRuntime {
         synchronized(hevLock) { hevThread = thread }
         thread.start()
         LogBus.i("hev", "tun2socks started on fd $tunFd")
+        return generation
     }
 
     /** Waits briefly for the engine to stay alive; false means it died at once. */
@@ -320,9 +323,18 @@ object RixRuntime {
         return hevInFlight
     }
 
-    fun stopTun2Socks() {
+    /**
+     * Stops the engine that [startTun2Socks] returned [token] for.
+     *
+     * A token that is no longer the live generation belongs to a run that has
+     * already been replaced. Signalling hev for it would latch SYNC_STOP and
+     * kill the run that replaced it, so a stale token stops nothing; `null`
+     * means the caller never started an engine at all.
+     */
+    fun stopTun2Socks(token: Int?) {
         val thread: Thread?
         synchronized(hevLock) {
+            if (token == null || token != hevGeneration) return
             hevStopRequested = true
             thread = hevThread
         }

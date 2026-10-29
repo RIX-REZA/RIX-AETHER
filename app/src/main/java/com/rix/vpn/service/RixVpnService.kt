@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Full-tunnel mode.
@@ -40,6 +41,17 @@ class RixVpnService : VpnService() {
     private var worker: Job? = null
     private var ticker: Job? = null
     private var watch: Job? = null
+
+    /**
+     * Bumped once per bring-up. A teardown captures the value it was started
+     * for, so the deferred half of a shutdown can tell whether the session it
+     * was cleaning up is still the one that owns this service.
+     */
+    private val session = AtomicInteger(0)
+
+    /** The hev generation this instance started; null when it started none. */
+    @Volatile
+    private var hevToken: Int? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -67,6 +79,7 @@ class RixVpnService : VpnService() {
     // -------------------------------------------------------------- bring-up
 
     private suspend fun bringUp(options: RixOptions) {
+        val mine = session.incrementAndGet()
         try {
             RixRuntime.markStarting(RixMode.TUNNEL, getString(R.string.state_starting))
 
@@ -101,9 +114,15 @@ class RixVpnService : VpnService() {
             // ParcelFileDescriptor afterwards would close the same fd twice.
             val raw = fd.detachFd()
 
-            RixRuntime.startTun2Socks(this, options, raw) { rc ->
+            hevToken = RixRuntime.startTun2Socks(this, options, raw) { rc ->
                 LogBus.i("hev", "tun2socks exited rc=$rc")
-                if (RixRuntime.state.value.phase == RixRuntime.Phase.RUNNING) {
+                // Only an engine that died while it was still the live session
+                // is a failure; one that exits as part of a teardown is not,
+                // and treating it as one fires a second shutdown whose stop()
+                // lands on a hev that is no longer running.
+                if (session.get() == mine &&
+                    RixRuntime.state.value.phase == RixRuntime.Phase.RUNNING
+                ) {
                     scope.launch { failAndStop(getString(R.string.error_engine_stopped)) }
                 }
             }
@@ -183,10 +202,18 @@ class RixVpnService : VpnService() {
 
     private fun startCoreWatch(options: RixOptions) {
         watch?.cancel()
+        val mine = session.get()
         watch = scope.launch {
             while (isActive) {
                 delay(2000)
+                // poll() is a plain blocking call, so a stop that lands while it
+                // is in flight cancels this coroutine but cannot interrupt it:
+                // the loop still comes back here for one more pass. Without this
+                // guard that pass reports "core closed" over a session the user
+                // already ended, and its shutdown() is what poisons the engine.
+                if (!isActive || session.get() != mine) return@launch
                 val report = runCatching { RixRuntime.poll() }.getOrNull() ?: continue
+                if (!isActive || session.get() != mine) return@launch
                 if (report.failed) {
                     failAndStop(report.detail ?: getString(R.string.error_core_stopped))
                     return@launch
@@ -210,6 +237,7 @@ class RixVpnService : VpnService() {
     // --------------------------------------------------------------- shutdown
 
     fun shutdown() {
+        val mine = session.get()
         RixRuntime.markStopping()
         ticker?.cancel()
         ticker = null
@@ -220,11 +248,16 @@ class RixVpnService : VpnService() {
 
         // tun2socks first: it is the only reader of the TUN fd, so stopping the
         // core before it would leave the engine spinning on dead sockets.
-        RixRuntime.stopTun2Socks()
+        RixRuntime.stopTun2Socks(hevToken)
+        hevToken = null
 
         scope.launch {
             RixRuntime.stopCore()
             withContext(Dispatchers.Main) {
+                // A start that arrived while this teardown was in flight owns
+                // the service now. Closing its TUN, clearing its state or
+                // calling stopSelf() here would kill a live connection.
+                if (session.get() != mine) return@withContext
                 runCatching { tun?.close() }
                 tun = null
                 ServiceCompat.stopForeground(this@RixVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -244,7 +277,11 @@ class RixVpnService : VpnService() {
 
     override fun onDestroy() {
         LogBus.i("vpn", "service destroyed")
-        runCatching { RixRuntime.stopTun2Socks() }
+        // Token-guarded: this instance can outlive its own stopSelf() long
+        // enough to serve the next start, and in that window the live engine
+        // belongs to the newer session.
+        runCatching { RixRuntime.stopTun2Socks(hevToken) }
+        hevToken = null
         runCatching { tun?.close() }
         tun = null
         scope.cancel()
