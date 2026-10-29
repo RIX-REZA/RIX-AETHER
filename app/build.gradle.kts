@@ -21,8 +21,8 @@ android {
         applicationId = "com.rix.vpn"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         ndk {
             // Driven by -PrixAbis so the ABI list here can never drift from the
@@ -46,16 +46,34 @@ android {
         }
     }
 
+    // A fixed key, so an APK built today installs *over* the one built last
+    // week. Gradle's default debug key lives in ~/.android/debug.keystore and
+    // is regenerated on every fresh CI runner, so every build up to now carried
+    // a different signature and Android refused to update in place -- the old
+    // app had to be uninstalled first every single time.
+    //
+    // CI overwrites this file from the RIX_KEYSTORE_B64 secret when that secret
+    // exists (see the workflow), so replacing it with a private key later needs
+    // no code change; the env vars below are the same escape hatch locally.
+    signingConfigs {
+        create("rix") {
+            storeFile = rootProject.file("keystore/rix.p12")
+            storeType = "PKCS12"
+            storePassword = System.getenv("RIX_KEYSTORE_PASS") ?: "rix-signing-2026"
+            keyAlias = System.getenv("RIX_KEY_ALIAS") ?: "rix"
+            keyPassword = System.getenv("RIX_KEY_PASS") ?: "rix-signing-2026"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("rix")
         }
         release {
             isMinifyEnabled = false
-            // Debug signing on purpose: the artifact is installed by hand, and a
-            // release keystore must never live in CI secrets for this project.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("rix")
         }
     }
 

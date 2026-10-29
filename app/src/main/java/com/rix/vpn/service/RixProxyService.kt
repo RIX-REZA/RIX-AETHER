@@ -16,6 +16,7 @@ import com.rix.vpn.RixApp
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
+import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -56,27 +57,68 @@ class RixProxyService : LifecycleService() {
     private suspend fun bringUp(options: RixOptions) {
         try {
             RixRuntime.markStarting(RixMode.PROXY, getString(R.string.state_starting))
-            RixRuntime.startCore(this, options)
-            if (!RixRuntime.awaitSocks(options.bindPort)) {
-                throw IllegalStateException(getString(R.string.error_socks_timeout))
+
+            // Same chain as tunnel mode: proxy or not, the core still has to
+            // reach Cloudflare, and a blocked transport fails identically.
+            val chain = RixRuntime.transportChain(options, RixRuntime.rememberedTransport(this))
+            LogBus.i("proxy", "transport chain: ${chain.joinToString(" → ") { it.transport.label }}")
+
+            var winner: RixOptions? = null
+            var egress: TunnelProbe.Egress? = null
+
+            for ((index, candidate) in chain.withIndex()) {
+                if (index > 0) {
+                    LogBus.i("proxy", "${candidate.transport.label}: retrying after ${chain[index - 1].transport.label}")
+                    runCatching { RixRuntime.stopCore() }
+                    delay(200)
+                }
+
+                RixRuntime.markConnecting(
+                    candidate.bindPort,
+                    tun2socks = false,
+                    message = getString(
+                        R.string.state_trying_transport,
+                        index + 1,
+                        chain.size,
+                        candidate.transport.label
+                    )
+                )
+                startForegroundSafely(getString(R.string.notif_connecting))
+
+                val listening = try {
+                    RixRuntime.startCore(this, candidate)
+                    RixRuntime.awaitSocks(candidate.bindPort, timeoutMs = CORE_LISTEN_MS)
+                } catch (t: Throwable) {
+                    LogBus.e("proxy", "${candidate.transport.label}: ${t.message}")
+                    false
+                }
+                if (!listening) continue
+
+                val budget = if (index == 0) FIRST_PROBE_MS else NEXT_PROBE_MS
+                val result = RixRuntime.awaitTunnel(candidate.bindPort, timeoutMs = budget)
+                if (result != null) {
+                    winner = candidate
+                    egress = result
+                    break
+                }
+                LogBus.e("proxy", "${candidate.transport.label}: no traffic came back through the proxy")
             }
 
-            // Same gate as tunnel mode: a listening port is not a working
-            // connection, so the proxy is only reported ready once a real
-            // request has been through it.
-            RixRuntime.markConnecting(
-                options.bindPort,
+            val chosen = winner
+            val verified = egress
+            if (chosen == null || verified == null) {
+                throw IllegalStateException(getString(R.string.error_all_transports_failed))
+            }
+
+            RixRuntime.rememberTransport(this, chosen.transport)
+            LogBus.i("proxy", "SOCKS5 verified via ${chosen.transport.label} on 127.0.0.1:${chosen.bindPort}, egress ${verified.ip}")
+            RixRuntime.markRunning(
+                chosen.bindPort,
                 tun2socks = false,
-                message = getString(R.string.state_verifying)
+                egress = verified,
+                transport = chosen.transport
             )
-            startForegroundSafely(getString(R.string.notif_connecting))
-
-            val egress = RixRuntime.awaitTunnel(options.bindPort)
-                ?: throw IllegalStateException(getString(R.string.error_tunnel_unverified))
-
-            LogBus.i("proxy", "SOCKS5 verified on 127.0.0.1:${options.bindPort}, egress ${egress.ip}")
-            RixRuntime.markRunning(options.bindPort, tun2socks = false, egress = egress)
-            startForegroundSafely(getString(R.string.notif_proxy_running, options.bindPort))
+            startForegroundSafely(getString(R.string.notif_proxy_running, chosen.bindPort))
 
             while (lifecycleScope.isActive) {
                 delay(2000)
@@ -149,6 +191,11 @@ class RixProxyService : LifecycleService() {
 
     companion object {
         private const val NOTIF_ID = 1002
+
+        /** How long the core gets to open its SOCKS5 port, per transport. */
+        private const val CORE_LISTEN_MS = 15_000L
+        private const val FIRST_PROBE_MS = 20_000L
+        private const val NEXT_PROBE_MS = 10_000L
         const val ACTION_START = "com.rix.vpn.START_PROXY"
         const val ACTION_STOP = "com.rix.vpn.STOP_PROXY"
         const val EXTRA_OPTIONS = "options"

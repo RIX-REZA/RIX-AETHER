@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CallSplit
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.RocketLaunch
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Terminal
@@ -200,6 +201,13 @@ fun OptionsScreen(
                     subtitle = "هر کاندید فقط پس از عبور ترافیک واقعی پذیرفته میشود",
                     checked = draft.ironclad,
                     onCheckedChange = { draft = draft.copy(ironclad = it) }
+                )
+
+                SettingSwitch(
+                    title = "چرخش خودکار پروتکل",
+                    subtitle = "اگر پروتکل انتخابی تونل را برقرار نکرد، MASQUE/HTTP-2 و بعد Gool و MASQUE در MASQUE امتحان می‌شوند",
+                    checked = draft.autoFallback,
+                    onCheckedChange = { draft = draft.copy(autoFallback = it) }
                 )
             }
 
@@ -558,6 +566,27 @@ private fun presets(): List<Preset> = listOf(
         },
         matches = { o ->
             o == RixOptions(mode = o.mode, splitMode = o.splitMode, splitApps = o.splitApps)
+        }
+    ),
+    Preset(
+        label = "ایران (مقاوم)",
+        hint = "MASQUE/HTTP-2 روی TCP 443، با Fragment و اسکن کامل",
+        icon = Icons.Rounded.Security,
+        accent = RixColors.Warning,
+        configure = { o ->
+            o.copy(
+                transport = Transport.MASQUE_H2,
+                scanMode = ScanMode.THOROUGH,
+                fragment = true,
+                fragmentSize = "40",
+                fragmentDelay = "10",
+                autoFallback = true,
+                perf = PerfProfile.MEDIUM,
+                logLevel = LogLevel.INFO
+            )
+        },
+        matches = { o ->
+            o.transport == Transport.MASQUE_H2 && o.fragment && o.scanMode == ScanMode.THOROUGH
         }
     ),
     Preset(

@@ -16,6 +16,7 @@ import com.rix.vpn.RixApp
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
+import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,92 +84,153 @@ class RixVpnService : VpnService() {
         try {
             RixRuntime.markStarting(RixMode.TUNNEL, getString(R.string.state_starting))
 
-            val builder = Builder()
-                .setSession(getString(R.string.app_name))
-                .setMtu(options.mtu)
-                .addAddress(options.tunnelIpv4, 30)
-                .addRoute("0.0.0.0", 0)
-                // IPv6 is captured too; leaving it unrouted would leak v6 traffic
-                // outside the tunnel on dual-stack carriers.
-                .addAddress(options.tunnelIpv6, 126)
-                .addRoute("::", 0)
-
-            primaryDns(options)?.let { builder.addDnsServer(it) }
-
-            applySplitTunnelling(builder, options)
-
-            val fd = builder.establish()
-                ?: throw IllegalStateException(getString(R.string.error_no_tun))
-            tun = fd
+            val fd = establishTun(options)
             LogBus.i("vpn", "TUN established, fd=${fd.fd}")
 
-            val job = RixRuntime.startCore(this, options)
-            LogBus.i("vpn", "core job=$job; waiting for SOCKS5 on ${options.bindPort}")
+            // WireGuard and MASQUE/HTTP-3 are UDP-first, and on the networks this
+            // app is used on UDP is the first thing that gets blocked. A single
+            // fixed transport therefore means "وصل نمیشود" rather than "کمی
+            // کندتر", so the chosen protocol is only the first candidate.
+            val chain = RixRuntime.transportChain(options, RixRuntime.rememberedTransport(this))
+            LogBus.i("vpn", "transport chain: ${chain.joinToString(" → ") { it.transport.label }}")
 
-            if (!RixRuntime.awaitSocks(options.bindPort)) {
-                throw IllegalStateException(getString(R.string.error_socks_timeout))
-            }
-            LogBus.i("vpn", "SOCKS5 is accepting connections")
+            var winner: RixOptions? = null
+            var egress: TunnelProbe.Egress? = null
 
-            // detachFd hands ownership of the descriptor to hev; closing the
-            // ParcelFileDescriptor afterwards would close the same fd twice.
-            val raw = fd.detachFd()
+            for ((index, candidate) in chain.withIndex()) {
+                if (session.get() != mine) return
 
-            hevToken = RixRuntime.startTun2Socks(this, options, raw) { rc ->
-                LogBus.i("hev", "tun2socks exited rc=$rc")
-                // Only an engine that died while it was still the live session
-                // is a failure; one that exits as part of a teardown is not,
-                // and treating it as one fires a second shutdown whose stop()
-                // lands on a hev that is no longer running.
-                if (session.get() == mine &&
-                    RixRuntime.state.value.phase == RixRuntime.Phase.RUNNING
-                ) {
-                    scope.launch { failAndStop(getString(R.string.error_engine_stopped)) }
+                if (index > 0) {
+                    LogBus.i("vpn", "${candidate.transport.label}: retrying after ${chain[index - 1].transport.label}")
+                    runCatching { RixRuntime.stopCore() }
+                    delay(200)
                 }
-            }
 
-            // hev can return within milliseconds (see the SYNC_STOP note in
-            // RixRuntime.startTun2Socks). Reporting "connected" before proving
-            // the engine survived would show a green screen over a dead tunnel.
-            if (!RixRuntime.awaitHevAlive()) {
-                throw IllegalStateException(getString(R.string.error_engine_stopped))
-            }
-
-            // An alive engine is still not a working tunnel: neither it nor the
-            // listening SOCKS5 port says anything about WARP. Hold the UI in
-            // "connecting" and push a real request through before claiming
-            // success, otherwise the caller sees متصل over a dead tunnel.
-            RixRuntime.markConnecting(
-                options.bindPort,
-                tun2socks = true,
-                message = getString(R.string.state_verifying)
-            )
-            startForegroundSafely(getString(R.string.notif_connecting))
-
-            val egress = RixRuntime.awaitTunnel(options.bindPort) { attempt ->
-                if (attempt > 1 && session.get() == mine) {
-                    LogBus.i("vpn", "tunnel probe, attempt $attempt")
-                    RixRuntime.markConnecting(
-                        options.bindPort,
-                        tun2socks = true,
-                        message = getString(R.string.state_verifying_attempt, attempt)
+                RixRuntime.markConnecting(
+                    candidate.bindPort,
+                    tun2socks = true,
+                    message = getString(
+                        R.string.state_trying_transport,
+                        index + 1,
+                        chain.size,
+                        candidate.transport.label
                     )
+                )
+                startForegroundSafely(getString(R.string.notif_connecting))
+
+                val listening = try {
+                    RixRuntime.startCore(this, candidate)
+                    LogBus.i("vpn", "${candidate.transport.label}: core started, waiting for SOCKS5 on ${candidate.bindPort}")
+                    RixRuntime.awaitSocks(candidate.bindPort, timeoutMs = CORE_LISTEN_MS)
+                } catch (t: Throwable) {
+                    LogBus.e("vpn", "${candidate.transport.label}: ${t.message}")
+                    false
                 }
-            } ?: throw IllegalStateException(getString(R.string.error_tunnel_unverified))
+                if (!listening) continue
+                if (session.get() != mine) return
+                LogBus.i("vpn", "${candidate.transport.label}: SOCKS5 is accepting connections")
+
+                // hev is started once, against whichever core won the first
+                // "port is listening" race. A later core on the same port simply
+                // takes over: hev keeps reading the TUN and opens fresh SOCKS5
+                // connections, which the new core serves.
+                if (hevToken == null) {
+                    // detachFd hands ownership of the descriptor to hev; closing
+                    // the ParcelFileDescriptor afterwards would close the same
+                    // fd twice.
+                    val raw = fd.detachFd()
+                    hevToken = RixRuntime.startTun2Socks(this, candidate, raw) { rc ->
+                        LogBus.i("hev", "tun2socks exited rc=$rc")
+                        // Only an engine that died while it was still the live
+                        // session is a failure; one that exits as part of a
+                        // teardown is not.
+                        if (session.get() == mine &&
+                            RixRuntime.state.value.phase == RixRuntime.Phase.RUNNING
+                        ) {
+                            scope.launch { failAndStop(getString(R.string.error_engine_stopped)) }
+                        }
+                    }
+
+                    // hev can return within milliseconds (see the SYNC_STOP note
+                    // in RixRuntime.startTun2Socks). Reporting "connected" before
+                    // proving the engine survived would show a green screen over
+                    // a dead tunnel.
+                    if (!RixRuntime.awaitHevAlive()) {
+                        throw IllegalStateException(getString(R.string.error_engine_stopped))
+                    }
+                }
+
+                // The hard gate. Neither the listening port nor a live engine
+                // says anything about WARP; only a request that came back
+                // through the tunnel does.
+                val probeBudget = if (index == 0) FIRST_PROBE_MS else NEXT_PROBE_MS
+                val result = RixRuntime.awaitTunnel(candidate.bindPort, timeoutMs = probeBudget) { attempt ->
+                    if (attempt > 1 && session.get() == mine) {
+                        RixRuntime.markConnecting(
+                            candidate.bindPort,
+                            tun2socks = true,
+                            message = getString(R.string.state_verifying_attempt, attempt)
+                        )
+                    }
+                }
+
+                if (result != null) {
+                    winner = candidate
+                    egress = result
+                    break
+                }
+                LogBus.e("vpn", "${candidate.transport.label}: no traffic came back through the tunnel")
+            }
 
             // A stop (or a fresh start) during the probe owns the service now.
             if (session.get() != mine) return
 
-            LogBus.i("vpn", "tunnel verified: egress ${egress.ip} via ${egress.colo ?: "?"}")
+            val chosen = winner
+            val verified = egress
+            if (chosen == null || verified == null) {
+                throw IllegalStateException(getString(R.string.error_all_transports_failed))
+            }
 
-            RixRuntime.markRunning(options.bindPort, tun2socks = true, egress = egress)
-            startForegroundSafely(getString(R.string.notif_running, options.bindPort))
+            // Remembering the winner is what makes the second connect fast: the
+            // next bring-up puts it at the head of the chain.
+            RixRuntime.rememberTransport(this, chosen.transport)
+            LogBus.i("vpn", "tunnel verified via ${chosen.transport.label}: egress ${verified.ip} via ${verified.colo ?: "?"}")
+
+            RixRuntime.markRunning(
+                chosen.bindPort,
+                tun2socks = true,
+                egress = verified,
+                transport = chosen.transport
+            )
+            startForegroundSafely(getString(R.string.notif_running, chosen.bindPort))
             startTicker()
-            startCoreWatch(options)
+            startCoreWatch(chosen)
 
         } catch (t: Throwable) {
             failAndStop(t.message ?: getString(R.string.error_unknown))
         }
+    }
+
+    /** Builds and establishes the TUN, including DNS and split tunnelling. */
+    private fun establishTun(options: RixOptions): ParcelFileDescriptor {
+        val builder = Builder()
+            .setSession(getString(R.string.app_name))
+            .setMtu(options.mtu)
+            .addAddress(options.tunnelIpv4, 30)
+            .addRoute("0.0.0.0", 0)
+            // IPv6 is captured too; leaving it unrouted would leak v6 traffic
+            // outside the tunnel on dual-stack carriers.
+            .addAddress(options.tunnelIpv6, 126)
+            .addRoute("::", 0)
+
+        primaryDns(options)?.let { builder.addDnsServer(it) }
+
+        applySplitTunnelling(builder, options)
+
+        val fd = builder.establish()
+            ?: throw IllegalStateException(getString(R.string.error_no_tun))
+        tun = fd
+        return fd
     }
 
     private fun primaryDns(options: RixOptions): String? =
@@ -365,6 +427,17 @@ class RixVpnService : VpnService() {
 
     companion object {
         private const val NOTIF_ID = 1001
+
+        /** How long the core gets to open its SOCKS5 port, per transport. */
+        private const val CORE_LISTEN_MS = 15_000L
+
+        /**
+         * Probe budgets per transport. The first candidate is the user's own
+         * choice and gets a generous window; the fallbacks are there to get a
+         * connection at all, so they are tried quickly.
+         */
+        private const val FIRST_PROBE_MS = 20_000L
+        private const val NEXT_PROBE_MS = 10_000L
         const val ACTION_START = "com.rix.vpn.START_TUNNEL"
         const val ACTION_STOP = "com.rix.vpn.STOP_TUNNEL"
         const val EXTRA_OPTIONS = "options"

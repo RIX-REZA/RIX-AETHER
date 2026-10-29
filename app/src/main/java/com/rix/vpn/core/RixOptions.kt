@@ -35,13 +35,13 @@ enum class Transport(
     MASQUE_H2(
         "MASQUE / HTTP-2",
         listOf("--masque", "--h2"),
-        "HTTP/2 روی TLS؛ روی شبکه‌هایی که UDP را می‌بندند بیشتر دوام می‌آورد.",
+        "HTTP/2 روی TLS، روی TCP 443؛ در ایران پایدارترین گزینه و اولین جایگزین وقتی بقیه وصل نمیشوند.",
         "سازگار"
     ),
     WIREGUARD(
         "WireGuard",
         listOf("--wg"),
-        "WireGuard خالص؛ سبک‌ترین حالت و کم‌ترین مصرف باتری.",
+        "WireGuard خالص؛ سبکترین و کممصرفترین، اما در ایران معمولاً مسدود است.",
         "کم‌مصرف"
     ),
     GOOL(
@@ -111,6 +111,13 @@ enum class SplitMode(val label: String) {
 data class RixOptions(
     val mode: RixMode = RixMode.TUNNEL,
     val transport: Transport = Transport.MASQUE_H3,
+    /**
+     * When the chosen transport cannot prove a tunnel, try the others in a
+     * resilience order instead of failing. On networks that block UDP (Iran,
+     * corporate Wi-Fi) WireGuard and MASQUE/HTTP-3 simply never handshake, so a
+     * fixed choice means «وصل نمیشود» rather than a slower connection.
+     */
+    val autoFallback: Boolean = true,
     val bindPort: Int = 1819,
     val dns: String = "1.1.1.1,1.0.0.1",
     val ipFamily: IpFamily = IpFamily.V4,
@@ -210,6 +217,7 @@ data class RixOptions(
     fun toJson(): String = JSONObject().apply {
         put("mode", mode.name)
         put("transport", transport.name)
+        put("autoFallback", autoFallback)
         put("bindPort", bindPort)
         put("dns", dns)
         put("ipFamily", ipFamily.name)
@@ -247,6 +255,7 @@ data class RixOptions(
                 RixOptions(
                     mode = o.optEnum("mode", RixMode.entries, base.mode),
                     transport = o.optEnum("transport", Transport.entries, base.transport),
+                    autoFallback = o.optBoolean("autoFallback", base.autoFallback),
                     bindPort = o.optInt("bindPort", base.bindPort).coerceIn(1024, 65535),
                     dns = o.optString("dns", base.dns),
                     ipFamily = o.optEnum("ipFamily", IpFamily.entries, base.ipFamily),

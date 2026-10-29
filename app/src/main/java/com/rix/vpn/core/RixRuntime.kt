@@ -43,6 +43,8 @@ object RixRuntime {
         val egressColo: String = "",
         /** Two-letter country the edge placed us in, e.g. "DE". */
         val egressLoc: String = "",
+        /** Human label of the transport that actually carried the tunnel. */
+        val activeTransport: String = "",
         val txBytes: Long = 0L,
         val rxBytes: Long = 0L,
         val txPackets: Long = 0L,
@@ -104,7 +106,17 @@ object RixRuntime {
         }
     }
 
-    fun markRunning(port: Int, tun2socks: Boolean, egress: TunnelProbe.Egress? = null) {
+    /**
+     * The tunnel is proven. [transport] is the one that actually carried it,
+     * which is not necessarily the one the user picked: the fallback chain may
+     * have settled on a different protocol, and the UI must not claim otherwise.
+     */
+    fun markRunning(
+        port: Int,
+        tun2socks: Boolean,
+        egress: TunnelProbe.Egress? = null,
+        transport: Transport? = null
+    ) {
         update {
             it.copy(
                 phase = Phase.RUNNING,
@@ -115,7 +127,8 @@ object RixRuntime {
                 tun2socks = tun2socks,
                 egressIp = egress?.ip ?: it.egressIp,
                 egressColo = egress?.colo ?: it.egressColo,
-                egressLoc = egress?.loc ?: it.egressLoc
+                egressLoc = egress?.loc ?: it.egressLoc,
+                activeTransport = transport?.label ?: it.activeTransport
             )
         }
     }
@@ -253,6 +266,65 @@ object RixRuntime {
             }
             false
         }
+
+    /**
+     * The transports to try for one connection, best bet first.
+     *
+     * The ranking is by what survives a hostile network rather than by speed:
+     * MASQUE/HTTP-2 rides TCP 443 and is unaffected by UDP blocking, Gool and
+     * MASQUE-in-MASQUE add camouflage on top of it, and the UDP-first options
+     * come last. Fragmentation is switched on for the fallbacks because that is
+     * the DPI workaround these candidates exist for; the user's own first
+     * choice is passed through untouched.
+     *
+     * [remembered] is the transport that worked last time on this device, and it
+     * is tried before the generic ranking so a second connect does not spend
+     * the whole budget re-learning what the network blocks.
+     */
+    fun transportChain(
+        options: RixOptions,
+        remembered: Transport?,
+        limit: Int = 3
+    ): List<RixOptions> {
+        if (!options.autoFallback) return listOf(options)
+
+        val ranked = buildList {
+            if (remembered != null) add(remembered)
+            addAll(
+                listOf(
+                    Transport.MASQUE_H2,
+                    Transport.GOOL,
+                    Transport.MIM,
+                    Transport.MASQUE_H3,
+                    Transport.GOOL_CLASSIC,
+                    Transport.WIREGUARD
+                )
+            )
+        }
+
+        val chain = mutableListOf(options)
+        for (transport in ranked) {
+            if (chain.size >= limit) break
+            if (chain.any { it.transport == transport }) continue
+            chain += options.copy(transport = transport, fragment = true)
+        }
+        return chain
+    }
+
+    private fun transportPrefs(context: Context) =
+        context.getSharedPreferences("rix-runtime", Context.MODE_PRIVATE)
+
+    /** The transport that last produced a verified tunnel, if any. */
+    fun rememberedTransport(context: Context): Transport? {
+        val name = transportPrefs(context).getString(KEY_TRANSPORT, null) ?: return null
+        return Transport.entries.firstOrNull { it.name == name }
+    }
+
+    fun rememberTransport(context: Context, transport: Transport) {
+        transportPrefs(context).edit().putString(KEY_TRANSPORT, transport.name).apply()
+    }
+
+    private const val KEY_TRANSPORT = "last-good-transport"
 
     /**
      * Waits until the tunnel really carries traffic, and reports the egress IP.

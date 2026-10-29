@@ -25,4 +25,7 @@
     <string name="state_verifying">آزمودن تونل با ترافیک واقعی...</string>
     <string name="state_verifying_attempt">آزمودن تونل... تلاش %1$d</string>
     <string name="error_tunnel_unverified">تونل برقرار نشد؛ ترافیک از هسته عبور نکرد</string>
+    <!-- The fallback chain: which transport is being tried, out of how many. -->
+    <string name="state_trying_transport">تلاش %1$d از %2$d: %3$s</string>
+    <string name="error_all_transports_failed">هیچ‌کدام از پروتکل‌ها تونل را برقرار نکرد؛ گزارش را ببین</string>
 </resources>

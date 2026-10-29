@@ -342,7 +342,10 @@ private fun statusSubtitle(state: RixRuntime.State, options: RixOptions): String
     RixRuntime.Phase.CONNECTING -> state.message.ifBlank { "آزمودن تونل با ترافیک واقعی..." }
     RixRuntime.Phase.STARTING -> state.message.ifBlank { "جست‌وجوی گیتوی و ساخت تونل" }
     RixRuntime.Phase.RUNNING -> buildString {
-        append(options.transport.label)
+        // The label is the transport that actually carried the tunnel, which
+        // may differ from the picked one when the fallback chain settled on
+        // something the network allows.
+        append(state.activeTransport.ifBlank { options.transport.label })
         append(" • ")
         append(options.scanMode.label)
         if (state.egressColo.isNotBlank()) {
