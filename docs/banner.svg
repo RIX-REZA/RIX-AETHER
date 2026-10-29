@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="RIX — Android client for the Aether WARP / MASQUE core">
+  <title>RIX</title>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07070D"/>
+      <stop offset="55%" stop-color="#0B0B16"/>
+      <stop offset="100%" stop-color="#10101F"/>
+    </linearGradient>
+
+    <radialGradient id="wellV" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8F7BFF" stop-opacity="0.34"/>
+      <stop offset="70%" stop-color="#8F7BFF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#8F7BFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="wellT" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8F7BFF" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#8F7BFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="ringTop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5B45D6"/>
+      <stop offset="100%" stop-color="#8F7BFF"/>
+    </linearGradient>
+
+    <linearGradient id="ringBottom" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2BD9C4"/>
+      <stop offset="100%" stop-color="#12A08F"/>
+    </linearGradient>
+
+    <linearGradient id="bolt" x1="0.1" y1="1" x2="0.9" y2="0">
+      <stop offset="0%" stop-color="#2BD9C4"/>
+      <stop offset="100%" stop-color="#8F7BFF"/>
+    </linearGradient>
+
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#EFEDFF"/>
+      <stop offset="70%" stop-color="#EFEDFF"/>
+      <stop offset="100%" stop-color="#8F7BFF"/>
+    </linearGradient>
+
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8F7BFF"/>
+      <stop offset="50%" stop-color="#2BD9C4"/>
+      <stop offset="100%" stop-color="#8F7BFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="320" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="320" rx="28" fill="none" stroke="#23233C"/>
+
+  <!-- ambient wells, the same decoration the app draws behind its screens -->
+  <ellipse cx="120" cy="60" rx="440" ry="300" fill="url(#wellV)"/>
+  <ellipse cx="1130" cy="290" rx="420" ry="280" fill="url(#wellT)"/>
+
+  <!-- watermark rings -->
+  <g fill="none">
+    <circle cx="1010" cy="160" r="212" stroke="#8F7BFF" stroke-opacity="0.10"/>
+    <circle cx="1010" cy="160" r="150" stroke="#2BD9C4" stroke-opacity="0.09"/>
+    <circle cx="1010" cy="160" r="92"  stroke="#EFEDFF" stroke-opacity="0.05"/>
+  </g>
+
+  <!-- the RIX mark: sweep ring, dark well, bolt -->
+  <g>
+    <path d="M88 160 A62 62 0 0 1 212 160" fill="none" stroke="url(#ringTop)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M212 160 A62 62 0 0 1 88 160" fill="none" stroke="url(#ringBottom)" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="150" cy="160" r="58" fill="#0B0B16"/>
+    <circle cx="150" cy="160" r="55" fill="url(#logoGlow)"/>
+    <path d="M161.22 131.62 L134.82 163.96 L149.34 163.96 L140.10 189.04 L165.84 154.72 L151.32 154.72 Z"
+          fill="url(#bolt)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="252" y="152" font-family="'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif"
+        font-size="96" font-weight="800" letter-spacing="6" fill="url(#word)">RIX</text>
+
+  <text x="252" y="200" font-family="'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif"
+        font-size="25" fill="#8E8BAD">Android client for the Aether WARP / MASQUE core</text>
+
+  <!-- capability chips -->
+  <g font-family="'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15">
+    <rect x="252" y="230" width="233" height="34" rx="17" fill="#10101F" stroke="#23233C"/>
+    <text x="368" y="252" text-anchor="middle" fill="#EFEDFF">MASQUE · HTTP/3 + HTTP/2</text>
+
+    <rect x="497" y="230" width="216" height="34" rx="17" fill="#10101F" stroke="#23233C"/>
+    <text x="605" y="252" text-anchor="middle" fill="#EFEDFF">WireGuard · Gool · MiM</text>
+
+    <rect x="725" y="230" width="118" height="34" rx="17" fill="#10101F" stroke="#23233C"/>
+    <text x="784" y="252" text-anchor="middle" fill="#8F7BFF">AGPL-3.0</text>
+  </g>
+
+  <rect x="0" y="313" width="1200" height="7" rx="3" fill="url(#bar)"/>
+</svg>
