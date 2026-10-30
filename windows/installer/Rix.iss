@@ -19,6 +19,8 @@
 ; finish in seconds and stay finished.
 
 #define AppName "RIX"
+; Must match <Version> in Rix.Windows.csproj: one is what Apps & Features
+; shows, the other is what the app's own About screen reports.
 #define AppVersion "1.0.5"
 #define AppPublisher "RIX"
 #define AppExe "RIX.exe"
