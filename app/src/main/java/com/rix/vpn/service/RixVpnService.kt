@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.rix.vpn.MainActivity
 import com.rix.vpn.R
 import com.rix.vpn.RixApp
+import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
@@ -117,6 +118,10 @@ class RixVpnService : VpnService() {
 
                 if (index > 0) {
                     LogBus.i("vpn", "${candidate.transport.label}: retrying after ${chain[index - 1].transport.label}")
+                    // Psiphon outlives the core it dials through unless it is
+                    // taken down first, and a Psiphon left pointing at a freed
+                    // core reports an upstream error over the *next* attempt.
+                    withContext(Dispatchers.IO) { PsiphonBridge.stop() }
                     runCatching { RixRuntime.stopCore() }
                     delay(200)
                 }
@@ -133,10 +138,15 @@ class RixVpnService : VpnService() {
                 )
                 startForegroundSafely(l10n(R.string.notif_connecting))
 
+                // With Psiphon in the path the core moves one port along and
+                // Psiphon takes the port the rest of the app expects, so the
+                // two listeners can never collide. Without it, the two are the
+                // same port and nothing here changes.
+                val upstreamPort = candidate.corePort
                 val listening = try {
-                    RixRuntime.startCore(this, candidate)
-                    LogBus.i("vpn", "${candidate.transport.label}: core started, waiting for SOCKS5 on ${candidate.bindPort}")
-                    RixRuntime.awaitSocks(candidate.bindPort, timeoutMs = CORE_LISTEN_MS)
+                    RixRuntime.startCore(this, candidate.forCore())
+                    LogBus.i("vpn", "${candidate.transport.label}: core started, waiting for SOCKS5 on $upstreamPort")
+                    RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
                 } catch (t: Throwable) {
                     LogBus.e("vpn", "${candidate.transport.label}: ${t.message}")
                     false
@@ -144,6 +154,30 @@ class RixVpnService : VpnService() {
                 if (!listening) continue
                 if (session.get() != mine) return
                 LogBus.i("vpn", "${candidate.transport.label}: SOCKS5 is accepting connections")
+
+                // Psiphon rides on top of the core: it reaches its own servers
+                // through the listener that just came up, and serves the port
+                // the engine and the probes talk to. See [PsiphonBridge].
+                if (candidate.psiphon) {
+                    RixRuntime.markConnecting(
+                        candidate.bindPort,
+                        tun2socks = true,
+                        message = l10n(R.string.state_psiphon)
+                    )
+                    val up = PsiphonBridge.start(
+                        this,
+                        upstreamPort,
+                        candidate.bindPort,
+                        candidate.psiphonRegion,
+                        candidate.psiphonProtocol
+                    )
+                    if (!up) {
+                        LogBus.e("vpn", "psiphon: nothing listening on ${candidate.bindPort}")
+                        if (session.get() != mine) return
+                        continue
+                    }
+                    if (session.get() != mine) return
+                }
 
                 // hev is started once, against whichever core won the first
                 // "port is listening" race. A later core on the same port simply
@@ -178,13 +212,25 @@ class RixVpnService : VpnService() {
                 // The hard gate. Neither the listening port nor a live engine
                 // says anything about WARP; only a request that came back
                 // through the tunnel does.
-                val probeBudget = if (index == 0) FIRST_PROBE_MS else NEXT_PROBE_MS
+                // Psiphon needs far longer than WARP does: before any traffic can
+                // come back it has to fetch a server list through the tunnel and
+                // handshake with one of its servers. A 20 s budget would call a
+                // working chain dead while it was still connecting.
+                val probeBudget = when {
+                    candidate.psiphon -> PSIPHON_PROBE_MS
+                    index == 0 -> FIRST_PROBE_MS
+                    else -> NEXT_PROBE_MS
+                }
                 val result = RixRuntime.awaitTunnel(candidate.bindPort, timeoutMs = probeBudget) { attempt ->
                     if (attempt > 1 && session.get() == mine) {
                         RixRuntime.markConnecting(
                             candidate.bindPort,
                             tun2socks = true,
-                            message = l10n(R.string.state_verifying_attempt, attempt)
+                            message = if (candidate.psiphon) {
+                                l10n(R.string.state_psiphon)
+                            } else {
+                                l10n(R.string.state_verifying_attempt, attempt)
+                            }
                         )
                     }
                 }
@@ -377,6 +423,9 @@ class RixVpnService : VpnService() {
         hevToken = null
 
         scope.launch {
+            // Before the core, always: Psiphon is the core's own client while it
+            // is in the path, and it blocks for a few seconds on the way down.
+            withContext(Dispatchers.IO) { PsiphonBridge.stop() }
             RixRuntime.stopCore()
             withContext(Dispatchers.Main) {
                 // A start that arrived while this teardown was in flight owns
@@ -412,11 +461,11 @@ class RixVpnService : VpnService() {
         hevToken = null
         runCatching { tun?.close() }
         tun = null
-        // A forced stop never runs shutdown(), so the core is disposed here too
-        // -- but only while this service still owns the live session, because
-        // the proxy service drives the same process-wide core.
+        // A forced stop never runs shutdown(), so the whole chain is disposed
+        // here too -- but only while this service still owns the live session,
+        // because the proxy service drives the same process-wide core.
         if (RixRuntime.state.value.mode == RixMode.TUNNEL) {
-            RixRuntime.stopCoreAsync()
+            RixRuntime.stopChainAsync()
         }
         scope.cancel()
         super.onDestroy()
@@ -484,6 +533,14 @@ class RixVpnService : VpnService() {
          */
         private const val FIRST_PROBE_MS = 20_000L
         private const val NEXT_PROBE_MS = 10_000L
+
+        /**
+         * The budget when Psiphon is the last hop.
+         *
+         * It covers a server-list download and a tunnel handshake on top of
+         * WARP, so it is measured in a minute rather than in seconds.
+         */
+        private const val PSIPHON_PROBE_MS = 60_000L
         const val ACTION_START = "com.rix.vpn.START_TUNNEL"
         const val ACTION_STOP = "com.rix.vpn.STOP_TUNNEL"
         const val EXTRA_OPTIONS = "options"

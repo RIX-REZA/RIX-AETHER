@@ -28,4 +28,7 @@
     <!-- The fallback chain: which transport is being tried, out of how many. -->
     <string name="state_trying_transport">تلاش %1$d از %2$d: %3$s</string>
     <string name="error_all_transports_failed">هیچ‌کدام از پروتکل‌ها تونل را برقرار نکرد؛ گزارش را ببین</string>
+    <!-- Psiphon is the hop the exit address comes from; the port the app
+         talks to belongs to it while it is up. -->
+    <string name="state_psiphon">در حال اتصال به سایفون...</string>
 </resources>

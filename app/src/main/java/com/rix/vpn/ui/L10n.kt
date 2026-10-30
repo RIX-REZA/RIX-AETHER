@@ -5,6 +5,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import com.rix.vpn.core.IpFamily
 import com.rix.vpn.core.LogLevel
 import com.rix.vpn.core.PerfProfile
+import com.rix.vpn.core.PsiphonProtocol
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.ScanMode
 import com.rix.vpn.core.SplitMode
@@ -103,6 +104,27 @@ fun SplitMode.label(s: Strings): String = if (!s.en) label else when (this) {
     SplitMode.ALL -> "All apps"
     SplitMode.ONLY -> "Selected only"
     SplitMode.EXCEPT -> "All except selected"
+}
+
+fun PsiphonProtocol.label(s: Strings): String = if (!s.en) label else when (this) {
+    PsiphonProtocol.AUTO -> "Automatic (Psiphon's choice)"
+    PsiphonProtocol.PERFORMANCE -> "Speed"
+    PsiphonProtocol.COMPATIBLE -> "Compatibility"
+}
+
+fun PsiphonProtocol.desc(s: Strings): String = when (this) {
+    PsiphonProtocol.AUTO -> s.s(
+        "خود سایفون تصمیم میگیرد؛ برای بیشتر شبکهها همین بهترین است.",
+        "Psiphon decides; the right answer on most networks."
+    )
+    PsiphonProtocol.PERFORMANCE -> s.s(
+        "پروتکلهای مستقیم و سریع سایفون.",
+        "Psiphon's direct, faster protocols."
+    )
+    PsiphonProtocol.COMPATIBLE -> s.s(
+        "همهٔ شکلها، از جمله SSH ساده و آنهایی که از پشت CDN میگذرند.",
+        "Every shape, including plain SSH and the CDN-fronted ones."
+    )
 }
 
 fun RixMode.label(s: Strings): String = if (!s.en) label else when (this) {

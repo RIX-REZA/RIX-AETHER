@@ -94,6 +94,49 @@ enum class LogLevel(val label: String, val value: String) {
     TRACE("Trace", "trace")
 }
 
+/**
+ * Which of Psiphon's tunnel protocols it is allowed to dial.
+ *
+ * Psiphon's own client offers the same three shapes, and they matter more here
+ * than the tunnel's own transport does: the protocols Psiphon reaches its
+ * servers with decide whether the network lets it out at all.
+ */
+enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
+    /** Everything Psiphon can use through a socks5 upstream, its own choice. */
+    AUTO(
+        "خودکار (انتخاب سایفون)",
+        listOf(
+            "SSH", "OSSH", "TLS-OSSH",
+            "UNFRONTED-MEEK-OSSH", "UNFRONTED-MEEK-HTTPS-OSSH",
+            "UNFRONTED-MEEK-SESSION-TICKET-OSSH",
+            "SHADOWSOCKS-OSSH",
+            "FRONTED-MEEK-OSSH", "FRONTED-MEEK-CDN-OSSH",
+            "FRONTED-MEEK-HTTP-OSSH", "FRONTED-MEEK-CDN-HTTP-OSSH"
+        )
+    ),
+
+    /** The direct, fast ones: OSSH variants that need no CDN in front. */
+    PERFORMANCE(
+        "سرعت",
+        listOf(
+            "UNFRONTED-MEEK-OSSH", "UNFRONTED-MEEK-HTTPS-OSSH",
+            "UNFRONTED-MEEK-SESSION-TICKET-OSSH",
+            "SHADOWSOCKS-OSSH", "FRONTED-MEEK-OSSH", "FRONTED-MEEK-HTTP-OSSH"
+        )
+    ),
+
+    /** The widest net: plain SSH and the CDN-fronted shapes as well. */
+    COMPATIBLE(
+        "سازگاری",
+        listOf(
+            "SSH", "OSSH", "TLS-OSSH",
+            "UNFRONTED-MEEK-HTTPS-OSSH",
+            "FRONTED-MEEK-CDN-OSSH", "FRONTED-MEEK-CDN-HTTP-OSSH",
+            "FRONTED-MEEK-OSSH", "FRONTED-MEEK-HTTP-OSSH"
+        )
+    )
+}
+
 /** Which apps the TUN captures when [RixMode.TUNNEL] is active. */
 enum class SplitMode(val label: String) {
     ALL("همهٔ برنامه‌ها"),
@@ -125,6 +168,20 @@ data class RixOptions(
     val peer: String = "",
     val masqueSni: String = "",
     val upstreamProxy: String = "",
+    /**
+     * Puts Psiphon in the path, after the core.
+     *
+     * The core stays the outer hop -- it still dials WARP with [transport] --
+     * and Psiphon is told to reach its own servers through the core's socks5
+     * listener, so the address the far end sees is a Psiphon exit in
+     * [psiphonRegion] rather than a Cloudflare one. That is the whole point:
+     * the exit stops being wherever WARP puts you and becomes a country the
+     * user picks.
+     */
+    val psiphon: Boolean = false,
+    /** ISO 3166-1 alpha-2 egress country, e.g. "DE"; empty lets Psiphon choose. */
+    val psiphonRegion: String = "",
+    val psiphonProtocol: PsiphonProtocol = PsiphonProtocol.AUTO,
     val reconnectSecs: Int = 2,
     val quickReconnect: Boolean = true,
     val keepalive: Int = 5,
@@ -151,6 +208,25 @@ data class RixOptions(
     val tunnelIpv6: String get() = "fd00:87::2"
 
     /**
+     * The port the core itself listens on.
+     *
+     * Without Psiphon that is [bindPort] and nothing changes. With it, Psiphon
+     * takes [bindPort] -- that is the port the engine, the probes and the user
+     * all talk to, so the rest of the app never has to know Psiphon is there --
+     * and the core moves to the next port along so the two cannot collide.
+     */
+    val corePort: Int get() = if (!psiphon) bindPort else if (bindPort == PSIPHON_CORE_PORT) bindPort + 1 else PSIPHON_CORE_PORT
+
+    /**
+     * The same options, addressed at the core.
+     *
+     * Only the core's own listener moves; everything the user chose stays put.
+     * Note that [corePort] is not the port Psiphon's upstream URL names -- that
+     * one is read from this copy, so the two can never disagree.
+     */
+    fun forCore(): RixOptions = if (bindPort == corePort) this else copy(bindPort = corePort)
+
+    /**
      * Builds the argv handed to `aether_core_start`.
      *
      * Order matters only for [extraArgs]: the core parses left to right into
@@ -172,7 +248,10 @@ data class RixOptions(
             add("--peer"); add(peer.trim())
         }
         if (masqueSni.isNotBlank()) { add("--masque-sni"); add(masqueSni.trim()) }
-        if (upstreamProxy.isNotBlank()) { add("--http-proxy"); add(upstreamProxy.trim()) }
+        // --upstream, not --http-proxy: the latter only opens a second listener
+        // of the core's own and dials out directly, so a user who typed an
+        // upstream proxy still went straight to the internet.
+        if (upstreamProxy.isNotBlank()) { add("--upstream"); add(upstreamProxy.trim()) }
 
         add("--reconnect-secs"); add(reconnectSecs.coerceIn(0, 600).toString())
         add(if (quickReconnect) "--quick-reconnect" else "--no-quick-reconnect")
@@ -225,6 +304,9 @@ data class RixOptions(
         put("peer", peer)
         put("masqueSni", masqueSni)
         put("upstreamProxy", upstreamProxy)
+        put("psiphon", psiphon)
+        put("psiphonRegion", psiphonRegion)
+        put("psiphonProtocol", psiphonProtocol.name)
         put("reconnectSecs", reconnectSecs)
         put("quickReconnect", quickReconnect)
         put("keepalive", keepalive)
@@ -247,6 +329,9 @@ data class RixOptions(
 
     companion object {
 
+        /** Where the core listens when Psiphon has taken the user's port. */
+        const val PSIPHON_CORE_PORT = 1820
+
         fun fromJson(raw: String?): RixOptions {
             if (raw.isNullOrBlank()) return RixOptions()
             return try {
@@ -263,6 +348,14 @@ data class RixOptions(
                     peer = o.optString("peer", base.peer),
                     masqueSni = o.optString("masqueSni", base.masqueSni),
                     upstreamProxy = o.optString("upstreamProxy", base.upstreamProxy),
+                    psiphon = o.optBoolean("psiphon", base.psiphon),
+                    psiphonRegion = o.optString("psiphonRegion", base.psiphonRegion)
+                        .trim().uppercase().filter { it.isLetter() }.take(2),
+                    psiphonProtocol = o.optEnum(
+                        "psiphonProtocol",
+                        PsiphonProtocol.entries,
+                        base.psiphonProtocol
+                    ),
                     reconnectSecs = o.optInt("reconnectSecs", base.reconnectSecs).coerceIn(0, 600),
                     quickReconnect = o.optBoolean("quickReconnect", base.quickReconnect),
                     keepalive = o.optInt("keepalive", base.keepalive).coerceIn(0, 3600),

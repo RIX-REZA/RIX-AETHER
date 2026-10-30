@@ -369,6 +369,9 @@ private fun statusSubtitle(
         // may differ from the picked one when the fallback chain settled on
         // something the network allows.
         append(state.activeTransport.ifBlank { options.transport.label(s) })
+        // Psiphon is the last hop, and the one the exit address belongs to, so
+        // a session that uses it says so rather than looking like plain WARP.
+        if (options.psiphon) append(" → Psiphon")
         append(" • ")
         append(options.scanMode.label(s))
         if (state.egressColo.isNotBlank()) {

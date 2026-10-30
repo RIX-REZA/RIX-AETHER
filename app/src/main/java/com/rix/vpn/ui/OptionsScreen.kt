@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Route
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.rix.vpn.core.IpFamily
 import com.rix.vpn.core.LogLevel
 import com.rix.vpn.core.PerfProfile
+import com.rix.vpn.core.PsiphonProtocol
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.ScanMode
 import com.rix.vpn.core.SplitMode
@@ -253,6 +255,122 @@ fun OptionsScreen(
                     checked = draft.autoFallback,
                     onCheckedChange = { draft = draft.copy(autoFallback = it) }
                 )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // --------------------------------------------------- psiphon
+            ExpandableCard(
+                title = s.s("سایفون", "Psiphon") + " · BETA",
+                subtitle = if (draft.psiphon) {
+                    "${draft.transport.label(s)} → Psiphon" +
+                        if (draft.psiphonRegion.isNotEmpty()) " · ${draft.psiphonRegion}" else ""
+                } else {
+                    s.s("خاموش", "off")
+                },
+                icon = Icons.Rounded.Public,
+                accent = RixColors.Warning
+            ) {
+                SettingSwitch(
+                    title = s.s("خروج از طریق سایفون", "Exit through Psiphon"),
+                    subtitle = s.s(
+                        "خروجی، به جای کلادفلر، یک گرهٔ سایفون در کشور انتخابی است",
+                        "The exit is a Psiphon node in the chosen country, not Cloudflare"
+                    ),
+                    checked = draft.psiphon,
+                    onCheckedChange = { draft = draft.copy(psiphon = it) }
+                )
+
+                if (draft.psiphon) {
+                    Spacer(Modifier.height(12.dp))
+
+                    // The chain as the phone runs it, with the transport the
+                    // user picked: seeing it written out is what makes it clear
+                    // that Psiphon comes *after* the tunnel, not instead of it.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(RixColors.Warning.copy(alpha = 0.10f))
+                            .border(
+                                1.dp,
+                                RixColors.Warning.copy(alpha = 0.30f),
+                                RoundedCornerShape(14.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Route,
+                            contentDescription = null,
+                            tint = RixColors.Warning,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "${draft.transport.label(s)} → WARP → Psiphon",
+                            color = RixColors.Text,
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Text(
+                        text = s.s(
+                            "سایفون از داخل تونل به سرورهای خودش میرسد، پس هر بسته پیش از آن " +
+                                "از WARP میگذرد. کمی کندتر است؛ در عوض آدرس خروجی در کشوری " +
+                                "است که انتخاب میکنی.",
+                            "Psiphon reaches its servers from inside the tunnel, so every " +
+                                "packet crosses WARP first. It is a little slower; in exchange " +
+                                "the exit address is in the country you pick."
+                        ),
+                        color = RixColors.TextMuted,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+                    SectionTitle(s.s("کشور خروجی", "Exit country"))
+                    ChipFlow {
+                        PsiphonCountries.forEach { country ->
+                            RixChip(
+                                label = s.s(country.fa, country.en),
+                                selected = draft.psiphonRegion == country.code,
+                                onClick = { draft = draft.copy(psiphonRegion = country.code) }
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    TextField(
+                        label = s.s("یا کد کشور را بنویس", "or type a country code"),
+                        value = draft.psiphonRegion,
+                        hint = "DE"
+                    ) { text ->
+                        draft = draft.copy(
+                            psiphonRegion = text.uppercase().filter { it.isLetter() }.take(2)
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    SectionTitle(s.s("پروتکل سایفون", "Psiphon protocol"))
+                    ChipFlow {
+                        PsiphonProtocol.entries.forEach { protocol ->
+                            RixChip(
+                                label = protocol.label(s),
+                                selected = draft.psiphonProtocol == protocol,
+                                onClick = { draft = draft.copy(psiphonProtocol = protocol) }
+                            )
+                        }
+                    }
+                    Text(
+                        text = draft.psiphonProtocol.desc(s),
+                        color = RixColors.TextMuted,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -578,6 +696,36 @@ fun OptionsScreen(
         }
     }
 }
+
+// ----------------------------------------------------------------- countries
+
+/**
+ * A handful of Psiphon exits, as a shortcut for the field beside them.
+ *
+ * Psiphon has servers in most countries and announces the ones it can see when
+ * it connects; this list is only the dozen people actually ask for, and the
+ * text field next to it takes any other ISO code.
+ */
+private data class PsiphonCountry(val code: String, val fa: String, val en: String)
+
+private val PsiphonCountries = listOf(
+    PsiphonCountry("", "خودکار", "Automatic"),
+    PsiphonCountry("DE", "آلمان", "Germany"),
+    PsiphonCountry("NL", "هلند", "Netherlands"),
+    PsiphonCountry("FR", "فرانسه", "France"),
+    PsiphonCountry("GB", "بریتانیا", "UK"),
+    PsiphonCountry("SE", "سوئد", "Sweden"),
+    PsiphonCountry("CH", "سوئیس", "Switzerland"),
+    PsiphonCountry("AT", "اتریش", "Austria"),
+    PsiphonCountry("PL", "لهستان", "Poland"),
+    PsiphonCountry("RO", "رومانی", "Romania"),
+    PsiphonCountry("TR", "ترکیه", "Turkey"),
+    PsiphonCountry("AE", "امارات", "UAE"),
+    PsiphonCountry("US", "آمریکا", "USA"),
+    PsiphonCountry("CA", "کانادا", "Canada"),
+    PsiphonCountry("SG", "سنگاپور", "Singapore"),
+    PsiphonCountry("JP", "ژاپن", "Japan")
+)
 
 // ------------------------------------------------------------------ presets
 

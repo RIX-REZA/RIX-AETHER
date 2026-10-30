@@ -21,8 +21,8 @@ android {
         applicationId = "com.rix.vpn"
         minSdk = 24
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
 
         ndk {
             // Driven by -PrixAbis so the ABI list here can never drift from the
@@ -123,6 +123,10 @@ dependencies {
     implementation("androidx.compose.animation:animation")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // The Psiphon tunnel core, as an in-process Android library. Only the ABIs
+    // in `rixAbis` are packaged, so one libgojni.so ships rather than four.
+    implementation("ca.psiphon:psiphontunnel:2.0.42")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

@@ -25,4 +25,5 @@
     <string name="error_tunnel_unverified">No tunnel: traffic did not come back through the core</string>
     <string name="state_trying_transport">Attempt %1$d of %2$d: %3$s</string>
     <string name="error_all_transports_failed">No protocol established a tunnel; see the log</string>
+    <string name="state_psiphon">Connecting to Psiphon...</string>
 </resources>

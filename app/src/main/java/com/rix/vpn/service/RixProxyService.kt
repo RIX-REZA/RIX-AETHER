@@ -13,16 +13,19 @@ import androidx.lifecycle.lifecycleScope
 import com.rix.vpn.MainActivity
 import com.rix.vpn.R
 import com.rix.vpn.RixApp
+import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Proxy mode.
@@ -73,6 +76,9 @@ class RixProxyService : LifecycleService() {
             for ((index, candidate) in chain.withIndex()) {
                 if (index > 0) {
                     LogBus.i("proxy", "${candidate.transport.label}: retrying after ${chain[index - 1].transport.label}")
+                    // See [RixVpnService]: Psiphon dials through the core, so it
+                    // has to be down before the core it dials through is freed.
+                    withContext(Dispatchers.IO) { PsiphonBridge.stop() }
                     runCatching { RixRuntime.stopCore() }
                     delay(200)
                 }
@@ -89,16 +95,44 @@ class RixProxyService : LifecycleService() {
                 )
                 startForegroundSafely(l10n(R.string.notif_connecting))
 
+                val upstreamPort = candidate.corePort
                 val listening = try {
-                    RixRuntime.startCore(this, candidate)
-                    RixRuntime.awaitSocks(candidate.bindPort, timeoutMs = CORE_LISTEN_MS)
+                    RixRuntime.startCore(this, candidate.forCore())
+                    RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
                 } catch (t: Throwable) {
                     LogBus.e("proxy", "${candidate.transport.label}: ${t.message}")
                     false
                 }
                 if (!listening) continue
 
-                val budget = if (index == 0) FIRST_PROBE_MS else NEXT_PROBE_MS
+                // Same chain as tunnel mode; only the delivery differs.
+                if (candidate.psiphon) {
+                    RixRuntime.markConnecting(
+                        candidate.bindPort,
+                        tun2socks = false,
+                        message = l10n(R.string.state_psiphon)
+                    )
+                    val up = PsiphonBridge.start(
+                        this,
+                        upstreamPort,
+                        candidate.bindPort,
+                        candidate.psiphonRegion,
+                        candidate.psiphonProtocol
+                    )
+                    if (!up) {
+                        LogBus.e("proxy", "psiphon: nothing listening on ${candidate.bindPort}")
+                        continue
+                    }
+                }
+
+                // See [RixVpnService.PSIPHON_PROBE_MS]: with Psiphon in the path
+                // the probe also waits for a server-list download and a
+                // handshake, which takes minutes rather than seconds.
+                val budget = when {
+                    candidate.psiphon -> PSIPHON_PROBE_MS
+                    index == 0 -> FIRST_PROBE_MS
+                    else -> NEXT_PROBE_MS
+                }
                 val result = RixRuntime.awaitTunnel(candidate.bindPort, timeoutMs = budget)
                 if (result != null) {
                     winner = candidate
@@ -151,6 +185,7 @@ class RixProxyService : LifecycleService() {
             RixRuntime.markStopping()
         }
         lifecycleScope.launch {
+            withContext(Dispatchers.IO) { PsiphonBridge.stop() }
             RixRuntime.stopCore()
             ServiceCompat.stopForeground(this@RixProxyService, ServiceCompat.STOP_FOREGROUND_REMOVE)
             if (preserveError == null) RixRuntime.markIdle()
@@ -167,7 +202,7 @@ class RixProxyService : LifecycleService() {
         // disposal only happens while this service owns the live session: the
         // tunnel service drives the same process-wide core.
         if (RixRuntime.state.value.mode == RixMode.PROXY) {
-            RixRuntime.stopCoreAsync()
+            RixRuntime.stopChainAsync()
         }
         super.onDestroy()
     }
@@ -212,6 +247,9 @@ class RixProxyService : LifecycleService() {
         private const val CORE_LISTEN_MS = 15_000L
         private const val FIRST_PROBE_MS = 20_000L
         private const val NEXT_PROBE_MS = 10_000L
+
+        /** See [RixVpnService.PSIPHON_PROBE_MS]. */
+        private const val PSIPHON_PROBE_MS = 60_000L
         const val ACTION_START = "com.rix.vpn.START_PROXY"
         const val ACTION_STOP = "com.rix.vpn.STOP_PROXY"
         const val EXTRA_OPTIONS = "options"

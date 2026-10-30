@@ -605,18 +605,36 @@ object RixRuntime {
      * job loop needs to observe the cancel.
      */
     fun stopCoreAsync() {
+        Thread({ stopCoreBlocking() }, "rix-core-dispose").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * The whole chain, in the order it has to come apart.
+     *
+     * Psiphon first: when it is in the path it sits *on top of* the core's own
+     * socks5 listener, and freeing the core underneath a live Psiphon leaves it
+     * retrying an upstream that no longer exists -- which is what kept the
+     * notification and the key icon alive for a few seconds after a stop.
+     */
+    fun stopChainAsync() {
+        Thread({
+            PsiphonBridge.stop()
+            stopCoreBlocking()
+        }, "rix-chain-dispose").apply { isDaemon = true }.start()
+    }
+
+    /** The blocking body of both disposals; claims the job id exactly once. */
+    private fun stopCoreBlocking() {
         val id = takeJobId()
         if (id <= 0L) return
-        Thread({
-            runCatching { NativeAether.cancel(id) }
-                .onFailure { LogBus.e("core", it.message ?: "توقف هسته ناموفق بود") }
-            try {
-                Thread.sleep(250)
-            } catch (ignored: InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-            runCatching { NativeAether.free(id) }
-                .onFailure { LogBus.e("core", it.message ?: "آزادسازی هسته ناموفق بود") }
-        }, "rix-core-dispose").apply { isDaemon = true }.start()
+        runCatching { NativeAether.cancel(id) }
+            .onFailure { LogBus.e("core", it.message ?: "توقف هسته ناموفق بود") }
+        try {
+            Thread.sleep(250)
+        } catch (ignored: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        runCatching { NativeAether.free(id) }
+            .onFailure { LogBus.e("core", it.message ?: "آزادسازی هسته ناموفق بود") }
     }
 }

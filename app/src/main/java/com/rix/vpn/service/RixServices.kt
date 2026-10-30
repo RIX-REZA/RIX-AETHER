@@ -1,6 +1,7 @@
 package com.rix.vpn.service
 
 import android.content.Context
+import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.data.LogBus
 
@@ -37,6 +38,10 @@ object RixServices {
      */
     fun forceStopAll(context: Context) {
         LogBus.e("vpn", "forcing the services down")
+        // Psiphon is not an Android service, so destroying the two above does
+        // not reach it: without this it stays up on the port the stopped
+        // session left behind, and the next connect finds it already in use.
+        PsiphonBridge.stopAsync()
         RixVpnService.forceStop(context)
         RixProxyService.forceStop(context)
         // Nothing is left running to publish a final phase, and leaving the UI
