@@ -121,7 +121,14 @@ public sealed class RixSession : IDisposable
             for (var index = 0; index < chain.Count; index++)
             {
                 var candidate = chain[index];
-                if (cts.IsCancellationRequested) return;
+                if (cts.IsCancellationRequested)
+                {
+                    // A stop can land between starting a core and getting here.
+                    // DisconnectAsync stopped what was running then; this is for
+                    // the core this method started afterwards.
+                    await Task.Run(() => _core.Stop());
+                    return;
+                }
 
                 if (index > 0)
                 {
@@ -191,6 +198,10 @@ public sealed class RixSession : IDisposable
                 return;
             }
 
+            // The last attempt's core is still up. Left alone it keeps a
+            // tunnel running that the window has already declared failed, and
+            // it holds the port the next attempt will want.
+            await Task.Run(() => _core.Stop());
             Fail("هیچ پروتکلی جواب نداد / no transport carried traffic. The network may be blocking all of them.");
         }
         catch (OperationCanceledException)
@@ -199,6 +210,7 @@ public sealed class RixSession : IDisposable
         }
         catch (Exception ex)
         {
+            await Task.Run(() => _core.Stop());
             Fail(ex.Message);
         }
     }
@@ -377,6 +389,18 @@ public sealed class RixSession : IDisposable
 
     private void Fail(string message)
     {
+        // The session is over. Leaving the token in place would make a later
+        // core exit look like an unexpected crash of a session that is not
+        // there -- and would let a second connect try to cancel it twice.
+        CancellationTokenSource cts;
+        lock (_gate)
+        {
+            cts = _session;
+            _session = null;
+        }
+        try { cts?.Cancel(); } catch { }
+        cts?.Dispose();
+
         Log?.Invoke("error: " + message);
         Publish(_snapshot with { Phase = Phase.Error, Message = message, ProxyOn = false });
     }
