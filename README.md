@@ -55,7 +55,8 @@ back through the tunnel.**
 | | |
 |---|---|
 | **APK** | [`RIX-1.0.5-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5-debug.apk) · 33.2 MB |
-| **Windows** | [`RIX-Setup-1.0.5.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Setup-1.0.5.exe) · see [Windows](#windows) |
+| **Windows** | [`RIX-Setup-1.0.5.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Setup-1.0.5.exe) · 76.5 MB · [how it works](#windows) |
+| **Windows portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Portable.zip) · 82.5 MB · unzip and run, no install |
 | **Bundle** | [`RIX-1.0.5.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5.zip) · APK + install notes + release notes |
 | **Release** | [v1.0.5](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.5) |
 | **sha256** | `904d594d22d96c411981395a55699df36a6d3a3f8593a5bb137a22ad8de943ef` |
