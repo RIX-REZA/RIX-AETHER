@@ -40,34 +40,15 @@ public static class Transports
 }
 
 /// <summary>
-/// Browser pages asked the core for these; kept as a small helper so the UI and
-/// the argument builder cannot drift apart.
+/// The scan modes, as the core spells them. Only the mapping lives here; the
+/// names shown in the screens are the page's, so there is one place that
+/// decides what each mode looks like and one place that decides what it means.
 /// </summary>
 public static class ScanModes
 {
-    public static readonly (string Value, string Fa, string En)[] All =
-    {
-        ("DEFAULT", "پیش‌فرض هسته", "Core default"),
-        ("TURBO", "Turbo (سریع‌ترین)", "Turbo (fastest)"),
-        ("BALANCED", "Balanced", "Balanced"),
-        ("THOROUGH", "Thorough (کامل)", "Thorough"),
-        ("VERIFIED", "Verified", "Verified"),
-        ("IRONCLAD", "Ironclad (تست واقعی)", "Ironclad (real test)"),
-    };
-
+    /// <summary>The value for <c>--scan</c>, or null to let the core choose.</summary>
     public static string Cli(string scan) =>
-        scan == "DEFAULT" ? null : scan.ToLowerInvariant();
-}
-
-/// <summary>The Psiphon shape, as aether names it.</summary>
-public static class PsiphonModes
-{
-    public static readonly (string Value, string Fa, string En)[] All =
-    {
-        ("auto", "خودکار (انتخاب سایفون)", "Automatic"),
-        ("direct", "مستقیم (سریع)", "Direct (faster)"),
-        ("cdn", "از پشت CDN", "Behind a CDN"),
-    };
+        string.IsNullOrWhiteSpace(scan) || scan == "DEFAULT" ? null : scan.ToLowerInvariant();
 }
 
 /// <summary>

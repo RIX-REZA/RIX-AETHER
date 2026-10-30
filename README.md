@@ -41,6 +41,7 @@ back through the tunnel.**
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Modes](#modes)
+- [Windows](#windows)
 - [Settings reference](#settings-reference)
 - [Building](#building)
 - [Installing and updating](#installing-and-updating)
@@ -186,6 +187,56 @@ the call site in [`RixRuntime.kt`](app/src/main/java/com/rix/vpn/core/RixRuntime
 
 The app always excludes itself from its own tunnel in full-tunnel mode; without
 that the core's WARP sockets would be routed back into the TUN and deadlock.
+
+## Windows
+
+The same core, the same transports, the same rule about what "connected" means — with a window around it instead of a phone.
+
+| | |
+|---|---|
+| **Installer** | `RIX-Setup-1.0.5.exe` — per-user, no administrator prompt, no driver |
+| **Portable** | `RIX-Portable.zip` — unzip and run `RIX.exe` |
+| **Requires** | Windows 10 1809 or newer, 64-bit. The installer brings WebView2 if the machine does not have it already. |
+
+### What it carries, and what it does not
+
+This is the part worth being straight about. The Windows app configures the **system proxy** (the per-user WinINET setting under `HKCU`). That covers Edge, Chrome, Office and everything else that asks Windows where the proxy is. It does not cover Firefox, which keeps its own proxy settings, and it does not cover programs that open their own sockets.
+
+The alternative — a TUN front end — was considered and rejected for this release. On Windows a userspace TUN needs route table changes for the whole machine, and the core's own sockets to Cloudflare would be caught by those routes unless a kernel filter spares them; the tunnel would try to reach the internet through itself. Doing it properly means a WFP callout driver, which means an installer that wants administrator rights, a driver signing story and a class of bug that survives uninstall. A quick install that stays working is worth more than automatic coverage of one browser, and the local SOCKS5 endpoint is there for anything the system proxy misses.
+
+| | System proxy | SOCKS5 `127.0.0.1:1819` |
+|---|---|---|
+| Edge, Chrome, Office, WinHTTP apps | automatic | — |
+| Firefox | set it by hand | also works |
+| Apps with their own network stack | — | point them here |
+| When the system proxy is off | the app still serves SOCKS5 | always available |
+
+Turn the system proxy off in the app if you would rather route only specific programs through the tunnel.
+
+### What the window does
+
+- **One button.** The orb connects and disconnects; while a transport is being tried it says so, and it only turns green once a real request has come back through the tunnel — the same `/cdn-cgi/trace` round trip the phone uses. The address under *exit* is the one Cloudflare saw.
+- **Live counters.** Up, down and uptime come from the core's own `--stats` output, once a second, not from an estimate.
+- **Four short groups** instead of one long list: connection, network, Psiphon, app. Persian and English, dark and light, remembered between runs.
+- **Psiphon, BETA.** The core already ships `psiphon-tunnel-core.exe` for Windows, so the chain is its own: `transport → WARP → Psiphon → internet`, leaving from the country you pick.
+
+### Two things it does about crashes
+
+A tunnelling app that dies badly can leave the machine worse than it found it, so both cases are handled rather than hoped about:
+
+- **The proxy is put back.** The previous registry values are written to a lock file *before* anything is changed, and cleared after they are restored. If RIX is killed while it owns the proxy, the next launch finds the lock file and restores the settings. Without a lock file the app never touches the setting at all, so a machine that runs its own proxy keeps it.
+- **The core is killed with the app.** The core runs inside a Windows job object set to kill on close, so ending RIX — even from Task Manager — takes the core and its Psiphon child with it. Nothing is left listening.
+
+### Building it
+
+```powershell
+dotnet publish windows/src/Rix.Windows.csproj -c Release -o windows/publish
+# the core, pinned by hash, from the Aether release
+# then the installer
+ISCC.exe windows\installer\Rix.iss
+```
+
+CI does all of this in [`.github/workflows/windows-rix.yml`](.github/workflows/windows-rix.yml): it downloads the pinned core archive, checks it against a SHA-256, refuses to build if the interface is not embedded in the exe, and produces the installer and the portable zip.
 
 ## Settings reference
 
@@ -401,6 +452,7 @@ CluvexStudio, changing the display name is a one-line edit in
 ```text
 RIX-AETHER/
 ├── .github/workflows/android-rix.yml    the whole build: kotlin → native → apk
+├── .github/workflows/windows-rix.yml    the Windows build: core, app, installer
 ├── app/src/main/cpp/
 │   ├── CMakeLists.txt                  builds librixjni.so
 │   └── jni_bridge.c                    dlopen bridge to both native libraries
@@ -417,7 +469,12 @@ RIX-AETHER/
 │   │   └── RixProxyService.kt          proxy only
 │   └── ui/                             Compose screens and the design system
 ├── docs/                               banner and diagram artwork used by this README
-└── keystore/rix.p12                    the fixed release signing key
+├── keystore/rix.p12                    the fixed release signing key
+└── windows/
+    ├── src/                              the desktop app
+    │   ├── Core/                         core process, system proxy, probe
+    │   └── ui/                           the screens, served from the assembly
+    └── installer/Rix.iss                 Inno Setup script
 ```
 
 <div align="center">

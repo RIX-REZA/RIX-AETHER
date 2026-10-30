@@ -292,13 +292,13 @@ public sealed class MainForm : Form
             ["uptime"] = (long)snapshot.Uptime.TotalSeconds,
             ["psiphon"] = snapshot.Psiphon,
             ["psiphonRegion"] = snapshot.PsiphonRegion,
-            ["egress"] = Egress(snapshot.Egress),
-            ["local"] = Egress(snapshot.Local),
+            ["egress"] = EgressJson(snapshot.Egress),
+            ["local"] = EgressJson(snapshot.Local),
         };
         Send(message);
     }
 
-    private static JsonNode Egress(Egress egress) => egress == null
+    private static JsonNode EgressJson(Egress egress) => egress == null
         ? null
         : new JsonObject
         {

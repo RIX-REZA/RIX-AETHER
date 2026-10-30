@@ -145,6 +145,11 @@ const ICON = {
 
 const el = (id) => document.getElementById(id);
 
+/** Anything that came from the machine -- a path, a message -- goes in here
+ *  first. A folder named `R&D` must not break the page it is printed on. */
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 const NAV = [
   { id: 'home', label: 'خانه', icon: ICON.home },
   { id: 'settings', label: 'تنظیمات', icon: ICON.gear },
@@ -696,13 +701,13 @@ function renderAbout() {
       : 'A censorship-circumvention client for Windows. Traffic leaves through a WARP tunnel and is offered to applications as a local SOCKS5 endpoint and as the system proxy.'}</p>
     <div class="group"><div class="body" style="display:block;border:0;padding:14px 16px">
       <div class="field"><span class="name">${lang === 'fa' ? 'هسته' : 'Core'}</span>
-        <span class="ctl"><code>${state.corePath || '—'}</code></span></div>
+        <span class="ctl"><code>${esc(state.corePath || '—')}</code></span></div>
       <div class="field"><span class="name">Psiphon</span>
         <span class="ctl"><span class="pill ${state.hasPsiphon ? 'ok' : 'off'}">${state.hasPsiphon ? (lang === 'fa' ? 'موجود' : 'present') : (lang === 'fa' ? 'ناموجود' : 'missing')}</span></span></div>
       <div class="field"><span class="name">SOCKS5</span>
         <span class="ctl"><code>127.0.0.1:${snap.port || options.bindPort || 1819}</code></span></div>
       <div class="field"><span class="name">${lang === 'fa' ? 'پروکسی سیستم' : 'System proxy'}</span>
-        <span class="ctl"><code>${state.proxy || '—'}</code></span></div>
+        <span class="ctl"><code>${esc(state.proxy || '—')}</code></span></div>
     </div></div>
     <p>${lang === 'fa'
       ? 'پروکسی سیستم همه برنامه‌ها را پوشش نمی‌دهد: فایرفاکس تنظیم پروکسی خودش را دارد و برنامه‌هایی که سوکت خودشان را باز می‌کنند باید دستی به SOCKS5 بالا وصل شوند.'
