@@ -71,9 +71,10 @@ Source: "..\publish\core\aether.exe"; DestDir: "{app}\core"; Flags: ignoreversio
 Source: "..\publish\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
-; Carried, not fetched: see the header. It is 1.7 MB and is deleted again
-; whether the runtime needed it or not.
-Source: "..\publish\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Carried, not fetched: see the header. Setup clears {tmp} on its own, so it
+; needs no flag here -- and deleteafterinstall would be wrong, because it can
+; run before [Run] has had the chance to use the file it deletes.
+Source: "..\publish\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
