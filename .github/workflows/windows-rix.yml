@@ -66,6 +66,28 @@ jobs:
           -o windows/publish
           --nologo
 
+      - name: Fetch the WebView2 bootstrapper
+        # Inno Setup has no download function of its own, so the one file the
+        # installer may need at run time has to travel inside it. The file is
+        # Microsoft's evergreen bootstrapper and is verified as Microsoft's
+        # rather than pinned to a hash: it is rebuilt whenever Edge updates, so
+        # a pinned hash would fail the build for no security gain.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = "windows/publish/MicrosoftEdgeWebview2Setup.exe"
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $out
+
+          $sig = Get-AuthenticodeSignature $out
+          if ($sig.Status -ne "Valid") {
+            throw "the WebView2 bootstrapper is not validly signed: $($sig.Status)"
+          }
+          if ($sig.SignerCertificate.Subject -notmatch "Microsoft") {
+            throw "unexpected signer: $($sig.SignerCertificate.Subject)"
+          }
+          Write-Host ("WebView2 bootstrapper {0:N1} MB, signed by {1}" -f `
+            ((Get-Item $out).Length / 1MB), $sig.SignerCertificate.Subject)
+
       - name: Fetch the Aether core
         shell: pwsh
         run: |
@@ -98,7 +120,8 @@ jobs:
           foreach ($file in @(
             "windows/publish/core/aether.exe",
             "windows/publish/core/pt/psiphon-tunnel-core.exe",
-            "windows/publish/core/pt/lyrebird.exe")) {
+            "windows/publish/core/pt/lyrebird.exe",
+            "windows/publish/MicrosoftEdgeWebview2Setup.exe")) {
             if (-not (Test-Path $file)) { throw "$file is missing" }
           }
 

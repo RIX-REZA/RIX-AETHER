@@ -6,6 +6,10 @@
 ;   2. Checks for the WebView2 runtime and installs it silently if it is not
 ;      already there, because without it the app has no interface. Windows 11
 ;      and updated Windows 10 already have it, so this is usually a no-op.
+;      The bootstrapper travels inside this installer: Inno Setup has no
+;      download function of its own, and a setup that fetches an executable
+;      before it can draw its first page is a setup that fails on the networks
+;      this app exists for.
 ;   3. On uninstall, closes a running RIX and hands the machine's proxy settings
 ;      back, so removing the app cannot leave a browser pointing at a port
 ;      nobody serves.
@@ -65,6 +69,9 @@ Source: "..\publish\core\aether.exe"; DestDir: "{app}\core"; Flags: ignoreversio
 Source: "..\publish\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
+; Carried, not fetched: see the header. It is 1.7 MB and is deleted again
+; whether the runtime needed it or not.
+Source: "..\publish\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -78,7 +85,7 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--tr
 ; this entirely, which is what keeps the common install quick.
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; \
   StatusMsg: "نصب WebView2 / installing the WebView2 runtime..."; \
-  Check: NeedsWebView2; Flags: waituntilterminated skipifdoesntexist
+  Check: NeedsWebView2; Flags: waituntilterminated
 
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; \
   Flags: nowait postinstall skipifsilent
@@ -116,25 +123,3 @@ begin
   Result := WebView2Version() = '';
 end;
 
-function InitializeSetup(): Boolean;
-var
-  ErrorCode: Integer;
-  Downloaded: Boolean;
-begin
-  Result := True;
-
-  if NeedsWebView2() then
-  begin
-    Downloaded := DownloadToFile(
-      'https://go.microsoft.com/fwlink/p/?LinkId=2124703',
-      ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '', '', '', ErrorCode);
-    if not Downloaded then
-    begin
-      if MsgBox('دریافت WebView2 ممکن نشد. برنامه بدون آن اجرا نمی‌شود.' + #13#10 +
-                'The WebView2 runtime could not be downloaded and RIX cannot run without it.' + #13#10#13#10 +
-                'بدون آن ادامه دهم؟ / Continue anyway?',
-                mbConfirmation, MB_YESNO) = IDNO then
-        Result := False;
-    end;
-  end;
-end;
