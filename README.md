@@ -54,13 +54,17 @@ back through the tunnel.**
 
 | | |
 |---|---|
-| **APK** | [`RIX-1.0.3-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3-debug.apk) · 22.2 MB |
-| **Bundle** | [`RIX-1.0.3.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.3/RIX-1.0.3.zip) · APK + install notes + release notes |
-| **Release** | [v1.0.3](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.3) |
-| **sha256** | `925499d185d674269160ec69c4e5b3e766ccfa0f402cbc99cd2da410ccd25328` |
+| **APK** | [`RIX-1.0.5-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5-debug.apk) · 33.2 MB |
+| **Windows** | [`RIX-Setup-1.0.5.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Setup-1.0.5.exe) · see [Windows](#windows) |
+| **Bundle** | [`RIX-1.0.5.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5.zip) · APK + install notes + release notes |
+| **Release** | [v1.0.5](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.5) |
+| **sha256** | `904d594d22d96c411981395a55699df36a6d3a3f8593a5bb137a22ad8de943ef` |
+
+> The APK is larger than it used to be: 1.0.5 carries the Psiphon tunnel core for
+> the BETA chain, which is a 31 MB native library.
 
 > [!IMPORTANT]
-> **One last clean install.** Everything up to 1.0.2 was signed with Gradle's
+> **Only if you are coming from 1.0.2 or older.** Everything up to 1.0.2 was signed with Gradle's
 > throwaway debug key, which is regenerated on every CI runner — so each release
 > carried a different signature and Android refused to install over the previous
 > one. If you are coming from 1.0.2 or older, uninstall once. From 1.0.3 the APK
