@@ -169,22 +169,28 @@ fun HomeScreen(
             }
 
             // ---- mode --------------------------------------------------
+            // A live session cannot be moved between modes -- the tunnel owns a
+            // TUN and the proxy does not -- and letting the switch move used to
+            // change which service the orb would stop while the other kept
+            // running. Lock it while something is up and say why.
             SegmentedRow(
                 options = listOf(RixMode.TUNNEL.label, RixMode.PROXY.label),
                 selectedIndex = if (options.mode == RixMode.TUNNEL) 0 else 1,
                 onSelect = { index ->
                     onModeChange(if (index == 0) RixMode.TUNNEL else RixMode.PROXY)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !running && !busy
             )
 
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = if (options.mode == RixMode.TUNNEL) {
-                    "همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService)."
-                } else {
-                    "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمی‌شود."
+                text = when {
+                    running || busy -> "برای تغییر حالت، اول اتصال را قطع کن."
+                    options.mode == RixMode.TUNNEL ->
+                        "همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService)."
+                    else -> "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمی‌شود."
                 },
                 color = RixColors.TextMuted,
                 fontSize = 11.5.sp,

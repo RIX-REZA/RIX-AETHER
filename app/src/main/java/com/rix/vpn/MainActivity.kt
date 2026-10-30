@@ -33,6 +33,7 @@ import com.rix.vpn.data.Prefs
 import com.rix.vpn.data.ThemeMode
 import com.rix.vpn.data.UiPrefs
 import com.rix.vpn.service.RixProxyService
+import com.rix.vpn.service.RixServices
 import com.rix.vpn.service.RixVpnService
 import com.rix.vpn.ui.AppPickerDialog
 import com.rix.vpn.ui.HomeScreen
@@ -63,6 +64,16 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Screen { HOME, OPTIONS, LOGS }
+
+/**
+ * How long a teardown may take before the UI stops waiting for it.
+ *
+ * The graceful path is: stop the engine (up to 2.5 s), cancel the core and free
+ * its slot (0.25 s), close the TUN, drop the notification, stop the service.
+ * Twelve seconds is several times that, so reaching it means the teardown is
+ * not coming back.
+ */
+private const val STOP_GIVE_UP_MS = 12_000L
 
 @Composable
 private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
@@ -110,6 +121,37 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
     val latestOptions = rememberUpdatedState(options)
     val latestPhase = rememberUpdatedState(runtimeState.phase)
 
+    // Belt and braces for the one failure the user can see but not fix from
+    // inside the app: a session the UI considers over while a service still
+    // holds the tunnel. It has two causes -- a stop addressed to the wrong
+    // service, and a teardown that never reached its end -- and both leave the
+    // key icon and the ongoing notification on screen with nothing able to
+    // clear them, because the orb is inert once the phase is STOPPING.
+    LaunchedEffect(runtimeState.phase) {
+        when (runtimeState.phase) {
+            RixRuntime.Phase.STOPPING -> {
+                kotlinx.coroutines.delay(STOP_GIVE_UP_MS)
+                if (RixRuntime.state.value.phase == RixRuntime.Phase.STOPPING) {
+                    LogBus.e("vpn", "teardown did not finish in time")
+                    RixServices.forceStopAll(context)
+                }
+            }
+
+            RixRuntime.Phase.IDLE, RixRuntime.Phase.ERROR -> {
+                // The TUN is released a few milliseconds after markIdle(),
+                // inside the same teardown block, so wait that out before
+                // concluding that the service outlived its session.
+                kotlinx.coroutines.delay(1_500)
+                if (RixVpnService.isUp()) {
+                    LogBus.e("vpn", "a tunnel outlived its session")
+                    RixServices.forceStopAll(context)
+                }
+            }
+
+            else -> Unit
+        }
+    }
+
     val startTunnel: () -> Unit = remember(context) {
         {
             val opts = latestOptions.value
@@ -153,11 +195,12 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
                 RixRuntime.Phase.RUNNING,
                 RixRuntime.Phase.STARTING,
                 RixRuntime.Phase.CONNECTING -> {
-                    if (latestOptions.value.mode == RixMode.TUNNEL) {
-                        RixVpnService.stop(context)
-                    } else {
-                        RixProxyService.stop(context)
-                    }
+                    // Both, deliberately. The mode in `options` is what the
+                    // settings screen is showing, which is not necessarily the
+                    // mode of the live session: switching the segmented control
+                    // while connected used to send this stop to the idle service
+                    // and leave the tunnel -- and its key icon -- running.
+                    RixServices.stopAll(context)
                 }
 
                 // Already going down; a second stop would race the first.

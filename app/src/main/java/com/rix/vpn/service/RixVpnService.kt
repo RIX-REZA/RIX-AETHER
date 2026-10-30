@@ -38,6 +38,9 @@ import java.util.concurrent.atomic.AtomicInteger
 class RixVpnService : VpnService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Volatile: [isUp] reads it from the UI thread to spot a stray tunnel. */
+    @Volatile
     private var tun: ParcelFileDescriptor? = null
     private var worker: Job? = null
     private var ticker: Job? = null
@@ -54,11 +57,22 @@ class RixVpnService : VpnService() {
     @Volatile
     private var hevToken: Int? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
                 LogBus.i("vpn", "stop requested")
-                shutdown()
+                // The UI stops both services without checking which one is
+                // live, so this command also reaches a service that was never
+                // started -- created on the spot, with no session of its own.
+                // That one has nothing to tear down and must not publish a
+                // phase or dispose the core, which at that moment belongs to
+                // the other service's live session.
+                if (worker == null) stopSelf() else shutdown()
                 return START_NOT_STICKY
             }
 
@@ -379,6 +393,7 @@ class RixVpnService : VpnService() {
 
     override fun onDestroy() {
         LogBus.i("vpn", "service destroyed")
+        if (instance === this) instance = null
         // Token-guarded: this instance can outlive its own stopSelf() long
         // enough to serve the next start, and in that window the live engine
         // belongs to the newer session.
@@ -386,6 +401,12 @@ class RixVpnService : VpnService() {
         hevToken = null
         runCatching { tun?.close() }
         tun = null
+        // A forced stop never runs shutdown(), so the core is disposed here too
+        // -- but only while this service still owns the live session, because
+        // the proxy service drives the same process-wide core.
+        if (RixRuntime.state.value.mode == RixMode.TUNNEL) {
+            RixRuntime.stopCoreAsync()
+        }
         scope.cancel()
         super.onDestroy()
     }
@@ -428,6 +449,20 @@ class RixVpnService : VpnService() {
     companion object {
         private const val NOTIF_ID = 1001
 
+        /**
+         * The live instance, if there is one.
+         *
+         * The UI uses this to notice a tunnel that outlived its session: the
+         * shared state can only describe what the services told it, and the
+         * failure that mattered was a TUN still holding the key icon while the
+         * state said IDLE.
+         */
+        @Volatile
+        private var instance: RixVpnService? = null
+
+        /** True while an instance exists with an established TUN. */
+        fun isUp(): Boolean = instance?.tun != null
+
         /** How long the core gets to open its SOCKS5 port, per transport. */
         private const val CORE_LISTEN_MS = 15_000L
 
@@ -451,10 +486,27 @@ class RixVpnService : VpnService() {
             ContextCompat.startForegroundService(context, intent)
         }
 
+        /**
+         * Asks the running service to tear itself down.
+         *
+         * `startService` is refused with an [IllegalStateException] when the app
+         * has no visible activity (the background-start restriction), and that
+         * refusal used to be the end of it: the tunnel stayed up, and with it
+         * the key icon and the notification. Destroying the service instead
+         * skips the graceful teardown but does release the TUN, and the
+         * disposal in `onDestroy` takes the rest with it.
+         */
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, RixVpnService::class.java).setAction(ACTION_STOP)
-            )
+            val intent = Intent(context, RixVpnService::class.java).setAction(ACTION_STOP)
+            val asked = runCatching { context.startService(intent) }
+                .onFailure { LogBus.e("vpn", "stop refused (${it.message}); stopping directly") }
+                .isSuccess
+            if (!asked) forceStop(context)
+        }
+
+        /** Destroys the service without a graceful teardown. */
+        fun forceStop(context: Context) {
+            runCatching { context.stopService(Intent(context, RixVpnService::class.java)) }
         }
     }
 }

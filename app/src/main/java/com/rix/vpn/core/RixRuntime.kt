@@ -3,6 +3,7 @@ package com.rix.vpn.core
 import android.content.Context
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -63,7 +64,25 @@ object RixRuntime {
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /** Written from the service threads and from the disposal thread. */
+    @Volatile
     private var jobId: Long = 0L
+
+    private val jobLock = Any()
+
+    /**
+     * Claims the live job id and leaves none behind.
+     *
+     * Disposal runs from two places that can race — the suspended [stopCore]
+     * and the thread [stopCoreAsync] uses — and freeing one id twice is a
+     * native double free. Claiming under a lock makes exactly one of them the
+     * owner of the free.
+     */
+    private fun takeJobId(): Long = synchronized(jobLock) {
+        val id = jobId
+        jobId = 0L
+        id
+    }
 
     @Volatile
     private var hevThread: Thread? = null
@@ -212,14 +231,17 @@ object RixRuntime {
         val id = json.optLong("job", 0L)
         if (id <= 0L) throw CoreException("هسته شناسهٔ کار نداد: $raw")
 
-        jobId = id
+        synchronized(jobLock) { jobId = id }
         id
     }
 
     /** Polls the job once. Returns the core's state string. */
     fun poll(): JobReport {
-        if (jobId <= 0L) return JobReport("idle", null)
-        val raw = NativeAether.poll(jobId) ?: return JobReport("running", null)
+        // One read: disposal can zero the field between a check and its use,
+        // and polling id 0 is a question the core cannot answer.
+        val id = jobId
+        if (id <= 0L) return JobReport("idle", null)
+        val raw = NativeAether.poll(id) ?: return JobReport("running", null)
         return try {
             val json = JSONObject(raw)
             if (!json.optBoolean("ok")) {
@@ -522,9 +544,12 @@ object RixRuntime {
     // ------------------------------------------------------------ stop
 
     suspend fun stopCore() {
-        if (jobId <= 0L) return
-        val id = jobId
-        withContext(Dispatchers.IO) {
+        val id = takeJobId()
+        if (id <= 0L) return
+        // NonCancellable: the caller is usually a service whose scope is
+        // cancelled moments later, and an id claimed but never freed leaks the
+        // core slot for the rest of the process's life.
+        withContext(Dispatchers.IO + NonCancellable) {
             try {
                 LogBus.i("core", "cancel: ${NativeAether.cancel(id)}")
                 // Give the job loop a moment to observe the cancel before the
@@ -535,6 +560,30 @@ object RixRuntime {
                 LogBus.e("core", t.message ?: "توقف هسته ناموفق بود")
             }
         }
-        jobId = 0L
+    }
+
+    /**
+     * The same disposal, without suspending.
+     *
+     * For `onDestroy`, where the coroutine scope that would run [stopCore] is
+     * cancelled a few lines later — a launch there is cancelled before it is
+     * ever dispatched, which silently leaves the core running. It uses a
+     * detached thread rather than blocking the main thread for the 250 ms the
+     * job loop needs to observe the cancel.
+     */
+    fun stopCoreAsync() {
+        val id = takeJobId()
+        if (id <= 0L) return
+        Thread({
+            runCatching { NativeAether.cancel(id) }
+                .onFailure { LogBus.e("core", it.message ?: "توقف هسته ناموفق بود") }
+            try {
+                Thread.sleep(250)
+            } catch (ignored: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            runCatching { NativeAether.free(id) }
+                .onFailure { LogBus.e("core", it.message ?: "آزادسازی هسته ناموفق بود") }
+        }, "rix-core-dispose").apply { isDaemon = true }.start()
     }
 }

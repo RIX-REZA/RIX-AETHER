@@ -47,6 +47,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -150,13 +151,15 @@ fun SegmentedRow(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(RixColors.Surface)
             .border(1.dp, RixColors.Stroke, RoundedCornerShape(16.dp))
+            .alpha(if (enabled) 1f else 0.45f)
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -177,7 +180,7 @@ fun SegmentedRow(
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(bg)
-                    .clickable { onSelect(index) }
+                    .clickable(enabled = enabled) { onSelect(index) }
                     .padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center
             ) {

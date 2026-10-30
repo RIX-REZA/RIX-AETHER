@@ -39,7 +39,10 @@ class RixProxyService : LifecycleService() {
 
         when (intent?.action) {
             ACTION_STOP -> {
-                shutdown()
+                // See [RixVpnService.onStartCommand]: a stop addressed to a
+                // service that was never started creates it, and it must leave
+                // the shared runtime alone.
+                if (worker == null) stopSelf() else shutdown()
                 return START_NOT_STICKY
             }
 
@@ -152,7 +155,14 @@ class RixProxyService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        runCatching { lifecycleScope.launch { RixRuntime.stopCore() } }
+        // Was `lifecycleScope.launch { stopCore() }`, which the cancellation in
+        // super.onDestroy() reaches before the coroutine is ever dispatched --
+        // so a destroyed proxy service used to leave the core running. The
+        // disposal only happens while this service owns the live session: the
+        // tunnel service drives the same process-wide core.
+        if (RixRuntime.state.value.mode == RixMode.PROXY) {
+            RixRuntime.stopCoreAsync()
+        }
         super.onDestroy()
     }
 
@@ -207,10 +217,18 @@ class RixProxyService : LifecycleService() {
             ContextCompat.startForegroundService(context, intent)
         }
 
+        /** See [RixVpnService.Companion.stop] for why this can force the stop. */
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, RixProxyService::class.java).setAction(ACTION_STOP)
-            )
+            val intent = Intent(context, RixProxyService::class.java).setAction(ACTION_STOP)
+            val asked = runCatching { context.startService(intent) }
+                .onFailure { LogBus.e("proxy", "stop refused (${it.message}); stopping directly") }
+                .isSuccess
+            if (!asked) forceStop(context)
+        }
+
+        /** Destroys the service without a graceful teardown. */
+        fun forceStop(context: Context) {
+            runCatching { context.stopService(Intent(context, RixProxyService::class.java)) }
         }
     }
 }
