@@ -18,6 +18,7 @@ import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
+import com.rix.vpn.data.l10n
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,7 +80,7 @@ class RixVpnService : VpnService() {
             ACTION_START -> {
                 val raw = intent.getStringExtra(EXTRA_OPTIONS)
                 val options = RixOptions.fromJson(raw)
-                startForegroundSafely(getString(R.string.notif_starting))
+                startForegroundSafely(l10n(R.string.notif_starting))
                 if (worker?.isActive == true) {
                     LogBus.i("vpn", "already starting or running; ignoring duplicate start")
                     return START_NOT_STICKY
@@ -96,7 +97,7 @@ class RixVpnService : VpnService() {
     private suspend fun bringUp(options: RixOptions) {
         val mine = session.incrementAndGet()
         try {
-            RixRuntime.markStarting(RixMode.TUNNEL, getString(R.string.state_starting))
+            RixRuntime.markStarting(RixMode.TUNNEL, l10n(R.string.state_starting))
 
             val fd = establishTun(options)
             LogBus.i("vpn", "TUN established, fd=${fd.fd}")
@@ -130,7 +131,7 @@ class RixVpnService : VpnService() {
                         candidate.transport.label
                     )
                 )
-                startForegroundSafely(getString(R.string.notif_connecting))
+                startForegroundSafely(l10n(R.string.notif_connecting))
 
                 val listening = try {
                     RixRuntime.startCore(this, candidate)
@@ -161,7 +162,7 @@ class RixVpnService : VpnService() {
                         if (session.get() == mine &&
                             RixRuntime.state.value.phase == RixRuntime.Phase.RUNNING
                         ) {
-                            scope.launch { failAndStop(getString(R.string.error_engine_stopped)) }
+                            scope.launch { failAndStop(l10n(R.string.error_engine_stopped)) }
                         }
                     }
 
@@ -170,7 +171,7 @@ class RixVpnService : VpnService() {
                     // proving the engine survived would show a green screen over
                     // a dead tunnel.
                     if (!RixRuntime.awaitHevAlive()) {
-                        throw IllegalStateException(getString(R.string.error_engine_stopped))
+                        throw IllegalStateException(l10n(R.string.error_engine_stopped))
                     }
                 }
 
@@ -183,7 +184,7 @@ class RixVpnService : VpnService() {
                         RixRuntime.markConnecting(
                             candidate.bindPort,
                             tun2socks = true,
-                            message = getString(R.string.state_verifying_attempt, attempt)
+                            message = l10n(R.string.state_verifying_attempt, attempt)
                         )
                     }
                 }
@@ -202,7 +203,7 @@ class RixVpnService : VpnService() {
             val chosen = winner
             val verified = egress
             if (chosen == null || verified == null) {
-                throw IllegalStateException(getString(R.string.error_all_transports_failed))
+                throw IllegalStateException(l10n(R.string.error_all_transports_failed))
             }
 
             // Remembering the winner is what makes the second connect fast: the
@@ -216,19 +217,19 @@ class RixVpnService : VpnService() {
                 egress = verified,
                 transport = chosen.transport
             )
-            startForegroundSafely(getString(R.string.notif_running, chosen.bindPort))
+            startForegroundSafely(l10n(R.string.notif_running, chosen.bindPort))
             startTicker()
             startCoreWatch(chosen)
 
         } catch (t: Throwable) {
-            failAndStop(t.message ?: getString(R.string.error_unknown))
+            failAndStop(t.message ?: l10n(R.string.error_unknown))
         }
     }
 
     /** Builds and establishes the TUN, including DNS and split tunnelling. */
     private fun establishTun(options: RixOptions): ParcelFileDescriptor {
         val builder = Builder()
-            .setSession(getString(R.string.app_name))
+            .setSession(l10n(R.string.app_name))
             .setMtu(options.mtu)
             .addAddress(options.tunnelIpv4, 30)
             .addRoute("0.0.0.0", 0)
@@ -242,7 +243,7 @@ class RixVpnService : VpnService() {
         applySplitTunnelling(builder, options)
 
         val fd = builder.establish()
-            ?: throw IllegalStateException(getString(R.string.error_no_tun))
+            ?: throw IllegalStateException(l10n(R.string.error_no_tun))
         tun = fd
         return fd
     }
@@ -296,8 +297,18 @@ class RixVpnService : VpnService() {
     private fun startTicker() {
         ticker?.cancel()
         ticker = scope.launch {
+            var ticks = 0
             while (isActive) {
                 RixRuntime.pushStats()
+                // Every 90 s the exit is re-read: a reconnect after a network
+                // change can leave the session on a different address, and the
+                // tile must not keep showing where it used to come out. Own
+                // coroutine, because the lookup can take seconds and the
+                // counters must keep ticking through it.
+                if (++ticks % 90 == 0) {
+                    val port = RixRuntime.state.value.socksPort
+                    launch { RixRuntime.refreshEgress(port) }
+                }
                 delay(1000)
             }
         }
@@ -318,11 +329,11 @@ class RixVpnService : VpnService() {
                 val report = runCatching { RixRuntime.poll() }.getOrNull() ?: continue
                 if (!isActive || session.get() != mine) return@launch
                 if (report.failed) {
-                    failAndStop(report.detail ?: getString(R.string.error_core_stopped))
+                    failAndStop(report.detail ?: l10n(R.string.error_core_stopped))
                     return@launch
                 }
                 if (!report.running) {
-                    failAndStop(getString(R.string.error_core_stopped))
+                    failAndStop(l10n(R.string.error_core_stopped))
                     return@launch
                 }
             }
@@ -331,7 +342,7 @@ class RixVpnService : VpnService() {
 
     private suspend fun failAndStop(message: String) {
         runCatching {
-            startForegroundSafely(getString(R.string.notif_error))
+            startForegroundSafely(l10n(R.string.notif_error))
         }
         shutdown(preserveError = message)
     }
@@ -435,14 +446,14 @@ class RixVpnService : VpnService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, RixApp.CHANNEL_STATUS)
-            .setContentTitle(getString(R.string.app_name))
+            .setContentTitle(l10n(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_rix)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(open)
-            .addAction(0, getString(R.string.action_stop), stop)
+            .addAction(0, l10n(R.string.action_stop), stop)
             .build()
     }
 

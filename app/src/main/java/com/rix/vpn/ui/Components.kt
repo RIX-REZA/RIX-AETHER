@@ -1,6 +1,10 @@
 package com.rix.vpn.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -557,10 +561,25 @@ fun IpTile(
     ip: String,
     colo: String?,
     loc: String?,
+    country: String?,
+    city: String?,
+    isp: String?,
     live: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
     val accent = if (ip.isNotBlank()) RixColors.Teal else RixColors.TextMuted
+
+    // Where the address is registered, then whose network it is on. The trace
+    // only knows the edge that answered, so the city, the country and the ISP
+    // are whatever the lookup managed to add.
+    val place = buildList {
+        city?.takeIf { it.isNotBlank() }?.let { add(it) }
+        (country?.takeIf { it.isNotBlank() } ?: loc?.takeIf { it.isNotBlank() })
+            ?.let { add(it) }
+        isp?.takeIf { it.isNotBlank() }?.let { add(it) }
+    }.joinToString(" \u00b7 ")
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
@@ -577,11 +596,15 @@ fun IpTile(
                 modifier = Modifier.size(13.dp)
             )
             Spacer(Modifier.width(5.dp))
-            Text("آی‌پی خروجی", color = RixColors.TextMuted, fontSize = 10.5.sp)
+            Text(
+                s.s("\u0622\u06cc\u200c\u067e\u06cc \u062e\u0631\u0648\u062c\u06cc", "Exit IP"),
+                color = RixColors.TextMuted,
+                fontSize = 10.5.sp
+            )
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = if (ip.isNotBlank()) ip else if (live) "..." else "—",
+            text = if (ip.isNotBlank()) ip else if (live) "..." else "\u2014",
             color = if (ip.isNotBlank()) RixColors.Text else RixColors.TextMuted,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
@@ -589,14 +612,24 @@ fun IpTile(
             softWrap = false,
             style = TextStyle(textDirection = TextDirection.Ltr)
         )
-        if (!colo.isNullOrBlank()) {
+        val caption = if (place.isNotBlank()) {
+            place
+        } else {
+            listOfNotNull(
+                colo?.takeIf { it.isNotBlank() },
+                loc?.takeIf { it.isNotBlank() }
+            ).joinToString(" \u00b7 ")
+        }
+        if (caption.isNotBlank()) {
             Spacer(Modifier.height(3.dp))
             Text(
-                text = listOfNotNull(colo, loc?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                text = caption,
                 color = RixColors.TextMuted,
                 fontSize = 9.5.sp,
                 maxLines = 1,
-                style = TextStyle(textDirection = TextDirection.Ltr)
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -689,23 +722,43 @@ fun ExpandableCard(
     }
 }
 
-/** Header control that cycles خودکار → روشن → تاریک. */
+/**
+ * Switches between the two skins.
+ *
+ * The previous control cycled through three modes, so from «خودکار» a tap landed
+ * on روشن in the middle of the night and the next one on تاریک: the icon said
+ * nothing about what the app currently looked like, and the button did not do
+ * the one thing it looks like it does. It now shows the skin the app is actually
+ * drawing -- the system one included -- and a tap moves it to the other, which
+ * turns «خودکار» into an explicit choice only when the user makes one.
+ */
 @Composable
-fun ThemeIconButton(mode: com.rix.vpn.data.ThemeMode, onClick: () -> Unit) {
-    val icon = when (mode) {
-        com.rix.vpn.data.ThemeMode.SYSTEM -> Icons.Rounded.BrightnessAuto
-        com.rix.vpn.data.ThemeMode.LIGHT -> Icons.Rounded.LightMode
-        com.rix.vpn.data.ThemeMode.DARK -> Icons.Rounded.DarkMode
-    }
+fun ThemeIconButton(dark: Boolean, onClick: () -> Unit) {
+    val s = LocalStrings.current
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(38.dp)
             .clip(CircleShape)
             .background(RixColors.Surface.copy(alpha = 0.8f))
             .border(1.dp, RixColors.Stroke, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = "تغییر پوسته", tint = RixColors.TextMuted, modifier = Modifier.size(18.dp))
+        AnimatedContent(
+            targetState = dark,
+            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(180)) },
+            label = "theme-icon"
+        ) { isDark ->
+            Icon(
+                imageVector = if (isDark) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                contentDescription = if (isDark) {
+                    s.s("روشن کردن", "Switch to light")
+                } else {
+                    s.s("تاریک کردن", "Switch to dark")
+                },
+                tint = if (isDark) RixColors.Violet else RixColors.Warning,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }

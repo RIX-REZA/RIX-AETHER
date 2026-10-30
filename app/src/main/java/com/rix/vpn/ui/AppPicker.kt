@@ -68,6 +68,7 @@ fun AppPickerDialog(
     }
 
     val chosen = remember { selected.toMutableSet() }
+    val s = LocalStrings.current
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -78,10 +79,18 @@ fun AppPickerDialog(
                 .border(1.dp, RixColors.Stroke, RoundedCornerShape(22.dp))
                 .padding(16.dp)
         ) {
-            Text("انتخاب برنامه‌ها", color = RixColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                s.s("انتخاب برنامه‌ها", "Choose apps"),
+                color = RixColors.Text,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             Spacer(Modifier.height(4.dp))
             Text(
-                "${chosen.size} انتخاب‌شده از ${apps.size}",
+                s.s(
+                    "${chosen.size} انتخاب‌شده از ${apps.size}",
+                    "${chosen.size} of ${apps.size} selected"
+                ),
                 color = RixColors.TextMuted,
                 fontSize = 11.5.sp
             )
@@ -104,9 +113,15 @@ fun AppPickerDialog(
 
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DialogButton("انصراف", RixColors.Surface, RixColors.Text, Modifier.weight(1f), onDismiss)
                 DialogButton(
-                    "تأیید",
+                    s.s("انصراف", "Cancel"),
+                    RixColors.Surface,
+                    RixColors.Text,
+                    Modifier.weight(1f),
+                    onDismiss
+                )
+                DialogButton(
+                    s.s("تأیید", "Apply"),
                     RixColors.Violet.copy(alpha = 0.22f),
                     RixColors.Text,
                     Modifier.weight(1f)

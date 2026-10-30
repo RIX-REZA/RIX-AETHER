@@ -46,27 +46,35 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
-import com.rix.vpn.data.ThemeMode
 import kotlinx.coroutines.delay
 
+/**
+ * The home screen, kept to what a user looks at while connecting.
+ *
+ * Between the orb and the two ways out of the screen there used to be four rows
+ * of statistics, a mode switch, a caption, and a line of library diagnostics:
+ * six blocks of equal weight, so nothing led. The diagnostics moved to the log
+ * screen where they are useful, the packet counters went with them (the byte
+ * tiles say the same thing at a glance), and what is left is the status, one
+ * row of live numbers, and the way in.
+ */
 @Composable
 fun HomeScreen(
     options: RixOptions,
     state: RixRuntime.State,
-    diagnostics: String,
-    theme: ThemeMode,
-    onCycleTheme: () -> Unit,
+    dark: Boolean,
+    onToggleTheme: () -> Unit,
     onModeChange: (RixMode) -> Unit,
     onToggle: () -> Unit,
     onOpenOptions: () -> Unit,
     onOpenLogs: () -> Unit
 ) {
+    val s = LocalStrings.current
     val running = state.phase == RixRuntime.Phase.RUNNING
     val connecting = state.phase == RixRuntime.Phase.CONNECTING
     val busy = state.phase == RixRuntime.Phase.STARTING ||
@@ -97,31 +105,34 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RixLogo(sizeDp = 46)
+                RixLogo(sizeDp = 44)
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "RIX",
                         color = RixColors.Text,
-                        fontSize = 24.sp,
+                        fontSize = 23.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "تونل امن WARP / MASQUE",
+                        text = s.s(
+                            "تونل امن WARP / MASQUE",
+                            "Secure WARP / MASQUE tunnel"
+                        ),
                         color = RixColors.TextMuted,
                         fontSize = 11.sp
                     )
                 }
-                ThemeIconButton(theme, onCycleTheme)
+                ThemeIconButton(dark = dark, onClick = onToggleTheme)
                 Spacer(Modifier.width(10.dp))
                 StatusBadge(state)
             }
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(24.dp))
 
             // ---- primary status ----------------------------------------
             Text(
-                text = statusTitle(state),
+                text = statusTitle(state, s),
                 color = RixColors.Text,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -129,7 +140,7 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = statusSubtitle(state, options),
+                text = statusSubtitle(state, options, s),
                 color = if (state.phase == RixRuntime.Phase.ERROR) RixColors.Danger else RixColors.TextMuted,
                 fontSize = 12.5.sp,
                 textAlign = TextAlign.Center,
@@ -174,7 +185,10 @@ fun HomeScreen(
             // change which service the orb would stop while the other kept
             // running. Lock it while something is up and say why.
             SegmentedRow(
-                options = listOf(RixMode.TUNNEL.label, RixMode.PROXY.label),
+                options = listOf(
+                    RixMode.TUNNEL.label(s),
+                    RixMode.PROXY.label(s)
+                ),
                 selectedIndex = if (options.mode == RixMode.TUNNEL) 0 else 1,
                 onSelect = { index ->
                     onModeChange(if (index == 0) RixMode.TUNNEL else RixMode.PROXY)
@@ -187,10 +201,18 @@ fun HomeScreen(
 
             Text(
                 text = when {
-                    running || busy -> "برای تغییر حالت، اول اتصال را قطع کن."
+                    running || busy ->
+                        s.s("برای تغییر حالت، اول اتصال را قطع کن.", "Disconnect first to change mode.")
                     options.mode == RixMode.TUNNEL ->
-                        "همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService)."
-                    else -> "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمی‌شود."
+                        s.s(
+                            "همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService).",
+                            "Every app's traffic goes through the tunnel (VpnService)."
+                        )
+                    else ->
+                        s.s(
+                            "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمی‌شود.",
+                            "A local SOCKS5 proxy only; no traffic is captured."
+                        )
                 },
                 color = RixColors.TextMuted,
                 fontSize = 11.5.sp,
@@ -200,13 +222,14 @@ fun HomeScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // ---- live stats --------------------------------------------
+            // ---- live numbers ------------------------------------------
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StatTile(
-                    label = "دریافت",
+                    label = s.s("دریافت", "Down"),
                     value = formatBytes(state.rxBytes),
                     accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowDownward,
@@ -216,11 +239,14 @@ fun HomeScreen(
                     ip = state.egressIp,
                     colo = state.egressColo,
                     loc = state.egressLoc,
+                    country = state.egressCountry,
+                    city = state.egressCity,
+                    isp = state.egressIsp,
                     live = running || connecting,
-                    modifier = Modifier.weight(1.35f)
+                    modifier = Modifier.weight(1.4f)
                 )
                 StatTile(
-                    label = "ارسال",
+                    label = s.s("ارسال", "Up"),
                     value = formatBytes(state.txBytes),
                     accent = RixColors.Violet,
                     icon = Icons.Rounded.ArrowUpward,
@@ -228,60 +254,40 @@ fun HomeScreen(
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StatTile(
-                    label = "بستهٔ دریافتی",
-                    value = state.rxPackets.toString(),
-                    accent = RixColors.Teal,
-                    modifier = Modifier.weight(1f)
-                )
-                StatTile(
-                    label = "بستهٔ ارسالی",
-                    value = state.txPackets.toString(),
-                    accent = RixColors.Violet,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(20.dp))
 
             // ---- navigation --------------------------------------------
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                NavButton("تنظیمات", Icons.Rounded.Settings, Modifier.weight(1f), onOpenOptions)
-                NavButton("گزارش", Icons.Rounded.Description, Modifier.weight(1f), onOpenLogs)
+                NavButton(
+                    label = s.s("تنظیمات", "Settings"),
+                    icon = Icons.Rounded.Settings,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenOptions
+                )
+                NavButton(
+                    label = s.s("گزارش", "Logs"),
+                    icon = Icons.Rounded.Description,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenLogs
+                )
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = diagnostics,
-                color = RixColors.TextMuted.copy(alpha = 0.75f),
-                fontSize = 10.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-                style = androidx.compose.ui.text.TextStyle(textDirection = TextDirection.Ltr)
-            )
         }
     }
 }
 
 @Composable
 private fun StatusBadge(state: RixRuntime.State) {
+    val s = LocalStrings.current
     val (label, color) = when (state.phase) {
-        RixRuntime.Phase.RUNNING -> "متصل" to RixColors.Teal
-        RixRuntime.Phase.CONNECTING -> "در حال اتصال" to RixColors.Warning
-        RixRuntime.Phase.STARTING -> "آماده‌سازی" to RixColors.Warning
-        RixRuntime.Phase.STOPPING -> "قطع..." to RixColors.Warning
-        RixRuntime.Phase.ERROR -> "خطا" to RixColors.Danger
-        RixRuntime.Phase.IDLE -> "خاموش" to RixColors.TextMuted
+        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
+        RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
+        RixRuntime.Phase.STARTING -> s.s("آماده‌سازی", "Preparing") to RixColors.Warning
+        RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
+        RixRuntime.Phase.ERROR -> s.s("خطا", "Error") to RixColors.Danger
+        RixRuntime.Phase.IDLE -> s.s("خاموش", "Off") to RixColors.TextMuted
     }
     Row(
         modifier = Modifier
@@ -299,7 +305,7 @@ private fun StatusBadge(state: RixRuntime.State) {
                 .clip(CircleShape)
                 .background(color)
         )
-        Text(label, color = color, fontSize = 11.5.sp)
+        Text(label, color = color, fontSize = 11.5.sp, maxLines = 1)
     }
 }
 
@@ -330,37 +336,49 @@ private fun NavButton(
     }
 }
 
-private fun statusTitle(state: RixRuntime.State): String = when (state.phase) {
+private fun statusTitle(state: RixRuntime.State, s: Strings): String = when (state.phase) {
     RixRuntime.Phase.RUNNING ->
-        if (state.tun2socks) "تونل برقرار است" else "پروکسی آماده است"
-    RixRuntime.Phase.CONNECTING -> "در حال اتصال..."
-    RixRuntime.Phase.STARTING -> "در حال آماده‌سازی..."
-    RixRuntime.Phase.STOPPING -> "در حال قطع..."
-    RixRuntime.Phase.ERROR -> "اتصال ناموفق"
-    RixRuntime.Phase.IDLE -> "آماده به اتصال"
+        if (state.tun2socks) s.s("تونل برقرار است", "Tunnel is up")
+        else s.s("پروکسی آماده است", "Proxy is ready")
+    RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال...", "Connecting...")
+    RixRuntime.Phase.STARTING -> s.s("در حال آماده‌سازی...", "Preparing...")
+    RixRuntime.Phase.STOPPING -> s.s("در حال قطع...", "Disconnecting...")
+    RixRuntime.Phase.ERROR -> s.s("اتصال ناموفق", "Connection failed")
+    RixRuntime.Phase.IDLE -> s.s("آماده به اتصال", "Ready to connect")
 }
 
-private fun statusSubtitle(state: RixRuntime.State, options: RixOptions): String = when (state.phase) {
-    RixRuntime.Phase.ERROR -> state.error ?: "خطای نامشخص"
+private fun statusSubtitle(
+    state: RixRuntime.State,
+    options: RixOptions,
+    s: Strings
+): String = when (state.phase) {
+    RixRuntime.Phase.ERROR -> state.error ?: s.s("خطای نامشخص", "Unknown error")
     // The wait is stated in terms of what is actually being waited for:
     // a real request has to come back through the tunnel before this screen
     // is allowed to say متصل.
-    RixRuntime.Phase.CONNECTING -> state.message.ifBlank { "آزمودن تونل با ترافیک واقعی..." }
-    RixRuntime.Phase.STARTING -> state.message.ifBlank { "جست‌وجوی گیتوی و ساخت تونل" }
+    RixRuntime.Phase.CONNECTING ->
+        state.message.ifBlank {
+            s.s("آزمودن تونل با ترافیک واقعی...", "Testing the tunnel with real traffic...")
+        }
+    RixRuntime.Phase.STARTING ->
+        state.message.ifBlank {
+            s.s("جست‌وجوی گیت‌وی و ساخت تونل", "Finding a gateway and building the tunnel")
+        }
     RixRuntime.Phase.RUNNING -> buildString {
         // The label is the transport that actually carried the tunnel, which
         // may differ from the picked one when the fallback chain settled on
         // something the network allows.
-        append(state.activeTransport.ifBlank { options.transport.label })
+        append(state.activeTransport.ifBlank { options.transport.label(s) })
         append(" • ")
-        append(options.scanMode.label)
+        append(options.scanMode.label(s))
         if (state.egressColo.isNotBlank()) {
-            append(" • لبهٔ ")
+            append(" • ")
+            append(s.s("لبهٔ ", "edge "))
             append(state.egressColo)
         }
     }
-    RixRuntime.Phase.IDLE -> "برای شروع دکمهٔ بالا را بزن"
-    RixRuntime.Phase.STOPPING -> "کمی صبر کن"
+    RixRuntime.Phase.IDLE -> s.s("برای شروع دکمهٔ بالا را بزن", "Tap the orb above to connect")
+    RixRuntime.Phase.STOPPING -> s.s("کمی صبر کن", "One moment")
 }
 
 /**

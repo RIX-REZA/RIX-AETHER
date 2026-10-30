@@ -44,6 +44,12 @@ object RixRuntime {
         val egressColo: String = "",
         /** Two-letter country the edge placed us in, e.g. "DE". */
         val egressLoc: String = "",
+        /** Country the exit address is registered in, when a lookup answered. */
+        val egressCountry: String = "",
+        /** City of the exit address, when a lookup answered. */
+        val egressCity: String = "",
+        /** Network the exit address belongs to, e.g. "Cloudflare, Inc.". */
+        val egressIsp: String = "",
         /** Human label of the transport that actually carried the tunnel. */
         val activeTransport: String = "",
         val txBytes: Long = 0L,
@@ -120,7 +126,10 @@ object RixRuntime {
                 tun2socks = tun2socks,
                 egressIp = "",
                 egressColo = "",
-                egressLoc = ""
+                egressLoc = "",
+                egressCountry = "",
+                egressCity = "",
+                egressIsp = ""
             )
         }
     }
@@ -137,20 +146,44 @@ object RixRuntime {
         transport: Transport? = null
     ) {
         update {
-            it.copy(
+            val proven = it.copy(
                 phase = Phase.RUNNING,
                 message = "",
                 error = null,
                 startedAt = System.currentTimeMillis(),
                 socksPort = port,
                 tun2socks = tun2socks,
-                egressIp = egress?.ip ?: it.egressIp,
-                egressColo = egress?.colo ?: it.egressColo,
-                egressLoc = egress?.loc ?: it.egressLoc,
                 activeTransport = transport?.label ?: it.activeTransport
             )
+            if (egress != null) proven.withEgress(egress) else proven
         }
     }
+
+    /**
+     * Re-reads where the traffic is coming out while the session runs.
+     *
+     * A tunnel's exit is not fixed for its lifetime: the core reconnects by
+     * itself after a network change, and Cloudflare can hand the new connection
+     * a different edge. The tile used to keep the address from the moment of
+     * connecting, which is exactly the number a user looks at to know where they
+     * appear to be -- so it is re-read on a slow timer, and the lookup that adds
+     * the city and the network is only used to enrich it.
+     */
+    suspend fun refreshEgress(port: Int) {
+        if (port <= 0) return
+        val base = TunnelProbe.probe(port, timeoutMs = 5_000) ?: return
+        val full = TunnelProbe.enrich(base, port)
+        update { if (it.phase == Phase.RUNNING) it.withEgress(full) else it }
+    }
+
+    private fun State.withEgress(e: TunnelProbe.Egress): State = copy(
+        egressIp = e.ip,
+        egressColo = e.colo ?: egressColo,
+        egressLoc = e.loc ?: egressLoc,
+        egressCountry = e.country ?: egressCountry,
+        egressCity = e.city ?: egressCity,
+        egressIsp = e.isp ?: egressIsp
+    )
 
     fun markStopping() = update { it.copy(phase = Phase.STOPPING, message = "") }
 

@@ -38,15 +38,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rix.vpn.data.LogBus
 
 @Composable
 fun LogScreen(
+    diagnostics: String,
     onBack: () -> Unit,
     onClear: () -> Unit
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val listState = rememberLazyListState()
 
@@ -68,32 +71,53 @@ fun LogScreen(
                 .padding(top = 28.dp, bottom = 16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButtonBox(Icons.Rounded.ArrowForward, "بازگشت", onBack)
+                IconButtonBox(
+                    Icons.Rounded.ArrowForward,
+                    s.s("بازگشت", "Back"),
+                    onBack
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("گزارش زنده", color = RixColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    Text("${lines.size} خط", color = RixColors.TextMuted, fontSize = 11.sp)
+                    Text(
+                        s.s("گزارش زنده", "Live log"),
+                        color = RixColors.Text,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        s.s("${lines.size} خط", "${lines.size} lines"),
+                        color = RixColors.TextMuted,
+                        fontSize = 11.sp
+                    )
                 }
-                IconButtonBox(Icons.Rounded.ContentCopy, "کپی") {
+                IconButtonBox(
+                    Icons.Rounded.ContentCopy,
+                    s.s("کپی", "Copy")
+                ) {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("RIX log", lines.joinToString("\n")))
                 }
                 Spacer(Modifier.width(8.dp))
-                IconButtonBox(Icons.Rounded.Delete, "پاک‌کردن", onClear)
+                IconButtonBox(
+                    Icons.Rounded.Delete,
+                    s.s("پاک‌کردن", "Clear"),
+                    onClear
+                )
             }
 
             Spacer(Modifier.padding(top = 14.dp))
 
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .weight(1f)
                     .clip(RoundedCornerShape(18.dp))
                     .background(RixColors.Surface.copy(alpha = 0.7f))
                     .border(1.dp, RixColors.Stroke, RoundedCornerShape(18.dp))
             ) {
                 if (lines.isEmpty()) {
                     Text(
-                        text = "هنوز خطی ثبت نشده",
+                        text = s.s("هنوز خطی ثبت نشده", "Nothing logged yet"),
                         color = RixColors.TextMuted,
                         fontSize = 12.5.sp,
                         modifier = Modifier.align(Alignment.Center)
@@ -124,6 +148,19 @@ fun LogScreen(
                         }
                     }
                 }
+            }
+
+            if (diagnostics.isNotBlank()) {
+                Spacer(Modifier.padding(top = 8.dp))
+                Text(
+                    text = diagnostics,
+                    color = RixColors.TextMuted.copy(alpha = 0.7f),
+                    fontSize = 9.5.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = androidx.compose.ui.text.TextStyle(textDirection = TextDirection.Ltr)
+                )
             }
         }
     }

@@ -18,6 +18,7 @@ import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
+import com.rix.vpn.data.l10n
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -48,7 +49,7 @@ class RixProxyService : LifecycleService() {
 
             ACTION_START -> {
                 val options = RixOptions.fromJson(intent.getStringExtra(EXTRA_OPTIONS))
-                startForegroundSafely(getString(R.string.notif_starting))
+                startForegroundSafely(l10n(R.string.notif_starting))
                 if (worker?.isActive == true) return START_NOT_STICKY
                 worker = lifecycleScope.launch { bringUp(options) }
                 return START_NOT_STICKY
@@ -59,7 +60,7 @@ class RixProxyService : LifecycleService() {
 
     private suspend fun bringUp(options: RixOptions) {
         try {
-            RixRuntime.markStarting(RixMode.PROXY, getString(R.string.state_starting))
+            RixRuntime.markStarting(RixMode.PROXY, l10n(R.string.state_starting))
 
             // Same chain as tunnel mode: proxy or not, the core still has to
             // reach Cloudflare, and a blocked transport fails identically.
@@ -86,7 +87,7 @@ class RixProxyService : LifecycleService() {
                         candidate.transport.label
                     )
                 )
-                startForegroundSafely(getString(R.string.notif_connecting))
+                startForegroundSafely(l10n(R.string.notif_connecting))
 
                 val listening = try {
                     RixRuntime.startCore(this, candidate)
@@ -110,7 +111,7 @@ class RixProxyService : LifecycleService() {
             val chosen = winner
             val verified = egress
             if (chosen == null || verified == null) {
-                throw IllegalStateException(getString(R.string.error_all_transports_failed))
+                throw IllegalStateException(l10n(R.string.error_all_transports_failed))
             }
 
             RixRuntime.rememberTransport(this, chosen.transport)
@@ -121,18 +122,23 @@ class RixProxyService : LifecycleService() {
                 egress = verified,
                 transport = chosen.transport
             )
-            startForegroundSafely(getString(R.string.notif_proxy_running, chosen.bindPort))
+            startForegroundSafely(l10n(R.string.notif_proxy_running, chosen.bindPort))
 
+            var ticks = 0
             while (lifecycleScope.isActive) {
                 delay(2000)
+                // Same 90 s re-read of the exit address as tunnel mode.
+                if (++ticks % 45 == 0) {
+                    lifecycleScope.launch { RixRuntime.refreshEgress(chosen.bindPort) }
+                }
                 val report = runCatching { RixRuntime.poll() }.getOrNull() ?: continue
                 if (report.failed || !report.running) {
-                    shutdown(preserveError = report.detail ?: getString(R.string.error_core_stopped))
+                    shutdown(preserveError = report.detail ?: l10n(R.string.error_core_stopped))
                     return
                 }
             }
         } catch (t: Throwable) {
-            shutdown(preserveError = t.message ?: getString(R.string.error_unknown))
+            shutdown(preserveError = t.message ?: l10n(R.string.error_unknown))
         }
     }
 
@@ -188,14 +194,14 @@ class RixProxyService : LifecycleService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, RixApp.CHANNEL_STATUS)
-            .setContentTitle(getString(R.string.app_name))
+            .setContentTitle(l10n(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_rix)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(open)
-            .addAction(0, getString(R.string.action_stop), stop)
+            .addAction(0, l10n(R.string.action_stop), stop)
             .build()
     }
 

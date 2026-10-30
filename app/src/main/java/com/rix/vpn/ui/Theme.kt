@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -168,18 +169,24 @@ private val RixTypography = Typography(
 )
 
 /**
- * Forces RTL because every label in this app is Persian.
+ * Applies the skin, the language and the direction they imply.
  *
- * The OS layout direction follows the device locale, so a phone set to English
- * would lay Persian text out left-to-right and every row would look wrong. Text
- * that must stay left-to-right (addresses, ports, logs) opts out locally with
- * `textDirection = TextDirection.Ltr`.
+ * The direction is pinned rather than left to the device locale: the screens are
+ * Persian by default and the phone may well be set to English, which would lay
+ * every Persian row out left-to-right. Picking a language now picks the
+ * direction with it, so English reads left-to-right and Persian right-to-left.
+ * Text that must stay left-to-right whatever the language -- addresses, ports,
+ * logs -- opts out locally with `textDirection = TextDirection.Ltr`.
  *
  * Status- and navigation-bar icon colours are flipped with the skin, otherwise
  * light mode would draw white clock glyphs on a white bar.
  */
 @Composable
-fun RixTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+fun RixTheme(
+    mode: ThemeMode = ThemeMode.SYSTEM,
+    en: Boolean = false,
+    content: @Composable () -> Unit
+) {
     val systemDark = isSystemInDarkTheme()
     val dark = when (mode) {
         ThemeMode.SYSTEM -> systemDark
@@ -199,9 +206,12 @@ fun RixTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit
         }
     }
 
+    val strings = remember(en) { Strings(en) }
+
     CompositionLocalProvider(
         LocalRixPalette provides palette,
-        LocalLayoutDirection provides LayoutDirection.Rtl
+        LocalStrings provides strings,
+        LocalLayoutDirection provides if (en) LayoutDirection.Ltr else LayoutDirection.Rtl
     ) {
         MaterialTheme(
             colorScheme = schemeFor(palette),

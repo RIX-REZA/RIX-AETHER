@@ -3,6 +3,7 @@ package com.rix.vpn.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,14 +23,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.CallSplit
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.RocketLaunch
-import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Wifi
@@ -62,29 +59,41 @@ import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.ScanMode
 import com.rix.vpn.core.SplitMode
 import com.rix.vpn.core.Transport
+import com.rix.vpn.data.LangPref
+import com.rix.vpn.data.ThemeMode
 import kotlinx.coroutines.delay
 
 /**
- * Settings.
+ * Settings, in four groups instead of nine.
  *
- * The previous version stacked nine cards of equal weight, so the screen opened
- * as a wall of controls with no hierarchy and the two or three settings that
- * actually get touched were lost in it. This version:
+ * The previous screen stacked a summary, five preset rows and six expandable
+ * cards: the common controls were spread across the full height of the phone
+ * and the screen had to be scrolled to reach any of them. This version keeps
+ * the same knobs, with the same defaults, but groups them so that the whole of
+ * the screen that matters fits on one page:
  *
- *  - opens with a summary of the current configuration, so the screen states
- *    what is configured before offering ways to change it;
- *  - offers four presets that set a coherent group of knobs at once;
- *  - folds the rarely-touched groups behind [ExpandableCard], leaving the
- *    transport group open;
- *  - can restore the defaults without hunting for each control.
+ *  1. appearance -- the two choices that change the app, not the tunnel;
+ *  2. presets     -- one row of chips, not five stacked cards;
+ *  3. connection  -- transport, scan and the two switches that affect both;
+ *  4. network     -- port, MTU, DNS, address family and split tunnelling;
+ *  5. behaviour   -- reconnect, keepalive, fragmentation, power and logs;
+ *  6. advanced    -- the text fields, folded away.
+ *
+ * Every hint was cut to the length of a line: they used to be paragraphs, and a
+ * paragraph under every switch is what made the list feel long.
  */
 @Composable
 fun OptionsScreen(
     options: RixOptions,
+    lang: LangPref,
+    theme: ThemeMode,
+    onLangChange: (LangPref) -> Unit,
+    onThemeChange: (ThemeMode) -> Unit,
     onOptionsChange: (RixOptions) -> Unit,
     onBack: () -> Unit,
     onPickApps: () -> Unit
 ) {
+    val s = LocalStrings.current
     var draft by remember(options) { mutableStateOf(options) }
 
     // Debounced autosave: chips and switches apply at once, typing does not
@@ -102,28 +111,32 @@ fun OptionsScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp)
-                .padding(top = 28.dp, bottom = 30.dp)
+                .padding(top = 26.dp, bottom = 30.dp)
         ) {
             // ---------------------------------------------------- header
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RoundIconButton(Icons.Rounded.ArrowForward, "بازگشت", onClick = onBack)
+                RoundIconButton(
+                    Icons.Rounded.ArrowForward,
+                    s.s("بازگشت", "Back"),
+                    onClick = onBack
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "تنظیمات",
+                        s.s("تنظیمات", "Settings"),
                         color = RixColors.Text,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "پیکربندی هستهٔ تونل",
+                        s.s("پیکربندی هسته", "Core configuration"),
                         color = RixColors.TextMuted,
                         fontSize = 11.sp
                     )
                 }
                 RoundIconButton(
                     Icons.Rounded.RestartAlt,
-                    "بازگشت به پیشفرض",
+                    s.s("بازگشت به پیش‌فرض", "Restore defaults"),
                     tint = RixColors.TextMuted
                 ) {
                     // The mode and the split list are choices about *this*
@@ -139,45 +152,70 @@ fun OptionsScreen(
 
             Spacer(Modifier.height(18.dp))
 
-            // --------------------------------------------------- summary
-            SummaryCard(draft)
+            // ------------------------------------------------ appearance
+            SettingCard {
+                SectionTitle(s.s("زبان", "Language"))
+                SegmentedRow(
+                    options = listOf(LangPref.FA.labelEn, LangPref.EN.labelEn),
+                    selectedIndex = if (lang == LangPref.FA) 0 else 1,
+                    onSelect = { index ->
+                        onLangChange(if (index == 0) LangPref.FA else LangPref.EN)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(14.dp))
+                SectionTitle(s.s("پوسته", "Theme"))
+                SegmentedRow(
+                    options = ThemeMode.entries.map {
+                        if (s.en) it.labelEn else it.label
+                    },
+                    selectedIndex = ThemeMode.entries.indexOf(theme),
+                    onSelect = { index -> onThemeChange(ThemeMode.entries[index]) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             Spacer(Modifier.height(14.dp))
 
             // --------------------------------------------------- presets
-            SectionTitle("پیکربندی آماده")
-            val presets = presets()
-            presets.forEach { preset ->
-                PresetRow(
-                    preset = preset,
-                    active = preset.matches(draft),
-                    onClick = { draft = preset.configure(draft) }
-                )
-                Spacer(Modifier.height(8.dp))
+            SectionTitle(s.s("پیکربندی آماده", "Presets"))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets().forEach { preset ->
+                    PresetChip(
+                        preset = preset,
+                        active = preset.matches(draft),
+                        onClick = { draft = preset.configure(draft) }
+                    )
+                }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // ----------------------------------------------- transport
+            // ------------------------------------------------ connection
             ExpandableCard(
-                title = "مسیر اتصال",
-                subtitle = "${draft.transport.label} • ${draft.scanMode.label}",
+                title = s.s("اتصال", "Connection"),
+                subtitle = "${draft.transport.label(s)} • ${draft.scanMode.label(s)}",
                 icon = Icons.Rounded.Route,
                 initiallyExpanded = true,
                 accent = RixColors.Violet
             ) {
-                SectionTitle("پروتکل (Transport)")
+                SectionTitle(s.s("پروتکل", "Protocol"))
                 ChipFlow {
                     Transport.entries.forEach { transport ->
                         RixChip(
-                            label = transport.label,
+                            label = transport.label(s),
                             selected = draft.transport == transport,
                             onClick = { draft = draft.copy(transport = transport) }
                         )
                     }
                 }
                 Text(
-                    text = draft.transport.desc,
+                    text = draft.transport.desc(s),
                     color = RixColors.TextMuted,
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
@@ -185,11 +223,11 @@ fun OptionsScreen(
                 )
 
                 Spacer(Modifier.height(16.dp))
-                SectionTitle("جستوجوی گیتوی (Scan)")
+                SectionTitle(s.s("جست‌وجوی گیت‌وی", "Gateway scan"))
                 ChipFlow {
                     ScanMode.entries.forEach { mode ->
                         RixChip(
-                            label = mode.label,
+                            label = mode.label(s),
                             selected = draft.scanMode == mode,
                             onClick = { draft = draft.copy(scanMode = mode) }
                         )
@@ -197,32 +235,38 @@ fun OptionsScreen(
                 }
 
                 SettingSwitch(
-                    title = "Ironclad",
-                    subtitle = "هر کاندید فقط پس از عبور ترافیک واقعی پذیرفته میشود",
+                    title = s.s("Ironclad", "Ironclad"),
+                    subtitle = s.s(
+                        "هر کاندید فقط با ترافیک واقعی پذیرفته می‌شود",
+                        "Accept a candidate only after real traffic"
+                    ),
                     checked = draft.ironclad,
                     onCheckedChange = { draft = draft.copy(ironclad = it) }
                 )
 
                 SettingSwitch(
-                    title = "چرخش خودکار پروتکل",
-                    subtitle = "اگر پروتکل انتخابی تونل را برقرار نکرد، MASQUE/HTTP-2 و بعد Gool و MASQUE در MASQUE امتحان می‌شوند",
+                    title = s.s("چرخش خودکار پروتکل", "Automatic fallback"),
+                    subtitle = s.s(
+                        "اگر پروتکل انتخابی وصل نشد، بقیه امتحان می‌شوند",
+                        "If the chosen protocol fails, the others are tried"
+                    ),
                     checked = draft.autoFallback,
                     onCheckedChange = { draft = draft.copy(autoFallback = it) }
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             // --------------------------------------------------- network
             ExpandableCard(
-                title = "شبکه",
-                subtitle = "پورت ${draft.bindPort} • MTU ${draft.mtu} • ${draft.ipFamily.label}",
+                title = s.s("شبکه", "Network"),
+                subtitle = "${s.s("پورت", "port")} ${draft.bindPort} • MTU ${draft.mtu} • ${draft.ipFamily.label(s)}",
                 icon = Icons.Rounded.Wifi,
                 accent = RixColors.Teal
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
-                        label = "پورت SOCKS5",
+                        label = s.s("پورت SOCKS5", "SOCKS5 port"),
                         value = draft.bindPort.toString(),
                         modifier = Modifier.weight(1f)
                     ) { text ->
@@ -244,49 +288,40 @@ fun OptionsScreen(
                 Spacer(Modifier.height(10.dp))
 
                 TextField(
-                    label = "DNS (با کاما جدا کن)",
+                    label = s.s("DNS (با کاما جدا کن)", "DNS (comma separated)"),
                     value = draft.dns,
                     hint = "1.1.1.1,1.0.0.1"
                 ) { draft = draft.copy(dns = it) }
 
                 Spacer(Modifier.height(14.dp))
-                SectionTitle("خانوادهٔ آدرس")
+                SectionTitle(s.s("خانوادهٔ آدرس", "Address family"))
                 ChipFlow {
                     IpFamily.entries.forEach { family ->
                         RixChip(
-                            label = family.label,
+                            label = family.label(s),
                             selected = draft.ipFamily == family,
                             onClick = { draft = draft.copy(ipFamily = family) }
                         )
                     }
                 }
-            }
 
-            Spacer(Modifier.height(12.dp))
-
-            // ----------------------------------------------- split tunnel
-            ExpandableCard(
-                title = "اسپلیت تانل",
-                subtitle = if (draft.splitMode == SplitMode.ALL) {
-                    "همهٔ برنامهها"
-                } else {
-                    "${draft.splitMode.label} • ${draft.splitApps.size} برنامه"
-                },
-                icon = Icons.Rounded.CallSplit,
-                accent = RixColors.Violet
-            ) {
+                Spacer(Modifier.height(16.dp))
+                SectionTitle(s.s("اسپلیت تانل", "Split tunnel"))
                 Text(
-                    "فقط در حالت «تونل کامل» اثر دارد؛ در حالت پروکسی هیچ بستهای گرفته نمیشود.",
+                    s.s(
+                        "فقط در «تونل کامل» اثر دارد.",
+                        "Only applies to the full tunnel."
+                    ),
                     color = RixColors.TextMuted,
                     fontSize = 11.sp,
                     lineHeight = 16.sp
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 ChipFlow {
                     SplitMode.entries.forEach { mode ->
                         RixChip(
-                            label = mode.label,
+                            label = mode.label(s),
                             selected = draft.splitMode == mode,
                             onClick = { draft = draft.copy(splitMode = mode) }
                         )
@@ -297,8 +332,11 @@ fun OptionsScreen(
 
                 if (draft.splitMode == SplitMode.ALL) {
                     SettingSwitch(
-                        title = "خود اپ از تونل مستثنی شود",
-                        subtitle = "لازم است؛ در غیر این صورت سوکتهای هسته داخل تونل گیر میکنند",
+                        title = s.s("خود اپ از تونل مستثنی شود", "Exclude RIX itself"),
+                        subtitle = s.s(
+                            "لازم است؛ در غیر این صورت سوکت‌های هسته در تونل گیر می‌کنند",
+                            "Required; otherwise the core's sockets loop back into the tunnel"
+                        ),
                         checked = draft.excludeSelf,
                         onCheckedChange = { draft = draft.copy(excludeSelf = it) }
                     )
@@ -321,35 +359,45 @@ fun OptionsScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = "انتخاب برنامهها",
+                            text = s.s("انتخاب برنامه‌ها", "Choose apps"),
                             color = RixColors.Text,
                             fontSize = 13.5.sp,
                             modifier = Modifier.weight(1f)
                         )
-                        MonoText("${draft.splitApps.size} انتخابشده", RixColors.TextMuted, 12)
+                        MonoText(
+                            s.s(
+                                "${draft.splitApps.size} انتخاب‌شده",
+                                "${draft.splitApps.size} selected"
+                            ),
+                            RixColors.TextMuted,
+                            12
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             // ------------------------------------------------- behaviour
             ExpandableCard(
-                title = "رفتار اتصال",
-                subtitle = "اتصال مجدد ${draft.reconnectSecs} ثانیه • Keepalive ${draft.keepalive}s",
-                icon = Icons.Rounded.Timer,
+                title = s.s("رفتار", "Behaviour"),
+                subtitle = s.s(
+                    "اتصال مجدد ${draft.reconnectSecs}ث • ${draft.perf.label(s)}",
+                    "reconnect ${draft.reconnectSecs}s • ${draft.perf.label(s)}"
+                ),
+                icon = Icons.Rounded.Speed,
                 accent = RixColors.Teal
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
-                        label = "تأخیر اتصال مجدد (ث)",
+                        label = s.s("تأخیر اتصال مجدد (ث)", "Reconnect delay (s)"),
                         value = draft.reconnectSecs.toString(),
                         modifier = Modifier.weight(1f)
                     ) { text ->
                         text.toIntOrNull()?.let { draft = draft.copy(reconnectSecs = it.coerceIn(0, 600)) }
                     }
                     NumberField(
-                        label = "Keepalive (ث)",
+                        label = s.s("Keepalive (ث)", "Keepalive (s)"),
                         value = draft.keepalive.toString(),
                         modifier = Modifier.weight(1f)
                     ) { text ->
@@ -358,15 +406,21 @@ fun OptionsScreen(
                 }
 
                 SettingSwitch(
-                    title = "اتصال مجدد سریع",
-                    subtitle = "استفاده از آخرین گیتوی کارآمد بدون اسکن تازه",
+                    title = s.s("اتصال مجدد سریع", "Fast reconnect"),
+                    subtitle = s.s(
+                        "بدون اسکن تازه، از گیت‌وی قبلی",
+                        "Reuse the last gateway, no fresh scan"
+                    ),
                     checked = draft.quickReconnect,
                     onCheckedChange = { draft = draft.copy(quickReconnect = it) }
                 )
 
                 SettingSwitch(
-                    title = "Fragment کردن ClientHello",
-                    subtitle = "عبور از DPI روی مسیر HTTP/2 و فراخوانیهای WARP",
+                    title = s.s("Fragment کردن ClientHello", "Fragment the ClientHello"),
+                    subtitle = s.s(
+                        "عبور از DPI روی HTTP/2 و WARP",
+                        "Gets past DPI on HTTP/2 and WARP"
+                    ),
                     checked = draft.fragment,
                     onCheckedChange = { draft = draft.copy(fragment = it) }
                 )
@@ -376,33 +430,24 @@ fun OptionsScreen(
                         TextField(
                             label = "fragment-size",
                             value = draft.fragmentSize,
-                            hint = "مثلاً 40 یا 20-60",
+                            hint = s.s("مثلاً 40", "e.g. 40"),
                             modifier = Modifier.weight(1f)
                         ) { draft = draft.copy(fragmentSize = it) }
                         TextField(
                             label = "fragment-delay",
                             value = draft.fragmentDelay,
-                            hint = "میلیثانیه",
+                            hint = s.s("میلی‌ثانیه", "milliseconds"),
                             modifier = Modifier.weight(1f)
                         ) { draft = draft.copy(fragmentDelay = it) }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(12.dp))
-
-            // ------------------------------------------------ resources
-            ExpandableCard(
-                title = "منابع و گزارش",
-                subtitle = "${draft.perf.label} • لاگ ${draft.logLevel.label}",
-                icon = Icons.Rounded.Speed,
-                accent = RixColors.Violet
-            ) {
-                SectionTitle("پروفایل منابع")
+                Spacer(Modifier.height(14.dp))
+                SectionTitle(s.s("پروفایل منابع", "Power profile"))
                 ChipFlow {
                     PerfProfile.entries.forEach { profile ->
                         RixChip(
-                            label = profile.label,
+                            label = profile.label(s),
                             selected = draft.perf == profile,
                             onClick = { draft = draft.copy(perf = profile) }
                         )
@@ -410,11 +455,11 @@ fun OptionsScreen(
                 }
 
                 Spacer(Modifier.height(14.dp))
-                SectionTitle("سطح لاگ")
+                SectionTitle(s.s("سطح لاگ", "Log level"))
                 ChipFlow {
                     LogLevel.entries.forEach { level ->
                         RixChip(
-                            label = level.label,
+                            label = level.label(s),
                             selected = draft.logLevel == level,
                             onClick = { draft = draft.copy(logLevel = level) }
                         )
@@ -422,24 +467,27 @@ fun OptionsScreen(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             // -------------------------------------------------- advanced
             ExpandableCard(
-                title = "پیشرفته",
-                subtitle = "گیتوی دستی، پروکسی بالادستی، ECH، مسیرها",
+                title = s.s("پیشرفته", "Advanced"),
+                subtitle = s.s(
+                    "گیت‌وی دستی، پروکسی بالادستی، ECH، مسیرها",
+                    "manual gateway, upstream, ECH, routes"
+                ),
                 icon = Icons.Rounded.Tune,
                 accent = RixColors.Warning
             ) {
                 TextField(
-                    label = "کشور خروجی (exit-loc)",
+                    label = s.s("کشور خروجی (exit-loc)", "Exit country (exit-loc)"),
                     value = draft.exitLoc,
-                    hint = "مثلاً DE یا IR"
+                    hint = s.s("مثلاً DE یا IR", "e.g. DE or IR")
                 ) { draft = draft.copy(exitLoc = it) }
 
                 Spacer(Modifier.height(10.dp))
                 TextField(
-                    label = "peer دستی (ip:port)",
+                    label = s.s("peer دستی (ip:port)", "Manual peer (ip:port)"),
                     value = draft.peer,
                     hint = "188.114.96.1:2408"
                 ) { draft = draft.copy(peer = it) }
@@ -448,53 +496,44 @@ fun OptionsScreen(
                 TextField(
                     label = "MASQUE SNI",
                     value = draft.masqueSni,
-                    hint = "خالی = پیشفرض هسته"
+                    hint = s.s("خالی = پیش‌فرض هسته", "empty = core default")
                 ) { draft = draft.copy(masqueSni = it) }
 
                 Spacer(Modifier.height(10.dp))
                 TextField(
-                    label = "پروکسی بالادستی (http-proxy)",
+                    label = s.s("پروکسی بالادستی", "Upstream proxy"),
                     value = draft.upstreamProxy,
-                    hint = "http://host:8080 یا socks5://127.0.0.1:1080"
+                    hint = "socks5://127.0.0.1:1080"
                 ) { draft = draft.copy(upstreamProxy = it) }
 
                 Spacer(Modifier.height(10.dp))
                 TextField(
-                    label = "ECH (auto یا base64)",
+                    label = s.s("ECH (auto یا base64)", "ECH (auto or base64)"),
                     value = draft.ech,
-                    hint = "خالی = خاموش"
+                    hint = s.s("خالی = خاموش", "empty = off")
                 ) { draft = draft.copy(ech = it) }
 
                 Spacer(Modifier.height(10.dp))
                 TextField(
                     label = "route-direct",
                     value = draft.routeDirect,
-                    hint = "دامنه/آدرسهایی که مستقیم بروند"
+                    hint = s.s("دامنه‌هایی که مستقیم بروند", "domains that go out directly")
                 ) { draft = draft.copy(routeDirect = it) }
 
                 Spacer(Modifier.height(10.dp))
                 TextField(
                     label = "route-block",
                     value = draft.routeBlock,
-                    hint = "دامنه/آدرسهایی که مسدود شوند"
+                    hint = s.s("دامنه‌هایی که مسدود شوند", "domains that are blocked")
                 ) { draft = draft.copy(routeBlock = it) }
-            }
 
-            Spacer(Modifier.height(12.dp))
-
-            // ----------------------------------------------------- extra
-            ExpandableCard(
-                title = "آرگومانهای دلخواه هسته",
-                subtitle = if (draft.extraArgs.isBlank()) {
-                    "خالی"
-                } else {
-                    "${draft.extraArgs.trim().split(Regex("\\s+")).size} فلگ"
-                },
-                icon = Icons.Rounded.Terminal,
-                accent = RixColors.TextMuted
-            ) {
+                Spacer(Modifier.height(14.dp))
+                SectionTitle(s.s("آرگومان‌های دلخواه هسته", "Extra core arguments"))
                 Text(
-                    "هر فلگ دیگری از هسته را اینجا بنویس؛ آخر اعمال میشود.",
+                    s.s(
+                        "هر فلگ دیگری از هسته را اینجا بنویس؛ آخر اعمال می‌شود.",
+                        "Any other flag the core accepts; applied last."
+                    ),
                     color = RixColors.TextMuted,
                     fontSize = 11.sp
                 )
@@ -525,7 +564,10 @@ fun OptionsScreen(
             Spacer(Modifier.height(18.dp))
 
             Text(
-                text = "تغییرات بهصورت خودکار ذخیره میشوند",
+                text = s.s(
+                    "تغییرات به‌صورت خودکار ذخیره می‌شوند",
+                    "Changes are saved automatically"
+                ),
                 color = RixColors.TextMuted.copy(alpha = 0.7f),
                 fontSize = 10.5.sp,
                 textAlign = TextAlign.Center,
@@ -546,8 +588,8 @@ fun OptionsScreen(
  * "selected preset" field that would go stale the moment a chip is touched.
  */
 private class Preset(
-    val label: String,
-    val hint: String,
+    val labelFa: String,
+    val labelEn: String,
     val icon: ImageVector,
     val accent: Color,
     val configure: (RixOptions) -> RixOptions,
@@ -557,8 +599,8 @@ private class Preset(
 @Composable
 private fun presets(): List<Preset> = listOf(
     Preset(
-        label = "پیشفرض",
-        hint = "MASQUE/HTTP-3 • اسکن پیشفرض",
+        labelFa = "پیش‌فرض",
+        labelEn = "Default",
         icon = Icons.Rounded.RestartAlt,
         accent = RixColors.TextMuted,
         configure = { o ->
@@ -569,8 +611,8 @@ private fun presets(): List<Preset> = listOf(
         }
     ),
     Preset(
-        label = "ایران (مقاوم)",
-        hint = "MASQUE/HTTP-2 روی TCP 443، با Fragment و اسکن کامل",
+        labelFa = "ایران",
+        labelEn = "Iran",
         icon = Icons.Rounded.Security,
         accent = RixColors.Warning,
         configure = { o ->
@@ -590,8 +632,8 @@ private fun presets(): List<Preset> = listOf(
         }
     ),
     Preset(
-        label = "سریعترین",
-        hint = "MASQUE/HTTP-3 با اسکن Turbo و پروفایل پرقدرت",
+        labelFa = "سریع",
+        labelEn = "Fast",
         icon = Icons.Rounded.RocketLaunch,
         accent = RixColors.Teal,
         configure = { o ->
@@ -613,8 +655,8 @@ private fun presets(): List<Preset> = listOf(
         }
     ),
     Preset(
-        label = "ضد DPI",
-        hint = "MASQUE در MASQUE، اسکن کامل و Fragment",
+        labelFa = "ضد DPI",
+        labelEn = "Anti-DPI",
         icon = Icons.Rounded.VerifiedUser,
         accent = RixColors.Violet,
         configure = { o ->
@@ -631,8 +673,8 @@ private fun presets(): List<Preset> = listOf(
         matches = { o -> o.transport == Transport.MIM && o.fragment }
     ),
     Preset(
-        label = "کممصرف",
-        hint = "WireGuard، پروفایل کممصرف و Keepalive بلند",
+        labelFa = "کم‌مصرف",
+        labelEn = "Low power",
         icon = Icons.Rounded.Bolt,
         accent = RixColors.Warning,
         configure = { o ->
@@ -651,125 +693,67 @@ private fun presets(): List<Preset> = listOf(
     )
 )
 
+/**
+ * One preset as a chip.
+ *
+ * Five stacked rows became five chips on a single scrolling line: the whole
+ * point of a preset is a one-tap choice, and a row that carries a title, a
+ * two-line hint and a badge spends a quarter of the screen saying what the
+ * title already said.
+ */
 @Composable
-private fun PresetRow(preset: Preset, active: Boolean, onClick: () -> Unit) {
+private fun PresetChip(preset: Preset, active: Boolean, onClick: () -> Unit) {
+    val s = LocalStrings.current
     val accent = preset.accent
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(
-                if (active) accent.copy(alpha = if (RixColors.isDark) 0.14f else 0.09f)
-                else RixColors.Surface.copy(alpha = 0.7f)
+                if (active) accent.copy(alpha = if (RixColors.isDark) 0.16f else 0.10f)
+                else RixColors.Surface.copy(alpha = 0.75f)
             )
             .border(
                 1.dp,
                 if (active) accent.copy(alpha = 0.7f) else RixColors.Stroke,
-                RoundedCornerShape(16.dp)
+                RoundedCornerShape(14.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(accent.copy(alpha = if (RixColors.isDark) 0.16f else 0.11f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(preset.icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(11.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                preset.label,
-                color = RixColors.Text,
-                fontSize = 13.5.sp,
-                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(preset.hint, color = RixColors.TextMuted, fontSize = 10.5.sp)
-        }
-        if (active) {
-            Spacer(Modifier.width(8.dp))
-            RixBadge("فعال", accent)
-        }
-    }
-}
-
-// ------------------------------------------------------------------ summary
-
-/** What is configured right now, before any of the controls below. */
-@Composable
-private fun SummaryCard(opts: RixOptions) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(
-                        RixColors.SurfaceHigh.copy(alpha = 0.92f),
-                        RixColors.Surface.copy(alpha = 0.86f)
-                    )
-                )
-            )
-            .border(1.dp, RixColors.Stroke.copy(alpha = 0.75f), RoundedCornerShape(22.dp))
-            .padding(16.dp)
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    opts.transport.label,
-                    color = RixColors.Text,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                opts.transport.badge?.let { RixBadge(it, RixColors.Violet) }
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                opts.transport.desc,
-                color = RixColors.TextMuted,
-                fontSize = 10.5.sp,
-                lineHeight = 15.sp
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MiniStat("پورت", opts.bindPort.toString(), Modifier.weight(1f))
-                MiniStat("MTU", opts.mtu.toString(), Modifier.weight(1f))
-                MiniStat("اسکن", opts.scanMode.label, Modifier.weight(1.4f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(RixColors.Surface.copy(alpha = 0.8f))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Text(label, color = RixColors.TextMuted, fontSize = 9.5.sp)
-        Spacer(Modifier.height(3.dp))
+        Icon(
+            preset.icon,
+            contentDescription = null,
+            tint = if (active) accent else RixColors.TextMuted,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(7.dp))
         Text(
-            value,
-            color = RixColors.Text,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            style = androidx.compose.ui.text.TextStyle(textDirection = TextDirection.Ltr)
+            text = s.s(preset.labelFa, preset.labelEn),
+            color = if (active) RixColors.Text else RixColors.TextMuted,
+            fontSize = 12.5.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
         )
     }
 }
 
-// ------------------------------------------------------------------ helpers
+// ------------------------------------------------------------------ pieces
+
+/** A plain card, for the group that is not collapsible. */
+@Composable
+private fun SettingCard(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(RixColors.Surface.copy(alpha = 0.8f))
+            .border(1.dp, RixColors.Stroke.copy(alpha = 0.75f), RoundedCornerShape(22.dp))
+            .padding(16.dp)
+    ) {
+        content()
+    }
+}
 
 @Composable
 private fun RoundIconButton(

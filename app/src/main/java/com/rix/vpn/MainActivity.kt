@@ -13,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,15 +29,18 @@ import com.rix.vpn.core.NativeBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
+import com.rix.vpn.data.LangPref
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.Prefs
 import com.rix.vpn.data.ThemeMode
+import com.rix.vpn.data.UiLanguage
 import com.rix.vpn.data.UiPrefs
 import com.rix.vpn.service.RixProxyService
 import com.rix.vpn.service.RixServices
 import com.rix.vpn.service.RixVpnService
 import com.rix.vpn.ui.AppPickerDialog
 import com.rix.vpn.ui.HomeScreen
+import com.rix.vpn.ui.LocalStrings
 import com.rix.vpn.ui.LogScreen
 import com.rix.vpn.ui.OptionsScreen
 import com.rix.vpn.ui.RixTheme
@@ -47,16 +51,42 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // The theme lives outside RixOptions: it is a UI preference, not a
-            // core argument, so it is stored in its own DataStore and read here.
+            // The theme and the language live outside RixOptions: they are UI
+            // preferences, not core arguments, so they are stored in their own
+            // DataStore and read here.
             val uiPrefs = remember { UiPrefs(applicationContext) }
             val scope = rememberCoroutineScope()
             val themeMode by uiPrefs.theme.collectAsState(initial = ThemeMode.SYSTEM)
+            val lang by uiPrefs.lang.collectAsState(initial = LangPref.FA)
 
-            RixTheme(mode = themeMode) {
+            // The skin actually being drawn, which is what the header button
+            // has to show: on «خودکار» that is the system's answer, not the
+            // setting itself.
+            // The services build their notifications off the composition, so
+            // they are told the same choice from here.
+            LaunchedEffect(lang) {
+                UiLanguage.en = lang == LangPref.EN
+                RixApp.instance.refreshChannels()
+            }
+
+            val dark = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            RixTheme(mode = themeMode, en = lang == LangPref.EN) {
                 RixRoot(
-                    themeMode = themeMode,
-                    onCycleTheme = { scope.launch { uiPrefs.saveTheme(themeMode.next()) } }
+                    lang = lang,
+                    theme = themeMode,
+                    dark = dark,
+                    onToggleTheme = {
+                        scope.launch {
+                            uiPrefs.saveTheme(if (dark) ThemeMode.LIGHT else ThemeMode.DARK)
+                        }
+                    },
+                    onLangChange = { next -> scope.launch { uiPrefs.saveLang(next) } },
+                    onThemeChange = { next -> scope.launch { uiPrefs.saveTheme(next) } }
                 )
             }
         }
@@ -76,14 +106,22 @@ private enum class Screen { HOME, OPTIONS, LOGS }
 private const val STOP_GIVE_UP_MS = 12_000L
 
 @Composable
-private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
+private fun RixRoot(
+    lang: LangPref,
+    theme: ThemeMode,
+    dark: Boolean,
+    onToggleTheme: () -> Unit,
+    onLangChange: (LangPref) -> Unit,
+    onThemeChange: (ThemeMode) -> Unit
+) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     val scope = rememberCoroutineScope()
     val prefs = remember { Prefs(context.applicationContext) }
 
     var screen by remember { mutableStateOf(Screen.HOME) }
     var options by remember { mutableStateOf(RixOptions()) }
-    var diagnostics by remember { mutableStateOf("در حال بررسی کتابخانه‌های بومی…") }
+    var diagnostics by remember { mutableStateOf("") }
     var showPicker by remember { mutableStateOf(false) }
 
     val runtimeState by RixRuntime.state.collectAsState()
@@ -93,7 +131,9 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
         options = prefs.read()
     }
 
-    // Probe the native libraries once, off the composition thread.
+    // Probe the native libraries once, off the composition thread. The result
+    // is shown on the log screen: it is a troubleshooting line, not something
+    // to put under the orb.
     LaunchedEffect(Unit) {
         diagnostics = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             NativeBridge.diagnostics()
@@ -120,6 +160,7 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
     // re-runs the whole screen whenever the runtime ticks once a second.
     val latestOptions = rememberUpdatedState(options)
     val latestPhase = rememberUpdatedState(runtimeState.phase)
+    val latestStrings = rememberUpdatedState(s)
 
     // Belt and braces for the one failure the user can see but not fix from
     // inside the app: a session the UI considers over while a service still
@@ -168,7 +209,12 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
             }.onFailure { error ->
                 // Nothing was started, so the optimistic phase must be undone
                 // or the screen would sit in «آماده‌سازی» forever.
-                RixRuntime.markError(error.message ?: "شروع سرویس ناموفق بود")
+                RixRuntime.markError(
+                    error.message ?: latestStrings.value.s(
+                        "شروع سرویس ناموفق بود",
+                        "Could not start the service"
+                    )
+                )
             }
         }
     }
@@ -180,7 +226,11 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
         if (result.resultCode == Activity.RESULT_OK) {
             startTunnel()
         } else {
-            Toast.makeText(context, "اجازهٔ VPN داده نشد", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                s.s("اجازهٔ VPN داده نشد", "VPN permission was not granted"),
+                Toast.LENGTH_LONG
+            ).show()
             LogBus.e("vpn", "permission denied by the user")
         }
     }
@@ -245,9 +295,8 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
         Screen.HOME -> HomeScreen(
             options = options,
             state = runtimeState,
-            diagnostics = diagnostics,
-            theme = themeMode,
-            onCycleTheme = onCycleTheme,
+            dark = dark,
+            onToggleTheme = onToggleTheme,
             onModeChange = onModeChange,
             onToggle = onToggle,
             onOpenOptions = onOpenOptions,
@@ -258,6 +307,10 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
             BackHandler(onBack = onBackHome)
             OptionsScreen(
                 options = options,
+                lang = lang,
+                theme = theme,
+                onLangChange = onLangChange,
+                onThemeChange = onThemeChange,
                 onOptionsChange = onOptionsChange,
                 onBack = onBackHome,
                 onPickApps = { showPicker = true }
@@ -267,6 +320,7 @@ private fun RixRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
         Screen.LOGS -> {
             BackHandler(onBack = onBackHome)
             LogScreen(
+                diagnostics = diagnostics,
                 onBack = onBackHome,
                 onClear = { LogBus.clear() }
             )

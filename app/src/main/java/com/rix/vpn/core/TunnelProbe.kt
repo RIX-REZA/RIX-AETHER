@@ -31,11 +31,31 @@ object TunnelProbe {
         val ip: String,
         val colo: String? = null,
         val loc: String? = null,
-        val warp: String? = null
+        val warp: String? = null,
+        val country: String? = null,
+        val city: String? = null,
+        val isp: String? = null
     )
 
-    private const val TRACE_HOST = "cloudflare.com"
-    private const val TRACE_PATH = "/cdn-cgi/trace"
+    /**
+     * The same endpoint under three names.
+     *
+     * `cloudflare.com` is answered by whichever edge is nearest, so on a
+     * network where DNS for that name is poisoned or the name itself is
+     * filtered the probe would fail even though the tunnel is fine. The zone
+     * serves the same trace under `www.`, and 1.1.1.1 answers it directly, so
+     * the address is tried by name first and by literal last.
+     */
+    private val TRACE_ENDPOINTS = listOf(
+        "cloudflare.com" to "/cdn-cgi/trace",
+        "www.cloudflare.com" to "/cdn-cgi/trace",
+        "1.1.1.1" to "/cdn-cgi/trace"
+    )
+
+    /** Answers with the address, city, ISP and country the far end sees. */
+    private const val GEO_HOST = "ip-api.com"
+    private const val GEO_PATH = "/json/?fields=status,country,countryCode,city,isp,query"
+
     private const val MAX_BODY = 16 * 1024
 
     /**
@@ -44,16 +64,52 @@ object TunnelProbe {
      * the caller retries rather than guessing which.
      */
     suspend fun probe(port: Int, timeoutMs: Int = 6000): Egress? = withContext(Dispatchers.IO) {
+        for ((host, path) in TRACE_ENDPOINTS) {
+            val body = httpGet(port, host, path, timeoutMs) ?: continue
+            parseTrace(body)?.let { return@withContext it }
+        }
+        null
+    }
+
+    /**
+     * Adds the geography a country/city lookup knows, without ever replacing the
+     * address the tunnel itself reported.
+     *
+     * The trace gives an IP and the edge that answered it; it does not say where
+     * that IP is registered. The lookup answers that, but it is a second request
+     * through the same tunnel and can be blocked on its own, so a failure here
+     * only means the tile keeps showing what the trace already said.
+     *
+     * The answer is only used when the lookup saw the *same* address: behind a
+     * rotating exit, or when the second request took another path, a different
+     * address would make the tile name a country the user is not in.
+     */
+    suspend fun enrich(base: Egress, port: Int, timeoutMs: Int = 5_000): Egress =
+        withContext(Dispatchers.IO) {
+            val body = httpGet(port, GEO_HOST, GEO_PATH, timeoutMs) ?: return@withContext base
+            val geo = parseGeo(body) ?: return@withContext base
+            if (geo.ip.isNotBlank() && geo.ip != base.ip) {
+                return@withContext base
+            }
+            base.copy(
+                country = geo.country ?: base.country,
+                city = geo.city ?: base.city,
+                isp = geo.isp ?: base.isp
+            )
+        }
+
+    /** Opens [host]:[port] through the core's SOCKS5 endpoint and GETs [path]. */
+    private fun httpGet(socksPort: Int, host: String, path: String, timeoutMs: Int): String? {
         val socket = Socket()
-        try {
+        return try {
             socket.soTimeout = timeoutMs
             socket.tcpNoDelay = true
-            socket.connect(InetSocketAddress("127.0.0.1", port), timeoutMs)
-            socks5Connect(socket, TRACE_HOST, 80)
+            socket.connect(InetSocketAddress("127.0.0.1", socksPort), timeoutMs)
+            socks5Connect(socket, host, 80)
 
             val request = buildString {
-                append("GET ").append(TRACE_PATH).append(" HTTP/1.0\r\n")
-                append("Host: ").append(TRACE_HOST).append("\r\n")
+                append("GET ").append(path).append(" HTTP/1.0\r\n")
+                append("Host: ").append(host).append("\r\n")
                 append("User-Agent: rix\r\n")
                 append("Accept: */*\r\n")
                 append("Connection: close\r\n\r\n")
@@ -63,7 +119,7 @@ object TunnelProbe {
                 flush()
             }
 
-            parseTrace(readAll(socket.getInputStream()))
+            readAll(socket.getInputStream())
         } catch (t: Throwable) {
             null
         } finally {
@@ -132,7 +188,10 @@ object TunnelProbe {
             }
             if (n < 0) break
             buffer.append(String(chunk, 0, n, Charsets.UTF_8))
-            if (buffer.contains("\nwarp=")) break
+            // The trace ends at warp=, so the body is complete once it is there.
+            // The JSON lookup has no such marker -- stopping at its first field
+            // would truncate the city and the ISP that come after it.
+            if (buffer.contains("\nwarp=") && !buffer.contains("{")) break
         }
         return buffer.toString()
     }
@@ -160,5 +219,33 @@ object TunnelProbe {
             loc = fields["loc"]?.takeIf { it.isNotBlank() },
             warp = fields["warp"]?.takeIf { it.isNotBlank() }
         )
+    }
+
+    /** The small JSON ip-api answers with, read without a JSON dependency. */
+    private fun parseGeo(response: String): Egress? {
+        val status = response.lineSequence().firstOrNull()?.trim() ?: return null
+        if (!status.startsWith("HTTP/") || !status.contains(" 200")) return null
+
+        val json = response.substringAfter("\r\n\r\n", "")
+            .ifBlank { response.substringAfter("\n\n", "") }
+            .trim()
+        if (json.isEmpty() || !json.contains("\"status\":\"success\"")) return null
+
+        return Egress(
+            ip = jsonField(json, "query").orEmpty(),
+            country = jsonField(json, "country")?.takeIf { it.isNotBlank() },
+            city = jsonField(json, "city")?.takeIf { it.isNotBlank() },
+            isp = jsonField(json, "isp")?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun jsonField(json: String, name: String): String? {
+        val key = "\"$name\":\""
+        val start = json.indexOf(key)
+        if (start < 0) return null
+        val from = start + key.length
+        val end = json.indexOf('"', from)
+        if (end < 0) return null
+        return json.substring(from, end)
     }
 }

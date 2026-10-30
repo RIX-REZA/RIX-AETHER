@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.rix.vpn.data.LogBus
+import com.rix.vpn.data.l10n
 
 class RixApp : Application() {
 
@@ -15,6 +16,9 @@ class RixApp : Application() {
         LogBus.i("RIX", "app started (${Build.MANUFACTURER} ${Build.MODEL}, API ${Build.VERSION.SDK_INT})")
     }
 
+    /** Re-run when the language changes: the channel's name is user-visible. */
+    fun refreshChannels() = createChannels()
+
     private fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
@@ -22,10 +26,10 @@ class RixApp : Application() {
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_STATUS,
-                getString(R.string.channel_status),
+                l10n(R.string.channel_status),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = getString(R.string.channel_status_desc)
+                description = l10n(R.string.channel_status_desc)
                 setShowBadge(false)
             }
         )

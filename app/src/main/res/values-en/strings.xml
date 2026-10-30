@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RIX</string>
+
+    <string name="channel_status">Connection status</string>
+    <string name="channel_status_desc">Ongoing notification while the tunnel or proxy is active</string>
+
+    <string name="notif_starting">Preparing…</string>
+    <string name="notif_running">Connected — SOCKS5 on port %1$d</string>
+    <string name="notif_proxy_running">Proxy active — port %1$d</string>
+    <string name="notif_error">The connection was closed</string>
+
+    <string name="action_stop">Disconnect</string>
+
+    <string name="state_starting">Connecting…</string>
+
+    <string name="error_no_tun">Could not create the network interface (TUN)</string>
+    <string name="error_socks_timeout">The core did not open its proxy in time</string>
+    <string name="error_engine_stopped">The tun2socks engine stopped</string>
+    <string name="error_core_stopped">The connection core closed</string>
+    <string name="error_unknown">Unknown error</string>
+    <string name="notif_connecting">Establishing the tunnel…</string>
+    <string name="state_verifying">Testing the tunnel with real traffic…</string>
+    <string name="state_verifying_attempt">Testing the tunnel… attempt %1$d</string>
+    <string name="error_tunnel_unverified">No tunnel: traffic did not come back through the core</string>
+    <string name="state_trying_transport">Attempt %1$d of %2$d: %3$s</string>
+    <string name="error_all_transports_failed">No protocol established a tunnel; see the log</string>
+</resources>
