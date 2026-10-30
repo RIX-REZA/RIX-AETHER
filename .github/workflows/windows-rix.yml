@@ -105,13 +105,19 @@ jobs:
           # The interface has to be inside the exe. If the embedded resources
           # ever stop being embedded, the app starts and shows a blank window,
           # which is the kind of bug that only shows up on a user's machine.
-          $names = [Reflection.Assembly]::LoadFile((Resolve-Path $exe)).GetManifestResourceNames()
-          foreach ($wanted in @("ui/index.html", "ui/app.css", "ui/app.js")) {
-            if ($names -notcontains $wanted) {
-              throw "the interface is not embedded: $wanted not in [$($names -join ', ')]"
-            }
+          #
+          # The check runs the published binary itself, rather than loading the
+          # exe into this PowerShell process: a single-file exe is a native host
+          # with the assembly packed inside, so LoadFile() would look at the
+          # wrong thing (or refuse the file outright). --selfcheck exits before
+          # any window or WebView2 use.
+          $p = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList "--selfcheck" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $report = "windows/publish/selfcheck.txt"
+            if (Test-Path $report) { Get-Content $report | Write-Host }
+            throw "the published app does not carry its interface (selfcheck exit $($p.ExitCode))"
           }
-          Write-Host "interface embedded: $($names -join ', ')"
+          Write-Host "interface embedded: selfcheck passed"
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y

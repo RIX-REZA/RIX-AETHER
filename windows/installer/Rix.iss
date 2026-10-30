@@ -47,7 +47,11 @@ RestartApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "farsi"; MessagesFile: "compiler:Languages\Farsi.isl"
+; Vendored in this folder rather than taken from the compiler: Inno Setup ships
+; about thirty official translations and Farsi is not one of them, so
+; "compiler:Languages\Farsi.isl" would simply fail to compile. This copy is the
+; community translation from jrsoftware/issrc, kept unedited apart from the BOM.
+Name: "farsi"; MessagesFile: "Farsi.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked

@@ -7,6 +7,14 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // Before the mutex and before any window: --selfcheck answers the one
+        // question the build has to be certain of, and it must answer it even
+        // on a machine where RIX is already running.
+        if (args.Any(a => a.Equals("--selfcheck", StringComparison.OrdinalIgnoreCase)))
+        {
+            Environment.Exit(SelfCheck.Run());
+        }
+
         // One RIX per machine: two copies would fight over the same ports and
         // the same registry value, and the second would lose in a way that looks
         // like the app is broken.

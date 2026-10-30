@@ -341,10 +341,9 @@ public sealed class MainForm : Form
         }
         catch (InvalidOperationException)
         {
-            // The window went away mid-post; nothing to send to.
-        }
-        catch (ObjectDisposedException)
-        {
+            // The window went away mid-post; nothing to send to. This also
+            // covers ObjectDisposedException, which is a kind of it — a second
+            // clause for that would be unreachable.
         }
     }
 
