@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>RIX</AssemblyName>
+    <RootNamespace>Rix.Windows</RootNamespace>
+    <ApplicationIcon>Assets\rix.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Off on purpose: every nullable annotation would be noise in interop
+         code where a null handle is the normal "not there" answer. -->
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+
+    <!-- A single self-contained exe: the machine needs no .NET install and no
+         runtime download, which is what makes the install "fast and without
+         bugs" on a fresh Windows box. Trimming is off because WinForms uses
+         reflection heavily and a trimmed build fails at run time, not at build
+         time. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The UI is the WebView2 host: HTML/CSS/JS for the screens, C# for the
+         core, the process and the system proxy. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The screens travel inside the exe rather than beside it. A published
+         single file whose interface is a folder next to it is one missing
+         directory away from a blank window, and "it installed but shows
+         nothing" is the worst failure an installer can have. Served from
+         memory, the only file the app needs is itself. -->
+    <EmbeddedResource Include="ui\**\*" LogicalName="ui/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

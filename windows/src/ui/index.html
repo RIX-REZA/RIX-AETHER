@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark light">
+<title>RIX</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="tb-drag" id="drag">
+    <span class="brand"><span class="logo"></span>RIX<span class="ver" id="ver"></span></span>
+  </div>
+  <div class="tb-actions">
+    <button class="icon-btn" id="langBtn" title="زبان / Language">EN</button>
+    <button class="icon-btn" id="themeBtn" title="پوسته / Theme">◐</button>
+    <span class="sep"></span>
+    <button class="win-btn" id="minBtn" title="کوچک">–</button>
+    <button class="win-btn" id="maxBtn" title="بزرگ">▢</button>
+    <button class="win-btn danger" id="closeBtn" title="بستن">✕</button>
+  </div>
+</header>
+
+<main>
+  <nav class="rail" id="rail"></nav>
+
+  <div class="views">
+
+    <!-- ------------------------------------------------------------ home -->
+    <section class="view on" id="view-home">
+      <div class="home">
+        <div class="orb-wrap">
+          <button class="orb" id="orb">
+            <span class="orb-core">
+              <b id="orbTitle">اتصال</b>
+              <span id="orbSub">آماده</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span class="k" id="kDown">دانلود</span><b class="down" id="vDown">0 B</b></div>
+          <div class="stat"><span class="k" id="kUp">آپلود</span><b class="up" id="vUp">0 B</b></div>
+          <div class="stat"><span class="k" id="kTime">زمان اتصال</span><b id="vTime">00:00:00</b></div>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <div class="row">
+              <span class="label" id="kExit">آی‌پی خروجی</span>
+              <button class="ghost" id="probeBtn">بررسی</button>
+            </div>
+            <div class="ip" id="vExit">—</div>
+            <div class="meta" id="mExit"></div>
+          </div>
+
+          <div class="card">
+            <div class="row"><span class="label" id="kYou">اتصال شما</span></div>
+            <div class="ip small" id="vLocal">—</div>
+            <div class="meta" id="mLocal"></div>
+          </div>
+
+          <div class="card">
+            <div class="row"><span class="label" id="kProto">پروتکل</span></div>
+            <div class="transport" id="vProto">—</div>
+            <div class="meta" id="mProto"></div>
+          </div>
+        </div>
+
+        <div class="bar hidden" id="bar"></div>
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------- settings -->
+    <section class="view" id="view-settings">
+      <div id="groups"></div>
+    </section>
+
+    <!-- ------------------------------------------------------------- log -->
+    <section class="view" id="view-log">
+      <div class="logbar">
+        <button class="ghost" id="logCopy">کپی</button>
+        <button class="ghost" id="logClear">پاک کردن</button>
+        <button class="ghost" id="logFolder">پوشه</button>
+      </div>
+      <pre class="logbox" id="logBox"></pre>
+    </section>
+
+    <!-- ----------------------------------------------------------- about -->
+    <section class="view" id="view-about">
+      <div class="about" id="about"></div>
+    </section>
+
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

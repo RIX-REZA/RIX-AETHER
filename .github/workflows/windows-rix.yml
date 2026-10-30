@@ -1,0 +1,168 @@
+name: RIX Windows build
+
+# The Windows app: a .NET 8 WinForms shell around a WebView2 page, with the
+# Aether core beside it. Everything ships in one installer.
+#
+# The core is not built here -- it is a release asset of CluvexStudio/Aether,
+# downloaded and checked against a pinned SHA-256 before it is allowed anywhere
+# near the installer. Two reasons: the tunnel implementation is not ours to
+# rebuild, and a release that changes under the same tag is exactly the thing a
+# hash check catches.
+#
+# The installer is only produced from a green build, and the app is checked for
+# the one failure that would look like "it installed but shows nothing": the
+# embedded interface actually being inside the exe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Attach the installer to this release tag (leave empty to only build)"
+        required: false
+        default: ""
+  push:
+    branches: ["main"]
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-rix.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+
+permissions:
+  contents: write
+
+env:
+  AETHER_TAG: v2.4.0
+  AETHER_ZIP: aether-windows-x86_64.zip
+  AETHER_SHA256: "21b1444628d37121e873878e2eddd7932215418af1a2a12470caee5809026f1a"
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  windows:
+    name: build installer
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build
+        # Self-contained and single file: the machine needs no .NET install and
+        # no runtime download, which is most of what "the install just works"
+        # means. Trimming stays off because WinForms uses reflection.
+        run: >
+          dotnet publish windows/src/Rix.Windows.csproj
+          -c Release
+          -o windows/publish
+          --nologo
+
+      - name: Fetch the Aether core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/CluvexStudio/Aether/releases/download/$env:AETHER_TAG/$env:AETHER_ZIP"
+          Write-Host "downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile aether.zip
+
+          $actual = (Get-FileHash aether.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256 $actual"
+          if ($actual -ne $env:AETHER_SHA256) {
+            throw "the core archive does not match the pinned hash: $actual"
+          }
+
+          Expand-Archive aether.zip -DestinationPath core-tmp -Force
+
+          New-Item -ItemType Directory -Force windows/publish/core/pt | Out-Null
+          Copy-Item core-tmp/aether.exe windows/publish/core/ -Force
+          Copy-Item core-tmp/pt/* windows/publish/core/pt/ -Force -Recurse
+          Copy-Item core-tmp/LICENSES windows/publish/core/LICENSES -Recurse -Force
+
+      - name: Check what was built
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = "windows/publish/RIX.exe"
+          if (-not (Test-Path $exe)) { throw "the app was not produced" }
+          Write-Host ("RIX.exe {0:N1} MB" -f ((Get-Item $exe).Length / 1MB))
+
+          foreach ($file in @(
+            "windows/publish/core/aether.exe",
+            "windows/publish/core/pt/psiphon-tunnel-core.exe",
+            "windows/publish/core/pt/lyrebird.exe")) {
+            if (-not (Test-Path $file)) { throw "$file is missing" }
+          }
+
+          # The interface has to be inside the exe. If the embedded resources
+          # ever stop being embedded, the app starts and shows a blank window,
+          # which is the kind of bug that only shows up on a user's machine.
+          $names = [Reflection.Assembly]::LoadFile((Resolve-Path $exe)).GetManifestResourceNames()
+          foreach ($wanted in @("ui/index.html", "ui/app.css", "ui/app.js")) {
+            if ($names -notcontains $wanted) {
+              throw "the interface is not embedded: $wanted not in [$($names -join ', ')]"
+            }
+          }
+          Write-Host "interface embedded: $($names -join ', ')"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "windows\installer\Rix.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+
+          Get-ChildItem windows/dist | Format-Table Name, Length
+
+      - name: Package a portable copy
+        # The installer is the way in; this is for anyone who wants to unzip and
+        # run, and for checking the app without installing anything.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = "windows/dist/RIX-portable"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item windows/publish/RIX.exe $stage/
+          Copy-Item windows/publish/core $stage/core -Recurse
+          Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/RIX-Portable.zip" -Force
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-windows
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            windows/dist/RIX-Setup-*.exe
+            windows/dist/RIX-Portable.zip
+
+      - name: Attach to the release
+        if: ${{ inputs.release_tag != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --repo $env:GITHUB_REPOSITORY --title "RIX $env:TAG" --notes "RIX $env:TAG"
+          }
+
+          Get-ChildItem windows/dist/RIX-Setup-*.exe, windows/dist/RIX-Portable.zip | ForEach-Object {
+            gh release upload $env:TAG $_.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          }
