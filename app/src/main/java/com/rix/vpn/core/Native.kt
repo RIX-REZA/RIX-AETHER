@@ -110,6 +110,14 @@ object NativeHev {
 
     fun stop() = nativeStop()
 
-    /** [txPackets, txBytes, rxPackets, rxBytes] — zeros when not running. */
-    fun stats(): LongArray = nativeStats() ?: longArrayOf(0, 0, 0, 0)
+    /**
+     * [txPackets, txBytes, rxPackets, rxBytes], or null when the engine has no
+     * counters to give.
+     *
+     * The null case used to be flattened into four zeros here, which made "the
+     * engine is not running and cannot be asked" indistinguishable from "the
+     * tunnel moved nothing" all the way up to the UI. Callers decide what to
+     * show; this layer reports what it knows.
+     */
+    fun stats(): LongArray? = nativeStats()
 }

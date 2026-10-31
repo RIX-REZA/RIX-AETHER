@@ -63,6 +63,9 @@ class RixProxyService : LifecycleService() {
 
     private suspend fun bringUp(options: RixOptions) {
         try {
+            // Same rule as tunnel mode: corrected or dropped settings are
+            // reported before anything is started, not silently applied.
+            options.problems().forEach { LogBus.e("proxy", "settings: $it") }
             RixRuntime.markStarting(RixMode.PROXY, l10n(R.string.state_starting))
 
             // Same chain as tunnel mode: proxy or not, the core still has to

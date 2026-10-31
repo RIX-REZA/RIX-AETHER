@@ -48,13 +48,16 @@ android {
 
     // A fixed key, so an APK built today installs *over* the one built last
     // week. Gradle's default debug key lives in ~/.android/debug.keystore and
-    // is regenerated on every fresh CI runner, so every build up to now carried
-    // a different signature and Android refused to update in place -- the old
-    // app had to be uninstalled first every single time.
+    // is regenerated on every fresh CI runner, so every build up to 1.0.5
+    // carried a different signature and Android refused to update in place --
+    // the old app had to be uninstalled first every single time.
     //
-    // CI overwrites this file from the RIX_KEYSTORE_B64 secret when that secret
-    // exists (see the workflow), so replacing it with a private key later needs
-    // no code change; the env vars below are the same escape hatch locally.
+    // The key file is NOT committed (see SECURITY.md: the original one was
+    // published and is compromised). CI writes it from RIX_KEYSTORE_B64 before
+    // the build; the env vars below are the escape hatch for a local build.
+    // The password below belongs to that disclosed key and is kept only so
+    // existing installations can still update; rotation replaces all three
+    // values at once, never silently.
     signingConfigs {
         create("rix") {
             storeFile = rootProject.file("keystore/rix.p12")

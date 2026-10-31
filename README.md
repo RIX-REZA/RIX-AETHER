@@ -379,24 +379,24 @@ CMake 3.22.1 · JDK 21 in CI, JVM target 17.
 
 ## Installing and updating
 
-The APK is signed with a **fixed key committed to this repository**
-(`keystore/rix.p12`, alias `rix`) so that consecutive releases share a
-signature — that is the whole reason Android will now update the app in place
-instead of demanding an uninstall. CI reads the key from the `RIX_KEYSTORE_B64`
-secret, then from the repository variable of the same name, and only then from
-the committed file — so a private key later needs no code change — and it fails
-the build outright rather than falling back to the Android debug keystore, which
-would produce an APK that installs cleanly and then cannot be updated. Every
-build prints the certificate it used:
+The APK is signed so that consecutive releases share a signature — that is the
+whole reason Android will now update the app in place instead of demanding an
+uninstall. The key is **not in this repository**. CI restores it from the
+`RIX_KEYSTORE_B64` secret, or from the repository variable of the same name, and
+fails the build outright rather than falling back to the Android debug keystore,
+which would produce an APK that installs cleanly and then cannot be updated.
+Every build prints the certificate it used:
 
 ```text
 V2 Signer: certificate DN: C=IR, O=RIX, CN=RIX VPN
 ```
 
-> [!NOTE]
-> The repository is public, so this key is public too. It exists for signature
-> *consistency*, not for secrecy — it is not a Play Store upload key and it does
-> not vouch for anything. Do not treat an APK signed with it as proof of
+> [!IMPORTANT]
+> The key that signed releases up to and including 1.0.6 was published in this
+> repository and in its git history, so it must be treated as compromised. CI
+> keeps using it only so that installed copies can still update in place; the
+> rotation plan (including which Android versions need a one-time reinstall) is
+> in [SECURITY.md](SECURITY.md). Do not treat an APK signed with it as proof of
 > authorship.
 
 ## Troubleshooting
@@ -483,7 +483,7 @@ RIX-AETHER/
 │   │   └── RixProxyService.kt          proxy only
 │   └── ui/                             Compose screens and the design system
 ├── docs/                               banner and diagram artwork used by this README
-├── keystore/rix.p12                    the fixed release signing key
+├── SECURITY.md                         key disclosure, rotation, reporting
 └── windows/
     ├── src/                              the desktop app
     │   ├── Core/                         core process, system proxy, probe

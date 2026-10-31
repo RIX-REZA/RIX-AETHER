@@ -237,8 +237,11 @@ object PsiphonBridge {
      * rest of the chain talk to the wrong proxy.
      */
     private suspend fun awaitListener(host: Host, port: Int): Boolean {
-        val deadline = System.currentTimeMillis() + LISTEN_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
+        // Monotonic, like every other wait in the connection path: the user is
+        // often reconnecting right after a network change, which is exactly
+        // when the wall clock gets corrected under us.
+        val deadline = System.nanoTime() + LISTEN_TIMEOUT_MS * 1_000_000L
+        while (System.nanoTime() < deadline) {
             if (!running) return false
             if (host.portInUse) {
                 LogBus.e("psiphon", "port $port is serving something else")

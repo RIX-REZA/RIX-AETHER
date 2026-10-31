@@ -1,5 +1,6 @@
 package com.rix.vpn.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -84,7 +85,9 @@ fun HomeScreen(
     var elapsed by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.startedAt, running) {
         while (running && state.startedAt > 0) {
-            elapsed = (System.currentTimeMillis() - state.startedAt) / 1000
+            // Same monotonic clock markRunning used: a wall-clock correction
+            // would otherwise make the session timer jump or run backwards.
+            elapsed = ((SystemClock.elapsedRealtime() - state.startedAt) / 1000).coerceAtLeast(0L)
             delay(1000)
         }
         if (!running) elapsed = 0
@@ -230,7 +233,9 @@ fun HomeScreen(
             ) {
                 StatTile(
                     label = s.s("دریافت", "Down"),
-                    value = formatBytes(state.rxBytes),
+                    // A dash, not "0 B": the counters are missing, and drawing
+                    // zero would claim the tunnel is up and moving nothing.
+                    value = if (state.statsAvailable) formatBytes(state.rxBytes) else "—",
                     accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowDownward,
                     modifier = Modifier.weight(1f)
@@ -247,7 +252,7 @@ fun HomeScreen(
                 )
                 StatTile(
                     label = s.s("ارسال", "Up"),
-                    value = formatBytes(state.txBytes),
+                    value = if (state.statsAvailable) formatBytes(state.txBytes) else "—",
                     accent = RixColors.Violet,
                     icon = Icons.Rounded.ArrowUpward,
                     modifier = Modifier.weight(1f)

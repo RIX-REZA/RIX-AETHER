@@ -2,6 +2,7 @@ package com.rix.vpn.core
 
 import android.content.Context
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -56,7 +57,15 @@ object RixRuntime {
         val txBytes: Long = 0L,
         val rxBytes: Long = 0L,
         val txPackets: Long = 0L,
-        val rxPackets: Long = 0L
+        val rxPackets: Long = 0L,
+        /**
+         * Whether [txBytes] and its neighbours are real readings.
+         *
+         * False means the native side could not answer, which is not the same
+         * thing as "no traffic": showing 0 B/s over a tunnel the user is
+         * downloading through is a lie, and the UI draws a dash instead.
+         */
+        val statsAvailable: Boolean = false
     )
 
     /** Thrown for a refused/failed start; carries the core's own message. */
@@ -94,8 +103,21 @@ object RixRuntime {
     @Volatile
     private var hevThread: Thread? = null
 
+    /**
+     * Back to nothing: no job, no tunnel, no counters.
+     *
+     * An id that is still registered here is a core nobody is going to stop --
+     * clearing the field would leave the native job alive for the lifetime of
+     * the process, holding the socks port and whatever the core keeps open. So
+     * the id is claimed the same way a stop claims it and disposed of, which
+     * also means a stop racing this call cannot free it twice.
+     */
     fun idle() {
-        jobId = 0L
+        val leftover = takeJobId()
+        if (leftover > 0L) {
+            LogBus.e("core", "job $leftover was still registered at teardown; disposing it")
+            disposeAsync(leftover)
+        }
         synchronized(hevLock) {
             hevThread = null
             hevInFlight = false
@@ -108,8 +130,29 @@ object RixRuntime {
         _state.value = block(_state.value)
     }
 
+    /**
+     * A new attempt begins.
+     *
+     * The counters are cleared here rather than at "connected": the previous
+     * session's traffic would otherwise be carried into the tiles of this one
+     * and shown as if it had just moved, which reads as a burst of traffic the
+     * user never sent.
+     */
     fun markStarting(mode: RixMode, message: String) {
-        update { it.copy(phase = Phase.STARTING, mode = mode, message = message, error = null) }
+        update {
+            it.copy(
+                phase = Phase.STARTING,
+                mode = mode,
+                message = message,
+                error = null,
+                startedAt = 0L,
+                txBytes = 0L,
+                rxBytes = 0L,
+                txPackets = 0L,
+                rxPackets = 0L,
+                statsAvailable = false
+            )
+        }
     }
 
     /**
@@ -139,6 +182,12 @@ object RixRuntime {
      * The tunnel is proven. [transport] is the one that actually carried it,
      * which is not necessarily the one the user picked: the fallback chain may
      * have settled on a different protocol, and the UI must not claim otherwise.
+     *
+     * The clock starts on [SystemClock.elapsedRealtime], which keeps counting
+     * while the device sleeps and cannot be moved by the network's time or by
+     * the user. A wall clock would make the session timer jump -- or run
+     * backwards -- on an NTP correction, and a VPN is exactly the kind of app
+     * that gets opened on a phone that just came back from airplane mode.
      */
     fun markRunning(
         port: Int,
@@ -151,7 +200,7 @@ object RixRuntime {
                 phase = Phase.RUNNING,
                 message = "",
                 error = null,
-                startedAt = System.currentTimeMillis(),
+                startedAt = SystemClock.elapsedRealtime(),
                 socksPort = port,
                 tun2socks = tun2socks,
                 activeTransport = transport?.label ?: it.activeTransport
@@ -218,10 +267,10 @@ object RixRuntime {
         val file = hevConfigFile(context)
         val yaml = buildString {
             appendLine("tunnel:")
-            appendLine("  mtu: ${options.mtu}")
+            appendLine("  mtu: ${options.safeMtu}")
             appendLine("  multi-queue: false")
             appendLine("socks5:")
-            appendLine("  port: ${options.bindPort}")
+            appendLine("  port: ${options.safeBindPort}")
             appendLine("  address: 127.0.0.1")
             appendLine("  udp: 'udp'")
             appendLine("misc:")
@@ -265,7 +314,21 @@ object RixRuntime {
         val id = json.optLong("job", 0L)
         if (id <= 0L) throw CoreException("هسته شناسهٔ کار نداد: $raw")
 
-        synchronized(jobLock) { jobId = id }
+        // The core answered with a job of its own, so any id registered before
+        // it belongs to a start that lost the race -- a connect the user
+        // cancelled, or a fallback attempt that timed out while this one was
+        // still coming up. Overwriting the field would leave that job running
+        // with no owner: nothing polls it, nothing stops it, and it holds the
+        // socks port this one needs. It is taken and disposed instead.
+        val displaced = synchronized(jobLock) {
+            val previous = jobId
+            jobId = id
+            previous
+        }
+        if (displaced > 0L && displaced != id) {
+            LogBus.e("core", "job $displaced was still running when job $id started; stopping it")
+            dispose(displaced)
+        }
         id
     }
 
@@ -301,8 +364,11 @@ object RixRuntime {
      */
     suspend fun awaitSocks(port: Int, timeoutMs: Long = 90_000): Boolean =
         withContext(Dispatchers.IO) {
-            val deadline = System.currentTimeMillis() + timeoutMs
-            while (System.currentTimeMillis() < deadline) {
+            // Monotonic: a wall-clock correction during connect -- and a VPN
+            // user is unusually likely to be reconnecting right after one --
+            // could otherwise end this wait early or stretch it without bound.
+            val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+            while (System.nanoTime() < deadline) {
                 val report = poll()
                 if (report.failed) {
                     throw CoreException(report.detail ?: "هسته با خطا تمام شد")
@@ -358,11 +424,15 @@ object RixRuntime {
             )
         }
 
-        val chain = mutableListOf(options)
+        // Every candidate carries the values the engine and the core will actually
+        // be given, so the port a service waits on is the port hev was
+        // configured for even when the stored settings were out of range.
+        val base = options.copy(bindPort = options.safeBindPort, mtu = options.safeMtu)
+        val chain = mutableListOf(base)
         for (transport in ranked) {
             if (chain.size >= limit) break
             if (chain.any { it.transport == transport }) continue
-            chain += options.copy(transport = transport, fragment = true)
+            chain += base.copy(transport = transport, fragment = true)
         }
         return chain
     }
@@ -399,9 +469,9 @@ object RixRuntime {
         // returns in milliseconds while a blackholed one eats the full socket
         // timeout, so counting attempts made the worst case several minutes of
         // «در حال اتصال» before it gave up.
-        val deadline = System.currentTimeMillis() + timeoutMs
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
         var attempt = 0
-        while (System.currentTimeMillis() < deadline) {
+        while (System.nanoTime() < deadline) {
             attempt += 1
             onProgress(attempt)
             TunnelProbe.probe(port, timeoutMs = 6_000)?.let { return@withContext it }
@@ -531,8 +601,8 @@ object RixRuntime {
 
     /** Waits briefly for the engine to stay alive; false means it died at once. */
     suspend fun awaitHevAlive(timeoutMs: Long = 2000): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        while (System.nanoTime() < deadline) {
             val thread = hevThread ?: return false
             if (thread.isAlive && hevInFlight) return true
             if (!thread.isAlive) return false
@@ -632,18 +702,47 @@ object RixRuntime {
             .onFailure { LogBus.e("hev", "closing TUN fd $descriptor: ${it.message}") }
     }
 
-    fun stats(): LongArray = try {
-        NativeHev.stats()
+    /** Lets the first statistics failure be logged and the rest be quiet. */
+    @Volatile
+    private var statsFailing = false
+
+    /**
+     * The engine's counters, or null when there are none to report.
+     *
+     * Null is not zero. A dead engine reported as "0 B/s" looks exactly like a
+     * tunnel that is up and idle, which is the more convincing of the two
+     * wrong answers; so the failure is logged once per run and the state says
+     * the numbers are unavailable instead.
+     */
+    fun stats(): LongArray? = try {
+        val s = NativeHev.stats()
+        if (s != null && s.size >= 4) {
+            statsFailing = false
+            s
+        } else {
+            null
+        }
     } catch (t: Throwable) {
-        longArrayOf(0, 0, 0, 0)
+        if (!statsFailing) {
+            statsFailing = true
+            LogBus.e("hev", "statistics unavailable: ${t.message ?: t.javaClass.simpleName}")
+        }
+        null
     }
 
     fun pushStats() {
         val s = stats()
+        if (s == null) {
+            // Only touch the flow if something changes: this runs once a second
+            // for as long as the service lives.
+            update { if (it.statsAvailable) it.copy(statsAvailable = false) else it }
+            return
+        }
         update {
             it.copy(
                 txPackets = s[0], txBytes = s[1],
-                rxPackets = s[2], rxBytes = s[3]
+                rxPackets = s[2], rxBytes = s[3],
+                statsAvailable = true
             )
         }
     }
@@ -657,15 +756,7 @@ object RixRuntime {
         // cancelled moments later, and an id claimed but never freed leaks the
         // core slot for the rest of the process's life.
         withContext(Dispatchers.IO + NonCancellable) {
-            try {
-                LogBus.i("core", "cancel: ${NativeAether.cancel(id)}")
-                // Give the job loop a moment to observe the cancel before the
-                // slot is released; freeing first can race the worker.
-                delay(250)
-                NativeAether.free(id)
-            } catch (t: Throwable) {
-                LogBus.e("core", t.message ?: "توقف هسته ناموفق بود")
-            }
+            dispose(id)
         }
     }
 
@@ -675,8 +766,8 @@ object RixRuntime {
      * For `onDestroy`, where the coroutine scope that would run [stopCore] is
      * cancelled a few lines later — a launch there is cancelled before it is
      * ever dispatched, which silently leaves the core running. It uses a
-     * detached thread rather than blocking the main thread for the 250 ms the
-     * job loop needs to observe the cancel.
+     * detached thread rather than blocking the main thread while the job loop
+     * observes the cancel.
      */
     fun stopCoreAsync() {
         Thread({ stopCoreBlocking() }, "rix-core-dispose").apply { isDaemon = true }.start()
@@ -701,14 +792,89 @@ object RixRuntime {
     private fun stopCoreBlocking() {
         val id = takeJobId()
         if (id <= 0L) return
-        runCatching { NativeAether.cancel(id) }
-            .onFailure { LogBus.e("core", it.message ?: "توقف هسته ناموفق بود") }
+        dispose(id)
+    }
+
+    /** Disposes of a job nobody is waiting on, off the calling thread. */
+    private fun disposeAsync(id: Long) {
+        Thread({ dispose(id) }, "rix-core-dispose-$id").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * Cancels one job, waits for it to stop, then frees it -- exactly once.
+     *
+     * The id has already been claimed by the caller, so this is the only place
+     * that frees it. Freeing is the step that releases the core's slot, so it
+     * runs whether or not the cancel reported success: a cancel that threw used
+     * to skip the free entirely and leak the job for the life of the process.
+     */
+    private fun dispose(id: Long) {
         try {
-            Thread.sleep(250)
-        } catch (ignored: InterruptedException) {
-            Thread.currentThread().interrupt()
+            LogBus.i("core", "cancel: ${NativeAether.cancel(id)}")
+        } catch (t: Throwable) {
+            LogBus.e("core", t.message ?: "توقف هسته ناموفق بود")
         }
+
+        if (!awaitJobGone(id)) {
+            LogBus.e(
+                "core",
+                "job $id still reported running after ${DISPOSE_WAIT_MS}ms; freeing it anyway"
+            )
+        }
+
         runCatching { NativeAether.free(id) }
             .onFailure { LogBus.e("core", it.message ?: "آزادسازی هسته ناموفق بود") }
     }
+
+    /**
+     * Waits for the core to stop reporting the job as running.
+     *
+     * A fixed sleep here was both too slow and not slow enough: it added its
+     * whole delay to every disconnect even when the job stopped instantly, and
+     * it still freed the slot on a job that had not stopped. Polling returns as
+     * soon as the core answers and gives up after a bounded wait rather than
+     * hanging a teardown forever.
+     */
+    private fun awaitJobGone(id: Long, timeoutMs: Long = DISPOSE_WAIT_MS): Boolean {
+        // Monotonic: a timeout must not stretch or collapse when the clock is
+        // adjusted, which is common right around a network change.
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        while (true) {
+            val state = jobState(id)
+            if (state != null && state != "running") return true
+            if (System.nanoTime() >= deadline) return false
+            try {
+                Thread.sleep(POLL_SLEEP_MS)
+            } catch (ignored: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+    }
+
+    /**
+     * One read of a specific job's state, or null when the core cannot say.
+     *
+     * Explicitly by id rather than through [poll]: the field may already belong
+     * to a newer job by the time an old one is being disposed of, and asking
+     * about the wrong job would report the new one's state.
+     */
+    private fun jobState(id: Long): String? {
+        val raw: String?
+        try {
+            raw = NativeAether.poll(id)
+        } catch (t: Throwable) {
+            return null
+        }
+        if (raw == null) return null
+        return try {
+            val json = JSONObject(raw)
+            if (!json.optBoolean("ok")) "error" else json.optString("state", "running")
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    private const val DISPOSE_WAIT_MS = 1_000L
+    private const val POLL_SLEEP_MS = 20L
 }

@@ -56,6 +56,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Refuse committed signing material
+        # A private key in a public repository is a published key, and this one
+        # was published: the file has been removed from the tree and is being
+        # rotated, and this check is what keeps the next one from being added by
+        # accident. The key CI signs with now comes from RIX_KEYSTORE_B64.
+        run: |
+          set -euo pipefail
+          found=$(git ls-files -- '*.p12' '*.jks' '*.keystore' 'keystore/**' || true)
+          if [ -n "$found" ]; then
+            echo "::error::Signing material is tracked in git:"
+            echo "$found"
+            echo "::error::Remove it; store keys in the RIX_KEYSTORE_B64 repository variable or secret. See SECURITY.md."
+            exit 1
+          fi
+          echo "no signing material is tracked"
+
       - name: Install Android SDK packages
         # android-actions/setup-android@v3 is unusable here: it runs
         # `sdkmanager tools`, and the deprecated `tools` package no longer exists
@@ -87,6 +103,22 @@ jobs:
         working-directory: .
         run: |
           gradle :app:compileDebugKotlin -PrixAbis=arm64-v8a --no-daemon --stacktrace
+
+      - name: Unit tests
+        # Pure JVM tests: configuration validation and probe-response parsing.
+        # They need no device, no native library and no network, which is why
+        # they run in the cheap job before any native build.
+        working-directory: .
+        run: |
+          gradle :app:testDebugUnitTest -PrixAbis=arm64-v8a --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-unit-tests
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
 
   native:
     name: native (${{ matrix.abi }})
@@ -288,20 +320,16 @@ jobs:
           gradle-version: "8.9"
 
       - name: Restore signing key
-        # The repository ships a fixed key so every build carries the same
-        # signature and installs over the previous version.
+        # The key is NOT in the repository: it was published in git history once
+        # and that makes it compromised for any future use (see SECURITY.md).
+        # Builds keep signing with it only so that existing installations can
+        # still update in place; a rotation that would break API 24-27 updates
+        # is a separate, deliberate release, never a silent side effect.
         #
-        # The key is read from a secret if one exists, then from a repository
-        # variable, and only then from the committed file. The file is the
-        # fragile source: a `ghstore` sync commit mirrors the sandbox tree and
-        # deletes files the sandbox does not have, which has already removed
-        # this key from main once. A secret or variable lives outside the tree
-        # and survives that.
-        #
-        # Missing everywhere is a hard failure on purpose. Falling back to the
-        # Android debug keystore would produce an APK that installs fine and
-        # then refuses to update over the last one -- precisely the bug the
-        # fixed key exists to prevent -- and it would do so silently.
+        # The key comes from a secret if one exists, then from a repository
+        # variable. A missing key is a hard failure on purpose: falling back to
+        # the Android debug keystore would produce an APK that installs fine and
+        # then refuses to update over the last one, silently.
         env:
           RIX_KEYSTORE_SECRET: ${{ secrets.RIX_KEYSTORE_B64 }}
           RIX_KEYSTORE_VAR: ${{ vars.RIX_KEYSTORE_B64 }}
@@ -319,12 +347,11 @@ jobs:
           if [ -n "$b64" ]; then
             mkdir -p "$(dirname "$key")"
             printf '%s' "$b64" | base64 -d > "$key"
+            chmod 600 "$key"
             echo "signing key written from $origin"
-          elif [ -f "$key" ]; then
-            echo "signing key taken from the committed file; set RIX_KEYSTORE_B64 to make this durable"
           else
-            echo "::error::$key is missing and neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
-            echo "::error::An unsigned build cannot update an installed app. Restore the key before releasing; see README.md."
+            echo "::error::$key cannot be restored: neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
+            echo "::error::An unsigned build cannot update an installed app. See SECURITY.md."
             exit 1
           fi
 

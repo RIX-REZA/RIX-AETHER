@@ -1,4 +1,8 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Text;
 
 namespace Rix.Windows.Core;
@@ -27,17 +31,35 @@ public sealed record Egress(string Ip, string Country, string Colo, string Warp)
 /// comes back through it, so the app asks a real question of a real server every
 /// time: a SOCKS5 CONNECT, then Cloudflare's <c>/cdn-cgi/trace</c>, which answers
 /// with the address the request arrived from and the country Cloudflare places
-/// it in. That is the same endpoint the phone uses, and it is the reason the
-/// address shown is the one the far end actually sees rather than a guess.
+/// it in. That is the same endpoint and the same code path as on the phone, so
+/// both halves of the product agree on what "connected" means.
 ///
-/// The request goes to port 80 on purpose. Over 443 the answer would still be
-/// Cloudflare's, but a TLS handshake would make the check depend on the
-/// certificate chain the transport is presenting, and what is being measured
-/// here is whether traffic flows at all.
+/// The request is HTTPS. A plaintext probe can be answered by any middlebox on
+/// the path -- a captive portal, a transparent proxy, the hotel network's own
+/// injection -- and every one of those answers would have looked like proof that
+/// the tunnel works. TLS with the platform's default certificate and hostname
+/// verification means the answer came from a host that proved it is Cloudflare,
+/// so a successful probe says something about the path rather than only about
+/// the bytes.
 /// </summary>
 public static class Probe
 {
-    private static readonly string[] Targets = { "cloudflare.com", "1.1.1.1" };
+    /// <summary>
+    /// The same endpoint under three names.
+    ///
+    /// The name is answered by whichever edge is nearest, and on a network where
+    /// DNS for it is poisoned or the name is filtered the probe would fail even
+    /// though the tunnel works; the literal is tried last and still has to pass
+    /// a certificate check that names 1.1.1.1.
+    /// </summary>
+    private static readonly string[] Targets = { "cloudflare.com", "www.cloudflare.com", "1.1.1.1" };
+
+    private const int HttpsPort = 443;
+    private const int MaxHead = 8 * 1024;
+    private const int MaxBody = 16 * 1024;
+
+    private static readonly byte[] HeaderEnd = { (byte)'\r', (byte)'\n', (byte)'\r', (byte)'\n' };
+    private static readonly byte[] CrLf = { (byte)'\r', (byte)'\n' };
 
     /// <summary>
     /// Fetches the trace through the SOCKS5 listener on <paramref name="port"/>.
@@ -46,22 +68,26 @@ public static class Probe
     /// </summary>
     public static async Task<Egress> ThroughSocksAsync(int port, int timeoutMs, CancellationToken token)
     {
+        // One budget for all three names, like the phone: three full timeouts
+        // stacked would make a blocked network look like a hung connect.
+        var deadline = Environment.TickCount64 + timeoutMs;
         foreach (var host in Targets)
         {
+            var remaining = deadline - Environment.TickCount64;
+            if (remaining < 250) break;
+
             try
             {
                 using var client = new TcpClient();
                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
-                attempt.CancelAfter(timeoutMs);
+                attempt.CancelAfter(TimeSpan.FromMilliseconds(remaining));
 
-                await client.ConnectAsync("127.0.0.1", port, attempt.Token);
-                using var stream = client.GetStream();
-                stream.ReadTimeout = timeoutMs;
-                stream.WriteTimeout = timeoutMs;
+                await client.ConnectAsync(IPAddress.Loopback, port, attempt.Token);
+                await using var stream = client.GetStream();
 
-                await NegotiateSocks5Async(stream, host, 80, attempt.Token);
-                await SendTraceRequestAsync(stream, host, attempt.Token);
-                var body = await ReadAllAsync(stream, attempt.Token);
+                await NegotiateSocks5Async(stream, host, HttpsPort, attempt.Token);
+                var body = await RequestTraceAsync(stream, host, attempt.Token);
+                if (body == null) continue;
 
                 var egress = Parse(body);
                 if (egress != null) return egress;
@@ -86,21 +112,23 @@ public static class Probe
     /// </summary>
     public static async Task<Egress> DirectAsync(int timeoutMs, CancellationToken token)
     {
+        var deadline = Environment.TickCount64 + timeoutMs;
         foreach (var host in Targets)
         {
+            var remaining = deadline - Environment.TickCount64;
+            if (remaining < 250) break;
+
             try
             {
                 using var client = new TcpClient();
                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
-                attempt.CancelAfter(timeoutMs);
+                attempt.CancelAfter(TimeSpan.FromMilliseconds(remaining));
 
-                await client.ConnectAsync(host, 80, attempt.Token);
-                using var stream = client.GetStream();
-                stream.ReadTimeout = timeoutMs;
-                stream.WriteTimeout = timeoutMs;
+                await client.ConnectAsync(host, HttpsPort, attempt.Token);
+                await using var stream = client.GetStream();
 
-                await SendTraceRequestAsync(stream, host, attempt.Token);
-                var body = await ReadAllAsync(stream, attempt.Token);
+                var body = await RequestTraceAsync(stream, host, attempt.Token);
+                if (body == null) continue;
 
                 var egress = Parse(body);
                 if (egress != null) return egress;
@@ -150,6 +178,7 @@ public static class Probe
 
         var reply = new byte[4];
         await ReadExactlyAsync(stream, reply, token);
+        if (reply[0] != 0x05) throw new IOException("SOCKS5 replied with version " + reply[0]);
         if (reply[1] != 0x00) throw new IOException("SOCKS5 refused with code " + reply[1]);
 
         // The bound address has to be consumed before the payload, whatever
@@ -172,34 +201,156 @@ public static class Probe
         }
     }
 
-    private static async Task SendTraceRequestAsync(Stream stream, string host, CancellationToken token)
+    /// <summary>
+    /// Wraps the (possibly proxied) stream in TLS, asks for the trace, and
+    /// returns a complete, successful body.
+    ///
+    /// Certificate and hostname validation are left at their defaults: no
+    /// callback is installed and no policy is relaxed, so a name that does not
+    /// match the certificate -- or a chain the machine does not trust -- fails
+    /// the handshake instead of being reported as a working tunnel.
+    /// </summary>
+    private static async Task<string> RequestTraceAsync(Stream inner, string host, CancellationToken token)
     {
+        await using var ssl = new SslStream(inner, leaveInnerStreamOpen: false);
+        await ssl.AuthenticateAsClientAsync(
+            new SslClientAuthenticationOptions
+            {
+                TargetHost = host,
+                EnabledSslProtocols = SslProtocols.None,
+            },
+            token);
+
         var request =
             "GET /cdn-cgi/trace HTTP/1.1\r\n" +
             "Host: " + host + "\r\n" +
             "User-Agent: RIX\r\n" +
             "Accept: text/plain\r\n" +
             "Connection: close\r\n\r\n";
-        await stream.WriteAsync(Encoding.ASCII.GetBytes(request), token);
-        await stream.FlushAsync(token);
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(request), token);
+        await ssl.FlushAsync(token);
+
+        return await ReadResponseAsync(ssl, token);
     }
 
     /// <summary>
-    /// Reads to the end. `Connection: close` means the server ends the response,
-    /// so there is no chunked framing to unpick -- and a short read is fine,
-    /// because the fields wanted are all in the first few hundred bytes.
+    /// One HTTP/1.x response, returned only when it is a 200 and the framing says
+    /// the body is complete.
+    ///
+    /// Complete means a declared Content-Length that was fully read, the terminal
+    /// chunk of a chunked body, or end of stream for a close-delimited one. A
+    /// body that stops early is a truncated answer, and a truncated trace parses
+    /// into whatever fields happened to arrive -- exactly the fabricated success
+    /// this refuses to report.
     /// </summary>
-    private static async Task<string> ReadAllAsync(Stream stream, CancellationToken token)
+    private static async Task<string> ReadResponseAsync(Stream stream, CancellationToken token)
     {
-        var buffer = new byte[4096];
-        var text = new StringBuilder();
-        while (text.Length < 16 * 1024)
+        var headBytes = new List<byte>();
+        byte[] rest;
+
+        while (true)
         {
-            var read = await stream.ReadAsync(buffer, token);
-            if (read <= 0) break;
-            text.Append(Encoding.UTF8.GetString(buffer, 0, read));
+            var at = IndexOf(headBytes, HeaderEnd);
+            if (at >= 0)
+            {
+                rest = headBytes.GetRange(at + HeaderEnd.Length, headBytes.Count - at - HeaderEnd.Length).ToArray();
+                headBytes.RemoveRange(at, headBytes.Count - at);
+                break;
+            }
+            if (headBytes.Count > MaxHead) return null;
+            if (await ReadIntoAsync(stream, headBytes, token) == 0) return null;
+        }
+
+        var lines = Encoding.Latin1.GetString(headBytes.ToArray()).Split("\r\n");
+        if (lines.Length == 0 || !IsOkStatus(lines[0])) return null;
+
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in lines.Skip(1))
+        {
+            var colon = line.IndexOf(':');
+            if (colon <= 0) continue;
+            headers[line[..colon].Trim()] = line[(colon + 1)..].Trim();
+        }
+
+        var chunked = headers.TryGetValue("transfer-encoding", out var te) &&
+                      te.Contains("chunked", StringComparison.OrdinalIgnoreCase);
+
+        if (chunked) return await ReadChunkedAsync(stream, rest, token);
+
+        if (headers.TryGetValue("content-length", out var lengthText))
+        {
+            if (!long.TryParse(lengthText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var length)) return null;
+            if (length < 0 || length > MaxBody) return null;
+
+            var body = new byte[length];
+            var filled = Math.Min(rest.Length, body.Length);
+            Array.Copy(rest, body, filled);
+            while (filled < body.Length)
+            {
+                var buffer = new byte[body.Length - filled];
+                var read = await stream.ReadAsync(buffer, token);
+                if (read <= 0) return null;
+                Array.Copy(buffer, 0, body, filled, read);
+                filled += read;
+            }
+            return Encoding.UTF8.GetString(body);
+        }
+
+        // Close-delimited: the body is complete only at end of stream. Hitting
+        // the size cap before that end is a truncated answer, not a complete one.
+        var text = new StringBuilder(Encoding.UTF8.GetString(rest));
+        var more = new List<byte>();
+        while (true)
+        {
+            if (text.Length >= MaxBody) return null;
+            if (await ReadIntoAsync(stream, more, token) == 0) break;
+            text.Append(Encoding.UTF8.GetString(more.ToArray()));
+            more.Clear();
         }
         return text.ToString();
+    }
+
+    private static async Task<string> ReadChunkedAsync(Stream stream, byte[] initial, CancellationToken token)
+    {
+        var pending = new List<byte>(initial);
+        var output = new StringBuilder();
+
+        while (true)
+        {
+            var lineEnd = IndexOf(pending, CrLf);
+            if (lineEnd < 0)
+            {
+                if (await ReadIntoAsync(stream, pending, token) == 0) return null;
+                continue;
+            }
+
+            var sizeText = Encoding.ASCII.GetString(pending.GetRange(0, lineEnd).ToArray())
+                .Split(';')[0].Trim();
+            if (!int.TryParse(sizeText, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var size)) return null;
+            pending.RemoveRange(0, lineEnd + CrLf.Length);
+            if (size == 0) return output.ToString();
+            if (output.Length + size > MaxBody) return null;
+
+            while (pending.Count < size + CrLf.Length)
+            {
+                if (await ReadIntoAsync(stream, pending, token) == 0) return null;
+            }
+            output.Append(Encoding.UTF8.GetString(pending.GetRange(0, size).ToArray()));
+            pending.RemoveRange(0, size + CrLf.Length);
+        }
+    }
+
+    /// <summary>
+    /// Appends whatever arrives next. Returns 0 only at end of stream; real
+    /// failures throw, so a broken read is never mistaken for a finished body.
+    /// </summary>
+    private static async Task<int> ReadIntoAsync(Stream stream, List<byte> into, CancellationToken token)
+    {
+        var buffer = new byte[2048];
+        var read = await stream.ReadAsync(buffer, token);
+        if (read <= 0) return 0;
+        into.AddRange(read == buffer.Length ? buffer : buffer[..read]);
+        return read;
     }
 
     private static async Task ReadExactlyAsync(Stream stream, byte[] buffer, CancellationToken token)
@@ -216,34 +367,93 @@ public static class Probe
     // ------------------------------------------------------------------- parse
 
     /// <summary>
-    /// `ip=1.2.3.4\nloc=DE\ncolo=FRA\nwarp=on\n...`, one field per line.
+    /// Exactly <c>HTTP/1.0 200</c> or <c>HTTP/1.1 200</c>, with an optional
+    /// reason phrase. A captive portal's 302 or a proxy's 407 is a middlebox
+    /// answering, not Cloudflare.
     /// </summary>
-    private static Egress Parse(string response)
+    private static bool IsOkStatus(string line)
     {
-        if (string.IsNullOrWhiteSpace(response)) return null;
+        line = line.TrimEnd();
+        if (!line.StartsWith("HTTP/1.", StringComparison.Ordinal)) return false;
+        if (line.Length < 12) return false;
+        if (line[7] != '0' && line[7] != '1') return false;
+        if (line[8] != ' ') return false;
+        if (!line.AsSpan(9, 3).SequenceEqual("200")) return false;
+        return line.Length == 12 || line[12] == ' ';
+    }
 
-        var separator = response.IndexOf("\r\n\r\n", StringComparison.Ordinal);
-        var body = separator >= 0 ? response[(separator + 4)..] : response;
+    /// <summary>
+    /// `ip=1.2.3.4\nloc=DE\ncolo=FRA\nwarp=on\n...`, one field per line.
+    ///
+    /// A real trace always carries all four, so any answer that does not is not
+    /// a trace: an HTML page with a stray `ip=` in it, or a body that stopped
+    /// after the first line, is refused rather than shown as a working tunnel.
+    /// </summary>
+    private static Egress Parse(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
 
-        string ip = null, country = "", colo = "", warp = "";
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.Trim();
             var equals = trimmed.IndexOf('=');
-            if (equals <= 0) continue;
-
-            var key = trimmed[..equals];
-            var value = trimmed[(equals + 1)..].Trim();
-            switch (key)
-            {
-                case "ip": ip = value; break;
-                case "loc": country = value; break;
-                case "colo": colo = value; break;
-                case "warp": warp = value; break;
-            }
+            if (equals <= 0 || equals == trimmed.Length - 1) continue;
+            fields[trimmed[..equals]] = trimmed[(equals + 1)..].Trim();
         }
 
-        // Without an address there is no answer here, only a page.
-        return string.IsNullOrEmpty(ip) ? null : new Egress(ip, country, colo, warp);
+        if (!fields.TryGetValue("ip", out var ip) || !IsIpLiteral(ip)) return null;
+        if (!fields.TryGetValue("warp", out var warp)) return null;
+        warp = warp.ToLowerInvariant();
+        if (warp is not ("on" or "off")) return null;
+        if (!fields.TryGetValue("colo", out var colo) || !IsUpperLetters(colo, 3)) return null;
+        if (!fields.TryGetValue("loc", out var loc) || !IsUpperLetters(loc, 2)) return null;
+
+        return new Egress(ip, loc, colo, warp);
+    }
+
+    private static bool IsIpLiteral(string value) =>
+        IsIpv4Literal(value) || IsIpv6Literal(value);
+
+    private static bool IsIpv4Literal(string text)
+    {
+        var parts = text.Split('.');
+        if (parts.Length != 4) return false;
+        foreach (var part in parts)
+        {
+            if (part.Length is < 1 or > 3) return false;
+            if (!part.All(char.IsAsciiDigit)) return false;
+            if (!int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out var number)) return false;
+            if (number is < 0 or > 255) return false;
+        }
+        return true;
+    }
+
+    private static bool IsIpv6Literal(string text)
+    {
+        if (!text.Contains(':') || text.Contains('%')) return false;
+        return IPAddress.TryParse(text, out var address) &&
+               address.AddressFamily == AddressFamily.InterNetworkV6;
+    }
+
+    private static bool IsUpperLetters(string text, int length) =>
+        text.Length == length && text.All(c => c is >= 'A' and <= 'Z');
+
+    private static int IndexOf(IReadOnlyList<byte> data, byte[] needle, int from = 0)
+    {
+        for (var i = from; i + needle.Length <= data.Count; i++)
+        {
+            var match = true;
+            for (var j = 0; j < needle.Length; j++)
+            {
+                if (data[i + j] != needle[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return i;
+        }
+        return -1;
     }
 }

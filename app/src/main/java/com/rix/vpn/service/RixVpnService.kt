@@ -98,6 +98,10 @@ class RixVpnService : VpnService() {
     private suspend fun bringUp(options: RixOptions) {
         val mine = session.incrementAndGet()
         try {
+            // A setting that had to be corrected or dropped is said out loud,
+            // once, before anything is started: otherwise the field looks like
+            // it did something and the user has no way to find out it did not.
+            options.problems().forEach { LogBus.e("vpn", "settings: $it") }
             RixRuntime.markStarting(RixMode.TUNNEL, l10n(R.string.state_starting))
 
             val fd = establishTun(options)
@@ -282,7 +286,7 @@ class RixVpnService : VpnService() {
 
         val builder = Builder()
             .setSession(l10n(R.string.app_name))
-            .setMtu(options.mtu)
+            .setMtu(options.safeMtu)
             .addAddress(options.tunnelIpv4, 30)
             .addRoute("0.0.0.0", 0)
             // IPv6 is captured too; leaving it unrouted would leak v6 traffic

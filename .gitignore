@@ -14,3 +14,10 @@ windows/src/bin/
 windows/src/obj/
 windows/publish/
 windows/dist/
+
+# Signing material must never be committed. CI restores keystore/rix.p12 from
+# the repository variable RIX_KEYSTORE_B64 (see SECURITY.md).
+keystore/
+*.p12
+*.jks
+*.keystore
