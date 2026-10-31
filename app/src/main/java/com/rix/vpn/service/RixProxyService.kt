@@ -38,6 +38,15 @@ class RixProxyService : LifecycleService() {
 
     private var worker: Job? = null
 
+    /**
+     * Which attempt owns the runtime.
+     *
+     * Both services drive one process-wide core, so an old teardown must not
+     * stop the core a newer start has already brought up. Incremented by every
+     * bring-up; a shutdown only tears down what its own generation still owns.
+     */
+    private val session = java.util.concurrent.atomic.AtomicInteger(0)
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
@@ -62,6 +71,7 @@ class RixProxyService : LifecycleService() {
     }
 
     private suspend fun bringUp(options: RixOptions) {
+        val mine = session.incrementAndGet()
         try {
             // Same rule as tunnel mode: corrected or dropped settings are
             // reported before anything is started, not silently applied.
@@ -77,6 +87,10 @@ class RixProxyService : LifecycleService() {
             var egress: TunnelProbe.Egress? = null
 
             for ((index, candidate) in chain.withIndex()) {
+                if (session.get() != mine) {
+                    LogBus.i("proxy", "session $mine was replaced before ${candidate.transport.label}; abandoning it")
+                    return
+                }
                 if (index > 0) {
                     LogBus.i("proxy", "${candidate.transport.label}: retrying after ${chain[index - 1].transport.label}")
                     // See [RixVpnService]: Psiphon dials through the core, so it
@@ -150,6 +164,10 @@ class RixProxyService : LifecycleService() {
             if (chosen == null || verified == null) {
                 throw IllegalStateException(l10n(R.string.error_all_transports_failed))
             }
+            if (session.get() != mine) {
+                LogBus.i("proxy", "session $mine was replaced during verification; not reporting it as connected")
+                return
+            }
 
             RixRuntime.rememberTransport(this, chosen.transport)
             LogBus.i("proxy", "SOCKS5 verified via ${chosen.transport.label} on 127.0.0.1:${chosen.bindPort}, egress ${verified.ip}")
@@ -180,6 +198,12 @@ class RixProxyService : LifecycleService() {
     }
 
     private fun shutdown(preserveError: String? = null) {
+        // Which session this teardown belongs to. Teardown runs on its own
+        // coroutine and Psiphon can take seconds to stop, so by the time the
+        // core would be freed the user may already have started a new
+        // connection in this same service -- and stopping the core then would
+        // kill the session that replaced the one being torn down.
+        val mine = session.get()
         if (preserveError != null) {
             // Published before the teardown so the reason survives it: markIdle()
             // at the end of this method used to wipe it a moment later.
@@ -195,9 +219,18 @@ class RixProxyService : LifecycleService() {
         }.onFailure { LogBus.e("proxy", "stopForeground: ${it.message}") }
 
         lifecycleScope.launch {
+            if (session.get() != mine) {
+                LogBus.i("proxy", "teardown of session $mine skipped: a newer session took over")
+                return@launch
+            }
             withContext(Dispatchers.IO) { PsiphonBridge.stop() }
+            if (session.get() != mine) {
+                LogBus.i("proxy", "teardown of session $mine stopped before the core: a newer session took over")
+                return@launch
+            }
             RixRuntime.stopCore()
             withContext(Dispatchers.Main) {
+                if (session.get() != mine) return@withContext
                 if (preserveError == null) RixRuntime.markIdle()
                 stopSelf()
             }

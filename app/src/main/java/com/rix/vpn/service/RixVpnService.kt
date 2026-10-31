@@ -294,7 +294,15 @@ class RixVpnService : VpnService() {
             .addAddress(options.tunnelIpv6, 126)
             .addRoute("::", 0)
 
-        primaryDns(options)?.let { builder.addDnsServer(it) }
+        val dns = primaryDns(options)
+        runCatching { builder.addDnsServer(dns) }.onFailure { e ->
+            // The platform refuses some addresses outright (loopback in
+            // particular); falling back keeps the TUN from silently using the
+            // network's resolver instead.
+            LogBus.e("vpn", "dns: $dns was refused (${e.message}); using 1.1.1.1")
+            runCatching { builder.addDnsServer("1.1.1.1") }
+                .onFailure { LogBus.e("vpn", "dns: ${it.message}") }
+        }
 
         applySplitTunnelling(builder, options)
 
@@ -304,10 +312,17 @@ class RixVpnService : VpnService() {
         return fd
     }
 
-    private fun primaryDns(options: RixOptions): String? =
-        options.dns.split(',', ' ')
-            .map { it.trim() }
-            .firstOrNull { it.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$""")) }
+    /**
+     * The resolver handed to the TUN.
+     *
+     * It comes from the same validation the core's `--dns` uses, so the two
+     * cannot disagree, and an IPv6 server is accepted as readily as an IPv4
+     * one. If the user's list contained nothing usable, the default is used:
+     * leaving the TUN without a DNS server would make Android fall back to the
+     * network's resolver, which is exactly the leak the tunnel exists to stop.
+     */
+    private fun primaryDns(options: RixOptions): String =
+        options.dnsServers().firstOrNull() ?: "1.1.1.1"
 
     /**
      * Split tunnelling.
@@ -453,8 +468,16 @@ class RixVpnService : VpnService() {
             // Before the core, always: Psiphon is the core's own client while it
             // is in the path, and it blocks for a few seconds on the way down.
             RixRuntime.stopTun2Socks(token)
-            PsiphonBridge.stop()
-            RixRuntime.stopCore()
+            // A newer session may own the single core and the single Psiphon
+            // instance by now. Stopping them here would end that session -- the
+            // old connection terminating the new one -- so the teardown of
+            // process-wide resources belongs only to the session that still
+            // owns the runtime. The engine above is exempt: its token is
+            // generation-guarded, so a stale one stops nothing.
+            if (session.get() == mine) {
+                PsiphonBridge.stop()
+                RixRuntime.stopCore()
+            }
             withContext(Dispatchers.Main) {
                 // A start that arrived while this teardown was in flight owns
                 // the service now. Reporting idle or stopping the service here

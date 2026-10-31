@@ -46,6 +46,12 @@ class RixOptionsTest {
     }
 
     @Test
+    fun `the vpn and the core see the same dns list`() {
+        val options = RixOptions(dns = "1.1.1.1, nope, 2606:4700:4700::1111")
+        assertEquals(listOf("1.1.1.1", "2606:4700:4700::1111"), options.dnsServers())
+    }
+
+    @Test
     fun `a dns list with nothing usable is not handed to the core`() {
         val args = args(RixOptions(dns = "not-an-address"))
         assertFalse(args.contains("--dns"))

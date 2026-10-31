@@ -342,8 +342,18 @@ data class RixOptions(
     private fun dnsTokens(): List<String> =
         dns.split(',', ' ', '\t').map { it.trim() }.filter { it.isNotEmpty() }
 
+    /**
+     * The DNS servers that survived validation, in the user's order.
+     *
+     * Public because the VPN service has to put the same address into the TUN:
+     * if it used its own looser parse it would either reject an IPv6 server or
+     * fail to add one, and a TUN with no DNS server falls back to the network's
+     * resolver -- a leak that looks like the tunnel working.
+     */
+    fun dnsServers(): List<String> = dnsTokens().filter { isIpLiteral(it) }
+
     private fun validDns(): String? =
-        dnsTokens().filter { isIpLiteral(it) }.takeIf { it.isNotEmpty() }?.joinToString(",")
+        dnsServers().takeIf { it.isNotEmpty() }?.joinToString(",")
 
     private fun validExitLoc(): String? =
         exitLoc.trim().takeIf { LOCATION_CODE.matches(it) }?.uppercase()
