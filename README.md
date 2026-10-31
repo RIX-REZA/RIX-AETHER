@@ -59,6 +59,7 @@ back through the tunnel.**
 | **Windows portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-Portable.zip) · 82.5 MB · unzip and run, no install |
 | **Bundle** | [`RIX-1.0.6.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-1.0.6.zip) · APK + install notes + release notes |
 | **Release** | [v1.0.6](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.6) |
+| **sha256** | `ba6b13a7b2dfe4491d06b4f1d01081d13e70cd59e894694c257cb1c47d43eb8a` |
 
 > The APK is larger than it used to be: 1.0.3 and later carry the Psiphon tunnel
 > core for the BETA chain, which is a 31 MB native library.
