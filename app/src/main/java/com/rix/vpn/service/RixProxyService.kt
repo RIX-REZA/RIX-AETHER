@@ -184,12 +184,20 @@ class RixProxyService : LifecycleService() {
         } else {
             RixRuntime.markStopping()
         }
+        // The notification goes away before the slow part: Psiphon can take
+        // seconds to shut down, and until this ran the notification stayed up
+        // for that whole time -- or indefinitely if the library blocked.
+        runCatching {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        }.onFailure { LogBus.e("proxy", "stopForeground: ${it.message}") }
+
         lifecycleScope.launch {
             withContext(Dispatchers.IO) { PsiphonBridge.stop() }
             RixRuntime.stopCore()
-            ServiceCompat.stopForeground(this@RixProxyService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            if (preserveError == null) RixRuntime.markIdle()
-            stopSelf()
+            withContext(Dispatchers.Main) {
+                if (preserveError == null) RixRuntime.markIdle()
+                stopSelf()
+            }
         }
         worker?.cancel()
         worker = null

@@ -7,8 +7,8 @@
     <AssemblyName>RIX</AssemblyName>
     <!-- Shown in the app's About screen and in the exe's properties, so it has
          to agree with AppVersion in the installer script. Left to the default it
-         would say 1.0.0 while Apps & Features said 1.0.5. -->
-    <Version>1.0.5</Version>
+         would say 1.0.0 while Apps & Features said 1.0.6. -->
+    <Version>1.0.6</Version>
     <RootNamespace>Rix.Windows</RootNamespace>
     <ApplicationIcon>Assets\rix.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>

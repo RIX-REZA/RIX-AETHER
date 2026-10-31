@@ -12,8 +12,6 @@ import org.json.JSONObject
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Psiphon, as the last hop of the tunnel. BETA.
@@ -68,11 +66,15 @@ object PsiphonBridge {
             "31PgWQFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2xal" +
             "KxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM="
 
-    /** How long Psiphon gets to announce its socks5 listener. */
-    private const val LISTEN_TIMEOUT_MS = 25_000L
-
-    /** How long that announced listener then gets to accept a connection. */
-    private const val ACCEPT_TIMEOUT_MS = 8_000L
+    /**
+     * How long the socks5 listener gets to answer a connection.
+     *
+     * The port is fixed in the config, so the listener is bound while the
+     * controller starts rather than when a tunnel is established; this budget
+     * therefore covers library start-up, not the handshake with a Psiphon
+     * server (that is the caller's probe, which has its own minute).
+     */
+    private const val LISTEN_TIMEOUT_MS = 45_000L
 
     private val lock = Any()
 
@@ -80,6 +82,14 @@ object PsiphonBridge {
 
     @Volatile
     private var running = false
+
+    /**
+     * True once a start has failed for a reason that clearing the saved state
+     * cannot fix -- the native library itself not loading. Kept so the retry
+     * does not run pointlessly.
+     */
+    @Volatile
+    private var broken = false
 
     /**
      * The port Psiphon is serving, 0 when it is not.
@@ -100,6 +110,13 @@ object PsiphonBridge {
      * Returns true when the local socks5 listener accepts connections, which is
      * as far as this class can honestly check: whether a Psiphon tunnel was
      * established is decided by the traffic probe the caller runs next.
+     *
+     * A start that fails before the listener exists is retried once against a
+     * wiped data directory. The usual cause of that failure is state an earlier
+     * attempt left behind -- a datastore written by a process that was killed
+     * mid-write, or one from another version of the library -- and tunnel-core
+     * refuses to start against it rather than repairing it. Clearing it is what
+     * a reinstall would have done.
      */
     suspend fun start(
         context: Context,
@@ -108,51 +125,91 @@ object PsiphonBridge {
         region: String,
         protocol: PsiphonProtocol
     ): Boolean = withContext(Dispatchers.IO) {
+        // Recomputed per connect rather than remembered forever: a library that
+        // failed to load once is retried once per connection and reported each
+        // time, instead of a single early failure disabling Psiphon for the
+        // rest of the process.
+        broken = false
+        if (startOnce(context, upstreamPort, listenPort, region, protocol)) {
+            return@withContext true
+        }
+        if (broken) return@withContext false
+
+        LogBus.i("psiphon", "start failed; clearing the saved Psiphon state and trying once more")
+        stop()
+        wipeState(context)
+        startOnce(context, upstreamPort, listenPort, region, protocol)
+    }
+
+    private suspend fun startOnce(
+        context: Context,
+        upstreamPort: Int,
+        listenPort: Int,
+        region: String,
+        protocol: PsiphonProtocol
+    ): Boolean {
         stop()
 
         val app = context.applicationContext
-        val config = buildConfig(app, upstreamPort, listenPort, region, protocol)
+        val dataDir = File(app.filesDir, "psiphon")
+        if (!dataDir.isDirectory && !dataDir.mkdirs()) {
+            // Commit(true) refuses a data root that does not exist, and that
+            // refusal is what surfaces as "failed to start Psiphon library"
+            // with the reason hidden.
+            LogBus.e("psiphon", "cannot create ${dataDir.absolutePath}")
+            return false
+        }
+        val config = buildConfig(app, dataDir, upstreamPort, listenPort, region, protocol)
         LogBus.i(
             "psiphon",
             "starting: upstream socks5://127.0.0.1:$upstreamPort, " +
                 "listening on $listenPort, region ${region.ifEmpty { "auto" }}, ${protocol.name}"
         )
 
-        val listening = CountDownLatch(1)
-        val host = Host(app, config, listening)
-
+        val host = Host(app, config)
         val instance = try {
             PsiphonTunnel.newPsiphonTunnel(host)
         } catch (t: Throwable) {
-            LogBus.e("psiphon", "library refused to start: ${t.message}")
-            return@withContext false
+            // The constructor loads libgojni. A LinkageError here is the one
+            // failure a retry cannot help, and it is logged with its whole
+            // cause chain because "failed to start Psiphon library" without it
+            // is what left this broken for so long.
+            broken = t is LinkageError
+            LogBus.e("psiphon", "the library would not start: ${describe(t)}")
+            return false
         }
 
         // Not in VPN mode: RIX owns the only VpnService in the process, and a
         // second one would be refused by the system anyway.
         instance.setVpnMode(false)
 
-        val worker = Thread({
-            try {
-                // Asynchronous: it returns once the library is running, and the
-                // tunnel comes up behind it. Anything it throws comes back as a
-                // diagnostic message, but a hard failure surfaces here.
-                instance.startTunneling("")
-            } catch (t: Throwable) {
-                LogBus.e("psiphon", "start failed: ${t.message}")
-                listening.countDown()
-            }
-        }, "rix-psiphon")
-
         synchronized(lock) {
             tunnel = instance
             running = true
+            socksPort = 0
         }
+
+        val worker = Thread({
+            try {
+                // Asynchronous: it returns once the library is running, and the
+                // tunnel comes up behind it.
+                instance.startTunneling("")
+                LogBus.i("psiphon", "library is running")
+            } catch (t: Throwable) {
+                // "failed to start Psiphon library" is the library's own wrapper
+                // around the real reason (a config commit error, a datastore it
+                // cannot open, a controller that refused); the cause chain is
+                // the only thing that says which.
+                LogBus.e("psiphon", "start failed: ${describe(t)}")
+                host.failed = true
+                if (t is LinkageError) broken = true
+            }
+        }, "rix-psiphon")
         worker.isDaemon = true
         worker.start()
 
         val up = try {
-            awaitListener(listenPort, listening)
+            awaitListener(host, listenPort)
         } catch (t: Throwable) {
             // Cancelled -- the session was stopped while Psiphon was still
             // coming up. Stopping here too, because a library left running has
@@ -166,23 +223,31 @@ object PsiphonBridge {
             LogBus.e("psiphon", "no socks5 listener on 127.0.0.1:$listenPort in time")
             stop()
         }
-        up
+        return up
     }
 
     /**
-     * Waits for the socks5 listener to accept.
+     * Waits until the socks5 listener accepts.
      *
-     * The library announces the port on a notice before it accepts on it, so
-     * the announcement is only a hint about when to start trying; the
-     * connection itself is the proof.
+     * The connection is the proof, and nothing else is: the library announces
+     * its port on a notice that only arrives once a tunnel is established, so
+     * waiting for it meant declaring a working listener dead. A port that is
+     * already taken by something else, on the other hand, is a failure even
+     * though it accepts -- a connection to a stranger's listener would make the
+     * rest of the chain talk to the wrong proxy.
      */
-    private suspend fun awaitListener(port: Int, announced: CountDownLatch): Boolean {
-        announced.await(LISTEN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        val deadline = System.currentTimeMillis() + ACCEPT_TIMEOUT_MS
+    private suspend fun awaitListener(host: Host, port: Int): Boolean {
+        val deadline = System.currentTimeMillis() + LISTEN_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             if (!running) return false
+            if (host.portInUse) {
+                LogBus.e("psiphon", "port $port is serving something else")
+                return false
+            }
+            if (host.failed) return false
             try {
                 Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 700) }
+                if (!running) return false
                 socksPort = port
                 LogBus.i("psiphon", "socks5 listener is up on 127.0.0.1:$port")
                 return true
@@ -210,7 +275,7 @@ object PsiphonBridge {
         } ?: return
 
         runCatching { instance.stop() }
-            .onFailure { LogBus.e("psiphon", "stop: ${it.message}") }
+            .onFailure { LogBus.e("psiphon", "stop: ${describe(it)}") }
     }
 
     /** The same teardown, on a thread of its own, for service destruction. */
@@ -219,12 +284,49 @@ object PsiphonBridge {
         Thread({ stop() }, "rix-psiphon-stop").apply { isDaemon = true }.start()
     }
 
+    /**
+     * Removes the data root, which is where tunnel-core keeps its datastore and
+     * its downloaded server list. Only ever called while stopped.
+     */
+    private fun wipeState(context: Context) {
+        val dir = File(context.filesDir, "psiphon")
+        val cleared = runCatching { dir.deleteRecursively() }.getOrDefault(false)
+        if (cleared) {
+            LogBus.i("psiphon", "saved state cleared")
+        } else {
+            LogBus.e("psiphon", "could not clear ${dir.absolutePath}")
+        }
+        runCatching { dir.mkdirs() }
+    }
+
+    /**
+     * A throwable and everything that caused it, on one line.
+     *
+     * The library wraps every start failure in an Exception whose message says
+     * only "failed to start Psiphon library"; the sentence that actually names
+     * the problem is always one or two causes down.
+     */
+    private fun describe(t: Throwable): String {
+        val out = StringBuilder()
+        var current: Throwable? = t
+        var depth = 0
+        while (current != null && depth < 6) {
+            if (depth > 0) out.append(" <- ")
+            out.append(current.javaClass.simpleName)
+            current.message?.takeIf { it.isNotBlank() }?.let { out.append(": ").append(it) }
+            val cause = current.cause
+            current = if (cause === current) null else cause
+            depth += 1
+        }
+        return out.toString()
+    }
+
     // ------------------------------------------------------------------ config
 
     /**
      * The tunnel-core config, built the way aether builds its own.
      *
-     * The keys that matter here are [UpstreamProxyURL], which is what makes the
+     * The keys that matter here are `UpstreamProxyURL`, which is what makes the
      * chain rather than two tunnels side by side, and `EgressRegion`, which is
      * the country the user asked for. `LimitTunnelProtocols` drops the
      * QUIC-based shapes: they need UDP of their own, and nothing goes through a
@@ -232,13 +334,12 @@ object PsiphonBridge {
      */
     private fun buildConfig(
         context: Context,
+        dataDir: File,
         upstreamPort: Int,
         listenPort: Int,
         region: String,
         protocol: PsiphonProtocol
     ): String {
-        val dataDir = File(context.filesDir, "psiphon").apply { mkdirs() }
-
         return JSONObject().apply {
             put("PropagationChannelId", PROPAGATION_CHANNEL_ID)
             put("SponsorId", SPONSOR_ID)
@@ -294,27 +395,68 @@ object PsiphonBridge {
      */
     private class Host(
         private val context: Context,
-        private val config: String,
-        private val listening: CountDownLatch
+        private val config: String
     ) : PsiphonTunnel.HostService {
+
+        /** Set by the start thread when startTunneling threw. */
+        @Volatile
+        var failed = false
+
+        /** Set by the library when it could not bind the port we asked for. */
+        @Volatile
+        var portInUse = false
 
         override fun getContext(): Context = context
 
         override fun getPsiphonConfig(): String = config
+
+        /**
+         * Loading the native library is the one step that happens before any
+         * notice exists, so a failure here used to be silent: the constructor
+         * threw, the caller logged the wrapper's message and Psiphon was simply
+         * never there. It is caught here to get the loader's own reason -- the
+         * dlopen sentence names the missing dependency -- and to retry from the
+         * extraction directory, which the namespace lookup can miss on some
+         * devices.
+         */
+        override fun loadLibrary(library: String) {
+            try {
+                System.loadLibrary(library)
+                return
+            } catch (first: UnsatisfiedLinkError) {
+                val dir = context.applicationInfo.nativeLibraryDir
+                val candidate = if (dir.isNullOrEmpty()) {
+                    null
+                } else {
+                    File(dir, System.mapLibraryName(library))
+                }
+                if (candidate != null && candidate.exists()) {
+                    try {
+                        System.load(candidate.absolutePath)
+                        LogBus.i("psiphon", "loaded $library from $dir")
+                        return
+                    } catch (second: Throwable) {
+                        LogBus.e("psiphon", "loading ${candidate.absolutePath}: ${describe(second)}")
+                    }
+                }
+                LogBus.e("psiphon", "native library $library did not load: ${describe(first)}")
+                throw first
+            }
+        }
 
         override fun onDiagnosticMessage(message: String) {
             LogBus.i("psiphon", message)
         }
 
         override fun onListeningSocksProxyPort(port: Int) {
-            // The port was fixed in the config, so this is only the signal that
-            // the listener is about to be there.
-            listening.countDown()
+            // Only a notice: the listener may have been serving for a while,
+            // which is why the caller checks the port itself.
+            LogBus.i("psiphon", "library announces its socks5 port $port")
         }
 
         override fun onSocksProxyPortInUse(port: Int) {
             LogBus.e("psiphon", "port $port is already in use")
-            listening.countDown()
+            portInUse = true
         }
 
         override fun onUpstreamProxyError(message: String) {
@@ -340,7 +482,7 @@ object PsiphonBridge {
         }
 
         override fun onExiting() {
-            listening.countDown()
+            LogBus.i("psiphon", "exiting")
         }
     }
 }

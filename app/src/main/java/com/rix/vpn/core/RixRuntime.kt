@@ -1,6 +1,7 @@
 package com.rix.vpn.core
 
 import android.content.Context
+import android.system.Os
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -440,13 +441,27 @@ object RixRuntime {
 
     private var hevGeneration = 0
 
+    /**
+     * The TUN descriptor hev was handed.
+     *
+     * hev does not own it: `tunnel_init(extern_tun_fd)` returns early for a
+     * supplied descriptor without setting `tun_fd_local`, and `tunnel_fini()`
+     * only closes the descriptor when that flag is set. Whoever detached it --
+     * the VPN service, through [android.os.ParcelFileDescriptor.detachFd] --
+     * has given up the object that could, so this object keeps the number and
+     * closes it. That close is what tells the system the app no longer holds a
+     * VPN, i.e. it is what takes the key icon away.
+     */
+    private var tunFd: Int = -1
+    private var tunFdClosed = true
+
     /** Whether a tunnel engine is currently blocking inside hev. */
     fun hevActive(): Boolean = hevInFlight
 
     fun startTun2Socks(
         context: Context,
         options: RixOptions,
-        tunFd: Int,
+        descriptor: Int,
         onExit: (Int) -> Unit
     ): Int {
         val config = writeHevConfig(context, options)
@@ -455,48 +470,62 @@ object RixRuntime {
             hevGeneration += 1
             generation = hevGeneration
             hevStopRequested = false
+            // A descriptor from a previous generation is dead by definition:
+            // the caller only starts a new engine after tearing the old one
+            // down. Closing it here keeps a failed teardown from leaving the
+            // interface (and the key icon) behind.
+            val stale = if (!tunFdClosed) tunFd else -1
+            if (stale >= 0) closeQuietly(stale)
+            tunFd = descriptor
+            tunFdClosed = false
         }
 
         val thread = Thread({
-            var rc = -1
-            var attempt = 0
-            while (attempt <= HEV_START_ATTEMPTS) {
-                // A stop that arrived before we entered the library needs no
-                // signal: hev was never started, so nothing is running.
-                if (hevStopRequested && !hevInFlight) {
-                    rc = 0
-                    break
-                }
-                hevInFlight = true
-                rc = try {
-                    NativeHev.run(config.absolutePath, tunFd)
-                } catch (t: Throwable) {
-                    LogBus.e("hev", t.message ?: "خطای اجرای tun2socks")
-                    -1
-                }
-                hevInFlight = false
+            try {
+                var rc = -1
+                var attempt = 0
+                while (attempt <= HEV_START_ATTEMPTS) {
+                    // A stop that arrived before we entered the library needs no
+                    // signal: hev was never started, so nothing is running.
+                    if (hevStopRequested && !hevInFlight) {
+                        rc = 0
+                        break
+                    }
+                    hevInFlight = true
+                    rc = try {
+                        NativeHev.run(config.absolutePath, descriptor)
+                    } catch (t: Throwable) {
+                        LogBus.e("hev", t.message ?: "خطای اجرای tun2socks")
+                        -1
+                    }
+                    hevInFlight = false
 
-                val stoppedOnPurpose = hevStopRequested
-                if (rc != 0 || stoppedOnPurpose) break
-                if (attempt >= HEV_START_ATTEMPTS) break
+                    val stoppedOnPurpose = hevStopRequested
+                    if (rc != 0 || stoppedOnPurpose) break
+                    if (attempt >= HEV_START_ATTEMPTS) break
 
-                attempt += 1
-                LogBus.i("hev", "engine returned at once; starting again (retry $attempt)")
-                try {
-                    Thread.sleep(120)
-                } catch (ignored: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    break
+                    attempt += 1
+                    LogBus.i("hev", "engine returned at once; starting again (retry $attempt)")
+                    try {
+                        Thread.sleep(120)
+                    } catch (ignored: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        break
+                    }
                 }
+
+                if (generation == hevGeneration) onExit(rc)
+            } finally {
+                // The engine is done with the descriptor, and hev will never
+                // close one it was handed: this is the only close.
+                closeTunFd(generation)
             }
-
-            if (generation == hevGeneration) onExit(rc)
         }, "rix-tun2socks")
 
         thread.isDaemon = true
         synchronized(hevLock) { hevThread = thread }
         thread.start()
-        LogBus.i("hev", "tun2socks started on fd $tunFd")
+        LogBus.i("hev", "tun2socks started on fd $descriptor")
         return generation
     }
 
@@ -556,6 +585,43 @@ object RixRuntime {
         synchronized(hevLock) {
             if (hevThread === thread) hevThread = null
         }
+        // The worker closes the descriptor on its way out; this covers the one
+        // case it cannot -- the engine is stuck inside the library and the join
+        // above timed out. Closing the descriptor there makes hev's poll return
+        // EBADF, so this is also what forces a wedged engine out.
+        closeTunFd()
+    }
+
+    /**
+     * Closes the TUN descriptor hev was handed, whoever got there first.
+     *
+     * The system tears a VPN down when the last descriptor for its interface is
+     * closed. Nothing else in the app holds one -- the service detached it --
+     * so missing this call was the reason the key icon stayed in the status bar
+     * after a disconnect.
+     */
+    fun closeTunFd() {
+        closeTunFd(-1)
+    }
+
+    /** [generation] of -1 means "whatever the current engine owns". */
+    private fun closeTunFd(generation: Int) {
+        val descriptor = synchronized(hevLock) {
+            if (generation >= 0 && generation != hevGeneration) return
+            if (tunFdClosed) return
+            tunFdClosed = true
+            val held = tunFd
+            tunFd = -1
+            held
+        }
+        closeQuietly(descriptor)
+    }
+
+    private fun closeQuietly(descriptor: Int) {
+        if (descriptor < 0) return
+        runCatching { Os.close(descriptor) }
+            .onSuccess { LogBus.i("hev", "TUN fd $descriptor closed") }
+            .onFailure { LogBus.e("hev", "closing TUN fd $descriptor: ${it.message}") }
     }
 
     fun stats(): LongArray = try {

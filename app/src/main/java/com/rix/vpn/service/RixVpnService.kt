@@ -274,6 +274,12 @@ class RixVpnService : VpnService() {
 
     /** Builds and establishes the TUN, including DNS and split tunnelling. */
     private fun establishTun(options: RixOptions): ParcelFileDescriptor {
+        // A tunnel from a previous session of this same instance must not stay
+        // open underneath the new one: two descriptors mean the system keeps
+        // the interface (and the key icon) alive after either is closed.
+        runCatching { tun?.close() }
+        tun = null
+
         val builder = Builder()
             .setSession(l10n(R.string.app_name))
             .setMtu(options.mtu)
@@ -387,9 +393,9 @@ class RixVpnService : VpnService() {
     }
 
     private suspend fun failAndStop(message: String) {
-        runCatching {
-            startForegroundSafely(l10n(R.string.notif_error))
-        }
+        // No error notification: shutdown() removes the notification at once so
+        // the key icon and the ongoing tile cannot outlive the session, and the
+        // reason belongs on the screen, which the preserved error fills.
         shutdown(preserveError = message)
     }
 
@@ -419,22 +425,37 @@ class RixVpnService : VpnService() {
 
         // tun2socks first: it is the only reader of the TUN fd, so stopping the
         // core before it would leave the engine spinning on dead sockets.
-        RixRuntime.stopTun2Socks(hevToken)
+        val token = hevToken
         hevToken = null
+
+        // The interface goes down here and now, not in the coroutine below.
+        //
+        // hev is handed a detached descriptor and never closes one, and the
+        // ParcelFileDescriptor this service kept was detached with it, so
+        // nothing used to release it -- which is exactly the key icon that
+        // stayed in the status bar after a disconnect. Closing it is also
+        // synchronous on purpose: the teardown below waits seconds for Psiphon,
+        // and a user who pressed stop should not be looking at a VPN icon while
+        // that runs, or forever if it blocks. Closing it also unblocks an
+        // engine that is stuck in the library, since its poll then fails.
+        runCatching { tun?.close() }
+        tun = null
+        RixRuntime.closeTunFd()
+        runCatching {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        }.onFailure { LogBus.e("vpn", "stopForeground: ${it.message}") }
 
         scope.launch {
             // Before the core, always: Psiphon is the core's own client while it
             // is in the path, and it blocks for a few seconds on the way down.
-            withContext(Dispatchers.IO) { PsiphonBridge.stop() }
+            RixRuntime.stopTun2Socks(token)
+            PsiphonBridge.stop()
             RixRuntime.stopCore()
             withContext(Dispatchers.Main) {
                 // A start that arrived while this teardown was in flight owns
-                // the service now. Closing its TUN, clearing its state or
-                // calling stopSelf() here would kill a live connection.
+                // the service now. Reporting idle or stopping the service here
+                // would kill a live connection.
                 if (session.get() != mine) return@withContext
-                runCatching { tun?.close() }
-                tun = null
-                ServiceCompat.stopForeground(this@RixVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 // Only a clean stop resets the phase; a failure keeps the error
                 // that shutdown() already published.
                 if (preserveError == null) RixRuntime.markIdle()
@@ -453,19 +474,42 @@ class RixVpnService : VpnService() {
 
     override fun onDestroy() {
         LogBus.i("vpn", "service destroyed")
-        if (instance === this) instance = null
-        // Token-guarded: this instance can outlive its own stopSelf() long
-        // enough to serve the next start, and in that window the live engine
-        // belongs to the newer session.
-        runCatching { RixRuntime.stopTun2Socks(hevToken) }
-        hevToken = null
+        // A newer instance may already own the runtime -- a stop followed
+        // straight by a start -- and everything below the per-instance TUN is
+        // process-wide. A dying instance that touched it would take the live
+        // session's descriptor, engine and notification down with it.
+        val superseded = instance !== this
+        if (!superseded) instance = null
+
         runCatching { tun?.close() }
         tun = null
-        // A forced stop never runs shutdown(), so the whole chain is disposed
-        // here too -- but only while this service still owns the live session,
-        // because the proxy service drives the same process-wide core.
-        if (RixRuntime.state.value.mode == RixMode.TUNNEL) {
-            RixRuntime.stopChainAsync()
+
+        if (!superseded) {
+            // The forced-stop path: no shutdown() ran, so the descriptor -- and
+            // the key icon with it -- is released here. Before the engine is
+            // signalled, because a wedged engine is exactly what this path
+            // exists for.
+            RixRuntime.closeTunFd()
+            runCatching {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            }
+            runCatching { RixRuntime.stopTun2Socks(hevToken) }
+            hevToken = null
+            // A forced stop never runs shutdown(), so the whole chain is
+            // disposed here too -- but only while this service still owns the
+            // live session, because the proxy service drives the same
+            // process-wide core.
+            if (RixRuntime.state.value.mode == RixMode.TUNNEL) {
+                RixRuntime.stopChainAsync()
+                // Nothing is left to publish a final phase for a service that
+                // was destroyed outright, and leaving the screen on «متصل» over
+                // a tunnel that no longer exists is what made the orb look
+                // stuck. An error already on screen is the one thing kept: it is
+                // the reason the service is going away.
+                if (RixRuntime.state.value.phase != RixRuntime.Phase.ERROR) {
+                    RixRuntime.markIdle()
+                }
+            }
         }
         scope.cancel()
         super.onDestroy()

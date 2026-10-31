@@ -21,7 +21,7 @@
 #define AppName "RIX"
 ; Must match <Version> in Rix.Windows.csproj: one is what Apps & Features
 ; shows, the other is what the app's own About screen reports.
-#define AppVersion "1.0.5"
+#define AppVersion "1.0.6"
 #define AppPublisher "RIX"
 #define AppExe "RIX.exe"
 

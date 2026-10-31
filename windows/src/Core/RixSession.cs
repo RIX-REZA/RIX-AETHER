@@ -61,6 +61,12 @@ public sealed class RixSession : IDisposable
     private Snapshot _snapshot = new();
     private string _remembered;
 
+    /// <summary>
+    /// Set when a Psiphon attempt never carried traffic, so the next attempt
+    /// starts from a state directory that has been cleared.
+    /// </summary>
+    private bool _psiphonFailed;
+
     public event Action<Snapshot> Changed;
     public event Action<string> Log;
 
@@ -94,6 +100,17 @@ public sealed class RixSession : IDisposable
     {
         await DisconnectAsync(silent: true);
 
+        // Psiphon keeps a datastore under its own directory, and tunnel-core
+        // refuses to start against one that a killed process left half-written
+        // -- the same failure the phone's bridge now clears. Doing it here, with
+        // the core already stopped, is what lets the second attempt succeed
+        // instead of failing the same way again.
+        if (_psiphonFailed)
+        {
+            _psiphonFailed = false;
+            ClearPsiphonState();
+        }
+
         var cts = new CancellationTokenSource();
         lock (_gate) _session = cts;
 
@@ -115,6 +132,10 @@ public sealed class RixSession : IDisposable
             }
 
             Directory.CreateDirectory(AppState.Dir);
+            // Named outright in the core's argv, so it must be there before the
+            // core is: a data root that does not exist is the first thing its
+            // config check refuses.
+            if (options.Psiphon) Directory.CreateDirectory(Path.Combine(AppState.Dir, "psiphon"));
             var working = Path.GetDirectoryName(exe);
 
             var chain = Chain(options).ToList();
@@ -126,12 +147,16 @@ public sealed class RixSession : IDisposable
                     // A stop can land between starting a core and getting here.
                     // DisconnectAsync stopped what was running then; this is for
                     // the core this method started afterwards.
-                    await Task.Run(() => _core.Stop());
+                    await Task.Run(() => StopCoreIfCurrent(cts));
                     return;
                 }
 
                 if (index > 0)
                 {
+                    // A newer attempt owns the core now, so this one must not
+                    // stop it -- it would kill the connection it is about to
+                    // be replaced by.
+                    if (!Owns(cts)) return;
                     Log?.Invoke($"chain: {Transports.Label(candidate.Transport, false)} بعد از تلاش ناموفق");
                     _core.Stop();
                     await Task.Delay(250, cts.Token);
@@ -154,7 +179,16 @@ public sealed class RixSession : IDisposable
                     return;
                 }
 
-                if (!await WaitForListenerAsync(candidate.SocksPort, ListenMs, cts.Token)) continue;
+                // Psiphon has to start its own listener before the core's chain is
+                // complete, and that includes fetching a server list through the
+                // tunnel, so the plain 15 s budget would abandon an attempt that
+                // was still coming up.
+                var listenBudget = candidate.Psiphon ? PsiphonProbeMs : ListenMs;
+                if (!await WaitForListenerAsync(candidate.SocksPort, listenBudget, cts.Token))
+                {
+                    _psiphonFailed = candidate.Psiphon;
+                    continue;
+                }
 
                 if (candidate.Psiphon)
                 {
@@ -166,6 +200,7 @@ public sealed class RixSession : IDisposable
                 if (egress == null)
                 {
                     Log?.Invoke("probe: هیچ ترافیکی از تونل برنگشت / nothing came back through the tunnel");
+                    _psiphonFailed = candidate.Psiphon;
                     continue;
                 }
 
@@ -201,8 +236,10 @@ public sealed class RixSession : IDisposable
             // The last attempt's core is still up. Left alone it keeps a
             // tunnel running that the window has already declared failed, and
             // it holds the port the next attempt will want.
-            await Task.Run(() => _core.Stop());
-            Fail("هیچ پروتکلی جواب نداد / no transport carried traffic. The network may be blocking all of them.");
+            await Task.Run(() => StopCoreIfCurrent(cts));
+            Fail(chain[^1].Psiphon
+                ? "سایفون بالا نیامد / Psiphon never came up. Its servers may be blocked on this network."
+                : "هیچ پروتکلی جواب نداد / no transport carried traffic. The network may be blocking all of them.");
         }
         catch (OperationCanceledException)
         {
@@ -210,9 +247,31 @@ public sealed class RixSession : IDisposable
         }
         catch (Exception ex)
         {
-            await Task.Run(() => _core.Stop());
+            await Task.Run(() => StopCoreIfCurrent(cts));
             Fail(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Stops the core, but only while the attempt that asks is still the live
+    /// one.
+    ///
+    /// A cancelled attempt wakes up a moment after it was cancelled, and a
+    /// second connect can already have started a core by then; stopping
+    /// unconditionally killed that one, which is what made cancelling and
+    /// reconnecting look like a tunnel that keeps dropping. Whoever replaces a
+    /// session is responsible for the core from that moment on.
+    /// </summary>
+    private void StopCoreIfCurrent(CancellationTokenSource cts)
+    {
+        if (!Owns(cts)) return;
+        _core.Stop();
+    }
+
+    /// <summary>Whether [cts] is still the session this object is driving.</summary>
+    private bool Owns(CancellationTokenSource cts)
+    {
+        lock (_gate) return ReferenceEquals(_session, cts);
     }
 
     public async Task DisconnectAsync(bool silent = false)
@@ -244,6 +303,25 @@ public sealed class RixSession : IDisposable
     }
 
     // ------------------------------------------------------------------- chain
+
+    /// <summary>
+    /// Removes Psiphon's data directory, which is where the core keeps its
+    /// datastore and its downloaded server list. Only called with the core
+    /// stopped: the files are only writable by it while it runs.
+    /// </summary>
+    private void ClearPsiphonState()
+    {
+        try
+        {
+            var dir = Path.Combine(AppState.Dir, "psiphon");
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            Log?.Invoke("psiphon: cleared the state left by the failed attempt");
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke("psiphon: could not clear its state -- " + ex.Message);
+        }
+    }
 
     /// <summary>
     /// Up to three transports: the one asked for, then the ones that survive a

@@ -54,15 +54,21 @@ back through the tunnel.**
 
 | | |
 |---|---|
-| **APK** | [`RIX-1.0.5-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5-debug.apk) · 33.2 MB |
-| **Windows** | [`RIX-Setup-1.0.5.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Setup-1.0.5.exe) · 76.5 MB · [how it works](#windows) |
-| **Windows portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-Portable.zip) · 82.5 MB · unzip and run, no install |
-| **Bundle** | [`RIX-1.0.5.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.5/RIX-1.0.5.zip) · APK + install notes + release notes |
-| **Release** | [v1.0.5](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.5) |
-| **sha256** | `904d594d22d96c411981395a55699df36a6d3a3f8593a5bb137a22ad8de943ef` |
+| **APK** | [`RIX-1.0.6-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-1.0.6-debug.apk) · 33.2 MB |
+| **Windows** | [`RIX-Setup-1.0.6.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-Setup-1.0.6.exe) · 76.5 MB · [how it works](#windows) |
+| **Windows portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-Portable.zip) · 82.5 MB · unzip and run, no install |
+| **Bundle** | [`RIX-1.0.6.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-1.0.6.zip) · APK + install notes + release notes |
+| **Release** | [v1.0.6](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.6) |
 
-> The APK is larger than it used to be: 1.0.5 carries the Psiphon tunnel core for
-> the BETA chain, which is a 31 MB native library.
+> The APK is larger than it used to be: 1.0.3 and later carry the Psiphon tunnel
+> core for the BETA chain, which is a 31 MB native library.
+
+> [!NOTE]
+> **1.0.6 is a bug-fix release.** Nothing new was added: Psiphon on Android is
+> fixed and now says why it failed instead of only "library error", the VPN now
+> tears down completely when it is disconnected (the key icon and the
+> notification go with it), and the Windows connection no longer drops and
+> reconnects when a fallback attempt replaces a core.
 
 > [!IMPORTANT]
 > **Only if you are coming from 1.0.2 or older.** Everything up to 1.0.2 was signed with Gradle's
@@ -199,7 +205,7 @@ The same core, the same transports, the same rule about what "connected" means �
 
 | | |
 |---|---|
-| **Installer** | `RIX-Setup-1.0.5.exe` — per-user, no administrator prompt, no driver |
+| **Installer** | `RIX-Setup-1.0.6.exe` — per-user, no administrator prompt, no driver |
 | **Portable** | `RIX-Portable.zip` — unzip and run `RIX.exe` |
 | **Requires** | Windows 10 1809 or newer, 64-bit. The installer brings WebView2 if the machine does not have it already. |
 
@@ -403,6 +409,8 @@ V2 Signer: certificate DN: C=IR, O=RIX, CN=RIX VPN
 | Proxy mode works, tunnel mode does not | Another VPN may already own the phone; Android allows one active `VpnService`. Also check split tunnelling — if the app you are testing is excluded, it will not be tunnelled. |
 | Works on Wi-Fi, not on mobile data | Carrier-level UDP blocking or CGNAT. The chain should already be falling through to HTTP/2; if the log shows every candidate failing, the block is deeper than the app can route around. |
 | Battery drain | Preset **کممصرف**, or raise keepalive and set the performance profile to `low`. |
+| The key icon or the notification stays after disconnecting | Fixed in 1.0.6: the tunnel descriptor is now closed on every path, so the system notification goes away the moment the VPN is stopped. |
+| Psiphon says «خطای کتابخانه» | Fixed in 1.0.6: the log now carries the library's own reason (the full cause chain) instead of only its wrapper message, the saved Psiphon state is cleared and retried once, and the port is verified by connecting to it rather than by waiting for a notice. |
 
 ## Privacy
 

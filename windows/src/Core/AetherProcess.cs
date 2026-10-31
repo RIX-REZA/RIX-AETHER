@@ -35,6 +35,23 @@ public sealed class AetherProcess : IDisposable
     private JobObject _job;
     private EventHandler _onExit;
 
+    /// <summary>
+    /// One process's lifetime, and whether the app ended it.
+    ///
+    /// The exit event is raised on a thread-pool thread and can arrive after a
+    /// replacement has already started -- that race is what made a fallback
+    /// attempt look like "the core stopped" and cancelled the attempt that was
+    /// still running. A token belongs to exactly one start, so an event that
+    /// names a token nobody is holding any more is a stop the app asked for and
+    /// is dropped rather than reported.
+    /// </summary>
+    private sealed class Run
+    {
+        public bool Ended;
+    }
+
+    private Run _run;
+
     /// <summary>Every line the core prints, already timestamped.</summary>
     public event Action<string> LogLine;
 
@@ -106,20 +123,15 @@ public sealed class AetherProcess : IDisposable
         process.OutputDataReceived += (_, e) => OnLine(e.Data);
         process.ErrorDataReceived += (_, e) => OnLine(e.Data);
 
+        // The token is claimed before the child exists, so an exit that happens
+        // immediately still finds the run it belongs to.
+        var run = new Run();
+        lock (_gate) _run = run;
+
         // Kept in a field so a deliberate stop can detach it: an exit the app
         // asked for is not news, and reporting it would turn every fallback
         // attempt into a failure the user is told about.
-        EventHandler onExit = (_, _) =>
-        {
-            int code;
-            try { code = process.ExitCode; } catch { code = -1; }
-            lock (_gate)
-            {
-                if (ReferenceEquals(_process, process)) _process = null;
-            }
-            Emit("core: exited with code " + code);
-            Exited?.Invoke(code);
-        };
+        EventHandler onExit = (_, _) => OnExited(run, process);
         process.Exited += onExit;
 
         try
@@ -129,6 +141,7 @@ public sealed class AetherProcess : IDisposable
         catch (Exception ex)
         {
             Emit("core: cannot start " + exePath + " -- " + ex.Message);
+            lock (_gate) { if (ReferenceEquals(_run, run)) _run = null; }
             process.Dispose();
             return false;
         }
@@ -178,6 +191,12 @@ public sealed class AetherProcess : IDisposable
             _onExit = null;
             job = _job;
             _job = null;
+            // The lifetime ends here: any exit event still in flight belongs to
+            // a run nobody is waiting on, and reporting it would be a failure
+            // the app caused itself.
+            var run = _run;
+            if (run != null) run.Ended = true;
+            _run = null;
         }
 
         if (process != null)
@@ -219,6 +238,27 @@ public sealed class AetherProcess : IDisposable
         // Closing the job kills anything the core left behind -- the Psiphon
         // child in particular.
         job?.Dispose();
+    }
+
+    /// <summary>
+    /// The child ended. Only a run this object still holds is news; one the app
+    /// stopped, or one a newer start replaced, is dropped -- the event can be
+    /// raised a moment after either.
+    /// </summary>
+    private void OnExited(Run run, Process process)
+    {
+        int code;
+        try { code = process.ExitCode; } catch { code = -1; }
+
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_run, run) || run.Ended) return;
+            _run = null;
+            if (ReferenceEquals(_process, process)) _process = null;
+        }
+
+        Emit("core: exited with code " + code);
+        Exited?.Invoke(code);
     }
 
     private void OnLine(string line)
