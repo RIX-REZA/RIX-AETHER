@@ -365,7 +365,33 @@ object PsiphonBridge {
             put("InproxyTunnelProtocolPreferProbability", 0.0)
             put("InproxyTunnelProtocolSelectionProbability", 0.0)
 
-            put("LimitTunnelProtocols", JSONArray(protocol.protocols))
+            // Only names this build of the library actually accepts.
+            //
+            // tunnel-core validates every entry of this list and aborts the
+            // start on the first name it does not recognise, rather than
+            // ignoring it -- an unknown name here is not a missing option, it
+            // is a Psiphon that never comes up. Anything that has drifted out
+            // of the library's set is therefore dropped and named in the log
+            // instead of being handed over.
+            val usable = protocol.effectiveProtocols()
+            val dropped = protocol.protocols - usable.toSet()
+            if (dropped.isNotEmpty()) {
+                LogBus.e(
+                    "psiphon",
+                    "${protocol.name}: ${dropped.joinToString(", ")} is not a tunnel protocol " +
+                        "this library accepts; dropped so the start is not refused"
+                )
+            }
+            if (usable.isEmpty()) {
+                // Nothing left to restrict with: an absent list means "all
+                // protocols", which is still a working Psiphon.
+                LogBus.e(
+                    "psiphon",
+                    "no usable tunnel protocol in ${protocol.name}; letting Psiphon choose"
+                )
+            } else {
+                put("LimitTunnelProtocols", JSONArray(usable))
+            }
             // Tactics can hand back a protocol the upstream cannot carry, which
             // would fail the connection after it looked like it was starting.
             put("DisableTactics", true)
