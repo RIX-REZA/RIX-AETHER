@@ -189,4 +189,53 @@ class RixOptionsTest {
         assertEquals(1024, options.corePort)
         assertEquals(1024, options.forCore().bindPort)
     }
+
+    // ------------------------------------------------------------------ psiphon
+
+    @Test
+    fun `every psiphon shape names only protocols this library accepts`() {
+        // tunnel-core validates the whole LimitTunnelProtocols list and aborts
+        // the start -- not the entry -- on the first name it does not know, so
+        // one stale name here is a Psiphon that never comes up.
+        for (shape in PsiphonProtocol.entries) {
+            assertEquals(
+                "${shape.name} declares a name the library would refuse",
+                shape.protocols,
+                shape.effectiveProtocols()
+            )
+            assertTrue("${shape.name} selects nothing", shape.effectiveProtocols().isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `the protocol names that broke the psiphon start are not selectable`() {
+        // Neither has ever existed in tunnel-core, and both sat in AUTO -- the
+        // default shape -- so every Psiphon connect died with
+        // "invalid tunnel protocol: FRONTED-MEEK-CDN-OSSH" before dialling.
+        val declared = PsiphonProtocol.entries.flatMap { it.protocols }.toSet()
+        assertFalse(declared.contains("FRONTED-MEEK-CDN-OSSH"))
+        assertFalse(declared.contains("FRONTED-MEEK-CDN-HTTP-OSSH"))
+        assertFalse(PsiphonProtocol.USABLE.contains("FRONTED-MEEK-CDN-OSSH"))
+        assertFalse(PsiphonProtocol.USABLE.contains("FRONTED-MEEK-CDN-HTTP-OSSH"))
+    }
+
+    @Test
+    fun `a name outside the library set is dropped instead of being passed on`() {
+        // The guard the shapes rely on: the QUIC and refraction names are real
+        // tunnel-core protocols but cannot run through a SOCKS5 upstream, so
+        // they must not survive into the config either.
+        val mixed = listOf(
+            "OSSH", "FRONTED-MEEK-CDN-OSSH", "QUIC-OSSH",
+            "TAPDANCE-OSSH", "INPROXY-WEBRTC-OSSH", "SHADOWSOCKS-OSSH"
+        )
+        assertEquals(
+            listOf("OSSH", "SHADOWSOCKS-OSSH"),
+            mixed.filter { it in PsiphonProtocol.USABLE }
+        )
+    }
+
+    @Test
+    fun `the default psiphon shape offers the whole usable set`() {
+        assertEquals(PsiphonProtocol.USABLE, PsiphonProtocol.AUTO.effectiveProtocols().toSet())
+    }
 }
