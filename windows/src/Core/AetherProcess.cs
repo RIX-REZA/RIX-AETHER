@@ -146,11 +146,36 @@ public sealed class AetherProcess : IDisposable
             return false;
         }
 
+        // A stop can land between the child being created and this line: the
+        // disconnect runs on another thread and saw no process to stop. Taking
+        // the child anyway would leave a core nobody is watching -- holding the
+        // socks port and the next attempt's listener -- so a lifetime that has
+        // already ended kills its own child and reports the start as failed.
+        var abandoned = false;
         lock (_gate)
         {
-            _process = process;
-            _onExit = onExit;
-            _tail.Clear();
+            if (run.Ended || !ReferenceEquals(_run, run))
+            {
+                abandoned = true;
+            }
+            else
+            {
+                _process = process;
+                _onExit = onExit;
+                _tail.Clear();
+            }
+        }
+        if (abandoned)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(2000);
+            }
+            catch { /* it may have exited on its own */ }
+            process.Dispose();
+            Emit("core: stopped before it was ready; discarded");
+            return false;
         }
 
         // Before the first byte is read: a child started between these two lines
