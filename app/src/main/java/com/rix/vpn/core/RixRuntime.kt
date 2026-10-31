@@ -1,7 +1,7 @@
 package com.rix.vpn.core
 
 import android.content.Context
-import android.system.Os
+import android.os.ParcelFileDescriptor
 import com.rix.vpn.data.LogBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -617,9 +617,17 @@ object RixRuntime {
         closeQuietly(descriptor)
     }
 
+    /**
+     * Closes a bare descriptor number.
+     *
+     * `Os.close` only takes a FileDescriptor object, and the number hev was
+     * handed was detached from its ParcelFileDescriptor, so it is re-adopted
+     * just to be closed -- `adoptFd` takes ownership of the number and its
+     * `close()` is the one that calls `close(2)` on it.
+     */
     private fun closeQuietly(descriptor: Int) {
         if (descriptor < 0) return
-        runCatching { Os.close(descriptor) }
+        runCatching { ParcelFileDescriptor.adoptFd(descriptor).close() }
             .onSuccess { LogBus.i("hev", "TUN fd $descriptor closed") }
             .onFailure { LogBus.e("hev", "closing TUN fd $descriptor: ${it.message}") }
     }
