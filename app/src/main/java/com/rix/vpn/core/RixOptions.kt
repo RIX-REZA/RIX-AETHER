@@ -100,6 +100,25 @@ enum class LogLevel(val label: String, val value: String) {
  * Psiphon's own client offers the same three shapes, and they matter more here
  * than the tunnel's own transport does: the protocols Psiphon reaches its
  * servers with decide whether the network lets it out at all.
+ *
+ * These names are not free-form text. tunnel-core runs every entry through
+ * `TunnelProtocols.Validate()`, which refuses the *whole* list on the first
+ * name it does not know, and that refusal happens in `Config.Commit` with
+ * `skipOnError` false -- so it aborts the start instead of being ignored. One
+ * stale name is therefore enough to take the entire Psiphon hop down, which is
+ * exactly what `FRONTED-MEEK-CDN-OSSH` did: that name has never existed in
+ * tunnel-core, it sat in [AUTO] (the default) and in [COMPATIBLE], and every
+ * connect that used either shape died with
+ *
+ *     invalid tunnel protocol: FRONTED-MEEK-CDN-OSSH
+ *
+ * before a single byte was dialled.
+ *
+ * The names below are the ones in `psiphon/common/protocol/protocol.go` at the
+ * revision the bundled `ca.psiphon:psiphontunnel` is built from -- read out of
+ * `libgojni.so` itself as `buildinfo.buildRev=c4a09096ab`. Anything not in
+ * [USABLE] must not be added back without checking it against that file for the
+ * library version in `app/build.gradle.kts` first.
  */
 enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
     /** Everything Psiphon can use through a socks5 upstream, its own choice. */
@@ -110,8 +129,7 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
             "UNFRONTED-MEEK-OSSH", "UNFRONTED-MEEK-HTTPS-OSSH",
             "UNFRONTED-MEEK-SESSION-TICKET-OSSH",
             "SHADOWSOCKS-OSSH",
-            "FRONTED-MEEK-OSSH", "FRONTED-MEEK-CDN-OSSH",
-            "FRONTED-MEEK-HTTP-OSSH", "FRONTED-MEEK-CDN-HTTP-OSSH"
+            "FRONTED-MEEK-OSSH", "FRONTED-MEEK-HTTP-OSSH"
         )
     ),
 
@@ -125,16 +143,87 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
         )
     ),
 
-    /** The widest net: plain SSH and the CDN-fronted shapes as well. */
+    /** The widest net: plain SSH and the fronted shapes as well. */
     COMPATIBLE(
         "سازگاری",
         listOf(
             "SSH", "OSSH", "TLS-OSSH",
             "UNFRONTED-MEEK-HTTPS-OSSH",
-            "FRONTED-MEEK-CDN-OSSH", "FRONTED-MEEK-CDN-HTTP-OSSH",
             "FRONTED-MEEK-OSSH", "FRONTED-MEEK-HTTP-OSSH"
         )
-    )
+    );
+
+    /**
+     * The protocols in this shape the bundled library will actually accept.
+     *
+     * The declared lists above are already correct, so this normally returns
+     * them unchanged; it exists so that a name which drifts out of the
+     * library's set can never again abort a start. Whatever it drops is logged
+     * by the caller rather than disappearing.
+     */
+    fun effectiveProtocols(): List<String> = protocols.filter { it in USABLE }
+
+    /**
+     * Whether every name in this shape is one the bundled library accepts.
+     *
+     * Nothing at runtime branches on this -- [PsiphonBridge] gets the same
+     * answer out of the names [effectiveProtocols] drops, and logs them by name.
+     * It exists so a unit test can fail when a name drifts: `AUTO` held every
+     * usable name *and* `FRONTED-MEEK-CDN-OSSH`, so a comparison of the
+     * *filtered* list against [USABLE] stayed green while the shape itself was
+     * one the library refused, and every connect died on it. A test is the only
+     * place this can be caught before a device runs it.
+     */
+    val isComplete: Boolean get() = onlyUsable(protocols)
+
+    companion object {
+        /**
+         * The tunnel protocol names that are both accepted by the bundled
+         * library's `SupportedTunnelProtocols` and usable through the SOCKS5
+         * upstream this app puts in front of it.
+         *
+         * `QUIC-OSSH`, `FRONTED-MEEK-QUIC-OSSH`, `TAPDANCE-OSSH` and
+         * `CONJURE-OSSH` are accepted names but are left out on purpose: the
+         * first two need UDP of their own and the last two use refraction
+         * networking, and `TunnelProtocolSupportsUpstreamProxy()` filters all
+         * four out anyway whenever `UpstreamProxyURL` is set -- which it always
+         * is for this chain. The in-proxy variants are excluded for the same
+         * reason, and `TAPDANCE-OSSH` is disabled outright by the library.
+         */
+        val USABLE: Set<String> = setOf(
+            "SSH",
+            "OSSH",
+            "TLS-OSSH",
+            "SHADOWSOCKS-OSSH",
+            "UNFRONTED-MEEK-OSSH",
+            "UNFRONTED-MEEK-HTTPS-OSSH",
+            "UNFRONTED-MEEK-SESSION-TICKET-OSSH",
+            "FRONTED-MEEK-OSSH",
+            "FRONTED-MEEK-HTTP-OSSH"
+        )
+
+        /**
+         * Every name in [AUTO], which is the shape the app offers by default.
+         *
+         * [AUTO]'s own list is the thing that has to stay complete, and a unit
+         * test asserts exactly that against this set: it is the only place the
+         * two can be compared without a device, and the failure it prevents --
+         * "invalid tunnel protocol" on every connect, for every user who never
+         * opened the options screen -- is the one that shipped once already.
+         */
+        val AUTO_NAMES: Set<String> = AUTO.protocols.toSet()
+
+        /**
+         * Whether [names] is a list the bundled library would accept as a whole.
+         *
+         * Takes the list rather than reading one off a shape so the two ways it
+         * can be false -- a name the library does not know, and a list with
+         * nothing in it -- are both reachable from a test. An enum has no
+         * `copy`, so there is no other way to put a wrong list in front of it.
+         */
+        fun onlyUsable(names: List<String>): Boolean =
+            names.isNotEmpty() && names.all { it in USABLE }
+    }
 }
 
 /** Which apps the TUN captures when [RixMode.TUNNEL] is active. */

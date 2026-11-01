@@ -105,6 +105,26 @@ object PsiphonBridge {
     fun isRunning(): Boolean = running
 
     /**
+     * Why the last start did not come up, in the library's own words.
+     *
+     * The caller only learns a boolean, and the callers walk a chain, so a
+     * Psiphon that refused to start used to be indistinguishable on screen from
+     * a Psiphon that started, listened, and then carried nothing: both ended as
+     * «همهٔ مسیرها ناموفق بودند» with the reason buried in the log. Every
+     * failure below writes here as well as to the log, and the screen quotes it.
+     */
+    @Volatile
+    var lastError: String? = null
+        private set
+
+    /** Logs a start failure and remembers it. */
+    private fun fail(message: String): Boolean {
+        lastError = message
+        LogBus.e("psiphon", message)
+        return false
+    }
+
+    /**
      * Starts Psiphon against [upstreamPort] and waits until it serves [listenPort].
      *
      * Returns true when the local socks5 listener accepts connections, which is
@@ -130,6 +150,7 @@ object PsiphonBridge {
         // time, instead of a single early failure disabling Psiphon for the
         // rest of the process.
         broken = false
+        lastError = null
         if (startOnce(context, upstreamPort, listenPort, region, protocol)) {
             return@withContext true
         }
@@ -156,8 +177,7 @@ object PsiphonBridge {
             // Commit(true) refuses a data root that does not exist, and that
             // refusal is what surfaces as "failed to start Psiphon library"
             // with the reason hidden.
-            LogBus.e("psiphon", "cannot create ${dataDir.absolutePath}")
-            return false
+            return fail("cannot create ${dataDir.absolutePath}")
         }
         val config = buildConfig(app, dataDir, upstreamPort, listenPort, region, protocol)
         LogBus.i(
@@ -175,8 +195,7 @@ object PsiphonBridge {
             // cause chain because "failed to start Psiphon library" without it
             // is what left this broken for so long.
             broken = t is LinkageError
-            LogBus.e("psiphon", "the library would not start: ${describe(t)}")
-            return false
+            return fail("the library would not start: ${describe(t)}")
         }
 
         // Not in VPN mode: RIX owns the only VpnService in the process, and a
@@ -200,7 +219,13 @@ object PsiphonBridge {
                 // around the real reason (a config commit error, a datastore it
                 // cannot open, a controller that refused); the cause chain is
                 // the only thing that says which.
-                LogBus.e("psiphon", "start failed: ${describe(t)}")
+                //
+                // Recorded as well as logged, because this is the failure that
+                // arrives late: the library returns from startTunneling and the
+                // refusal -- a config Commit error, most often -- lands here,
+                // where the caller is only waiting on a port and would otherwise
+                // report a timeout.
+                fail("start failed: ${describe(t)}")
                 host.failed = true
                 if (t is LinkageError) broken = true
             }
@@ -220,7 +245,13 @@ object PsiphonBridge {
         }
 
         if (!up) {
-            LogBus.e("psiphon", "no socks5 listener on 127.0.0.1:$listenPort in time")
+            // Not every refusal is announced: when the library has said nothing
+            // at all, the only honest statement is the one about the listener,
+            // and saying which of the two it was is what separates "would not
+            // start" from "started but never bound".
+            if (lastError == null) {
+                fail("no socks5 listener on 127.0.0.1:$listenPort in time")
+            }
             stop()
         }
         return up
@@ -365,7 +396,51 @@ object PsiphonBridge {
             put("InproxyTunnelProtocolPreferProbability", 0.0)
             put("InproxyTunnelProtocolSelectionProbability", 0.0)
 
-            put("LimitTunnelProtocols", JSONArray(protocol.protocols))
+            // Only names this build of the library actually accepts.
+            //
+            // tunnel-core validates every entry of this list and aborts the
+            // start on the first name it does not recognise, rather than
+            // ignoring it -- an unknown name here is not a missing option, it
+            // is a Psiphon that never comes up. Anything that has drifted out
+            // of the library's set is therefore dropped and named in the log
+            // instead of being handed over.
+            val usable = protocol.effectiveProtocols()
+            val dropped = protocol.protocols - usable.toSet()
+            if (dropped.isNotEmpty()) {
+                LogBus.e(
+                    "psiphon",
+                    "${protocol.name}: ${dropped.joinToString(", ")} is not a tunnel protocol " +
+                        "this library accepts; dropped so the start is not refused"
+                )
+            }
+            if (usable.isEmpty()) {
+                // Either way the list is left off the config entirely.
+                //
+                // This was checked rather than assumed. tunnel-core validates a
+                // TunnelProtocols parameter by running `Validate()`, which
+                // refuses the whole apply on the first name it does not know,
+                // and it filters with `PruneInvalid()` only under
+                // `ValidationSkipOnError`. `LimitTunnelProtocols` is applied
+                // with no skip-on-error flag, and the library's own test asserts
+                // that an unknown name makes `Set` return an error -- `"OSSH"`
+                // and `"SSH"` alongside it are not applied either. So a single
+                // stale name here is not a protocol that gets dropped: it is a
+                // failed parameter apply. An empty list in that same place
+                // parses cleanly, which is why it is the safer of the two, but
+                // neither is what this app should ever build. `USABLE` is
+                // checked against the bundled library's
+                // `SupportedTunnelProtocols` / `DisabledTunnelProtocols`, and
+                // `PsiphonProtocolTest` fails if a declared name drifts out of
+                // it, so `usable` being empty means the set itself is wrong and
+                // the log line is a bug report rather than a routine fallback.
+                LogBus.e(
+                    "psiphon",
+                    "no usable tunnel protocol in ${protocol.name}; leaving the list unset " +
+                        "and letting Psiphon choose"
+                )
+            } else {
+                put("LimitTunnelProtocols", JSONArray(usable))
+            }
             // Tactics can hand back a protocol the upstream cannot carry, which
             // would fail the connection after it looked like it was starting.
             put("DisableTactics", true)

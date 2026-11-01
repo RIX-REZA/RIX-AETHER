@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -93,13 +94,15 @@ fun HomeScreen(
         if (!running) elapsed = 0
     }
 
+    val accent = phaseAccent(state.phase)
+
     RixSurface {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(top = 34.dp, bottom = 26.dp),
+                .padding(horizontal = 18.dp)
+                .padding(top = 30.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
@@ -131,56 +134,84 @@ fun HomeScreen(
                 StatusBadge(state)
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
 
-            // ---- primary status ----------------------------------------
-            Text(
-                text = statusTitle(state, s),
-                color = RixColors.Text,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = statusSubtitle(state, options, s),
-                color = if (state.phase == RixRuntime.Phase.ERROR) RixColors.Danger else RixColors.TextMuted,
-                fontSize = 12.5.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 19.sp
-            )
-
-            Spacer(Modifier.height(14.dp))
-
-            PowerOrb(
-                active = running,
-                busy = busy,
-                onClick = onToggle
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            if (running) {
-                MonoText(
-                    text = formatDuration(elapsed),
+            // ---- hero ---------------------------------------------------
+            // One panel holds the whole answer to "what is happening": the
+            // state, the reason for it, the control, and the two readings that
+            // belong to the session. They used to be five separate blocks of
+            // equal weight, which is why nothing on the screen led.
+            HeroPanel(accent = accent) {
+                Text(
+                    text = statusTitle(state, s),
                     color = RixColors.Text,
-                    size = 26
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(4.dp))
-                MonoText(
-                    text = "127.0.0.1:${state.socksPort}",
-                    color = RixColors.TextMuted,
-                    size = 12
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = statusSubtitle(state, options, s),
+                    color = if (state.phase == RixRuntime.Phase.ERROR) {
+                        RixColors.Danger
+                    } else {
+                        RixColors.TextMuted
+                    },
+                    fontSize = 12.5.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 19.sp
                 )
-                Spacer(Modifier.height(18.dp))
-            } else if (connecting) {
-                // The clock belongs to time connected, so it stays at zero here
-                // and the wait gets an explicit indicator instead.
-                ConnectingDots(RixColors.Warning)
-                Spacer(Modifier.height(18.dp))
-            } else {
+
                 Spacer(Modifier.height(10.dp))
+
+                PowerOrb(phase = state.phase, onClick = onToggle)
+
+                Spacer(Modifier.height(2.dp))
+
+                when {
+                    running -> {
+                        MonoText(
+                            text = formatDuration(elapsed),
+                            color = RixColors.Text,
+                            size = 26
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        MonoText(
+                            text = "127.0.0.1:${state.socksPort}",
+                            color = RixColors.TextMuted,
+                            size = 12
+                        )
+                    }
+                    // The clock belongs to time connected, so it stays at zero
+                    // here and the wait gets an explicit indicator instead.
+                    connecting || state.phase == RixRuntime.Phase.STARTING ->
+                        ConnectingDots(RixColors.Warning)
+                    else -> Unit
+                }
             }
+
+            // The affordance, spelled out. The orb says «لغو» while an attempt
+            // is in flight, and this is the sentence that tells the user the
+            // second tap is the way to use it -- which is the behaviour they
+            // asked for and could not find, because the orb used to be switched
+            // off for the whole of the wait.
+            if (state.phase == RixRuntime.Phase.CONNECTING ||
+                state.phase == RixRuntime.Phase.STARTING
+            ) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = s.s(
+                        "برای لغو اتصال، دوباره روی دکمه بزن",
+                        "Tap the orb again to cancel"
+                    ),
+                    color = RixColors.Warning,
+                    fontSize = 11.5.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
 
             // ---- mode --------------------------------------------------
             // A live session cannot be moved between modes -- the tunnel owns a
@@ -281,6 +312,54 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/**
+ * The colour a phase paints itself in.
+ *
+ * One table, so the badge, the hero panel's tint and the orb's accent cannot
+ * drift apart and leave a red panel around a green orb.
+ */
+@Composable
+private fun phaseAccent(phase: RixRuntime.Phase): Color = when (phase) {
+    RixRuntime.Phase.RUNNING -> RixColors.Teal
+    RixRuntime.Phase.ERROR -> RixColors.Danger
+    RixRuntime.Phase.STARTING,
+    RixRuntime.Phase.CONNECTING,
+    RixRuntime.Phase.STOPPING -> RixColors.Warning
+    RixRuntime.Phase.IDLE -> RixColors.Violet
+}
+
+/**
+ * The panel the whole screen is about.
+ *
+ * A tinted, rounded well rather than another flat card: it gives the status,
+ * the orb and the session readings one shared surface, so the eye lands there
+ * first. The tint follows the phase, which means the error state is legible
+ * from across the room without reading a word.
+ */
+@Composable
+private fun HeroPanel(
+    accent: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(30.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        accent.copy(alpha = if (RixColors.isDark) 0.15f else 0.08f),
+                        RixColors.Surface.copy(alpha = 0.92f)
+                    )
+                )
+            )
+            .border(1.dp, accent.copy(alpha = 0.24f), RoundedCornerShape(30.dp))
+            .padding(horizontal = 14.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content
+    )
 }
 
 @Composable

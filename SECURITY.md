@@ -23,10 +23,31 @@ What that does and does not mean:
 
 1. The key is **not** in the working tree and is ignored by `.gitignore`
    (`keystore/`, `*.p12`, `*.jks`, `*.keystore`).
-2. CI restores it at build time from the repository variable (or secret)
-   `RIX_KEYSTORE_B64`. With no value there, the build **fails**; it never falls
-   back to the debug keystore, because an APK signed with a different key
-   installs over nothing and breaks every future update.
+2. CI restores it at build time from the **secret** `RIX_KEYSTORE_B64`, and
+   falls back to a repository *variable* of the same name only if the secret is
+   absent. With neither set the build **fails**; it never falls back to the
+   debug keystore, because an APK signed with a different key installs over
+   nothing and breaks every future update.
+
+   The fallback is a known, accepted exposure, and it is the one thing in this
+   file that is a trade rather than a fix. The runner prints every step's
+   `env:` block, and it masks a value only when that value is a registered
+   secret -- so a run that takes the variable path writes the base64 of
+   `rix.p12`, private key included, into its own job log. Run `41331524238` did
+   exactly that. The repository is public, so that run and the log on its page
+   are readable by anyone; the REST endpoint that downloads logs answers `403`
+   without a token, which narrows the API route but not the page.
+
+   It is tolerated because the key is already public: it was committed to this
+   repository once, and the paragraph above is the admission. Printing it again
+   does not disclose anything that was not already disclosed, and CI still has
+   to sign with it for installed apps to keep updating. Removing the fallback
+   only stopped the build. Every run that takes it emits a `::warning::` saying
+   so, because the path should disappear with the rotation below.
+
+   The variable itself is *not* anonymously readable: `GET
+   /repos/.../actions/variables/RIX_KEYSTORE_B64` answers `401` without a token.
+   The exposure is the log, not the storage.
 3. A CI step refuses to build if any signing material is tracked in git.
 4. Every build prints the APK's signing certificate with
    `apksigner verify --print-certs`, so a change of key is visible in the log.
@@ -59,13 +80,23 @@ that keeps existing users working:
    once (and that exporting settings first avoids losing them).
 4. After that release, sign only with the new key. The old key and its lineage
    are retired; the old key must never be used for a new distribution channel.
-5. Never commit either key. Store the new one in `RIX_KEYSTORE_B64` (and, when
-   GitHub Actions secrets are available, prefer the secret over the variable:
-   variables are readable by anyone with repository write access).
+5. Never commit either key, and store the new one only as the *secret*
+   `RIX_KEYSTORE_B64` -- never as a variable, and never with the password
+   written into `app/build.gradle.kts` as it is today (`storePassword` falls back
+   to a literal when `RIX_KEYSTORE_PASS` is unset, and that literal is in this
+   public repository beside a key whose ciphertext has now been published twice).
 
 Until that release happens, CI keeps signing with the disclosed key so that
 installed apps can still update in place. That is a deliberate compatibility
 choice, not a claim that the key is safe.
+
+### The run logs that carry it
+
+A workflow run's log can be deleted from the run's page ("Delete run"), and a
+log whose step printed the key should be treated that way. Deleting it is not a
+remedy: the value was already served, and anything can have copied it. It only
+stops the copy that is easiest to find. A log left in place keeps handing the
+key to the next person who greps for it.
 
 ## Reporting a problem
 

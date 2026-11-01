@@ -20,16 +20,20 @@ import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.coroutineContext
 
 /**
  * Full-tunnel mode.
@@ -116,6 +120,10 @@ class RixVpnService : VpnService() {
 
             var winner: RixOptions? = null
             var egress: TunnelProbe.Egress? = null
+            // The Psiphon library's own reason, when that is what stopped the
+            // chain. Preferred over the generic message at the end because it is
+            // the only text that says what to do about it.
+            var psiphonFailure: String? = null
 
             for ((index, candidate) in chain.withIndex()) {
                 if (session.get() != mine) return
@@ -151,6 +159,12 @@ class RixVpnService : VpnService() {
                     RixRuntime.startCore(this, candidate.forCore())
                     LogBus.i("vpn", "${candidate.transport.label}: core started, waiting for SOCKS5 on $upstreamPort")
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
+                } catch (c: CancellationException) {
+                    // The wait was cancelled, so the core did not answer in
+                    // time -- it did not answer wrongly. Reporting it as this
+                    // transport's failure would walk the rest of the chain
+                    // after a stop had already been asked for.
+                    throw c
                 } catch (t: Throwable) {
                     LogBus.e("vpn", "${candidate.transport.label}: ${t.message}")
                     false
@@ -176,7 +190,12 @@ class RixVpnService : VpnService() {
                         candidate.psiphonProtocol
                     )
                     if (!up) {
-                        LogBus.e("vpn", "psiphon: nothing listening on ${candidate.bindPort}")
+                        // The library's own reason, not "nothing listening": a
+                        // refusal at start and a listener that never bound look
+                        // the same from here and mean very different things.
+                        psiphonFailure = PsiphonBridge.lastError
+                            ?: l10n(R.string.error_psiphon_unavailable)
+                        LogBus.e("vpn", "psiphon: $psiphonFailure")
                         if (session.get() != mine) return
                         continue
                     }
@@ -253,7 +272,9 @@ class RixVpnService : VpnService() {
             val chosen = winner
             val verified = egress
             if (chosen == null || verified == null) {
-                throw IllegalStateException(l10n(R.string.error_all_transports_failed))
+                throw IllegalStateException(
+                    psiphonFailure ?: l10n(R.string.error_all_transports_failed)
+                )
             }
 
             // Remembering the winner is what makes the second connect fast: the
@@ -271,6 +292,14 @@ class RixVpnService : VpnService() {
             startTicker()
             startCoreWatch(chosen)
 
+        } catch (c: CancellationException) {
+            // A second tap while connecting cancels this coroutine; so does a
+            // newer session taking the runtime over. Both are the user getting
+            // what they asked for, so neither is a failure: the reason used to
+            // be caught by the branch below and published as an error, which
+            // turned «لغو شد» into a red screen naming a JobCancellationException.
+            LogBus.i("vpn", "the attempt was cancelled while connecting")
+            throw c
         } catch (t: Throwable) {
             failAndStop(t.message ?: l10n(R.string.error_unknown))
         }
@@ -415,7 +444,11 @@ class RixVpnService : VpnService() {
         // No error notification: shutdown() removes the notification at once so
         // the key icon and the ongoing tile cannot outlive the session, and the
         // reason belongs on the screen, which the preserved error fills.
-        shutdown(preserveError = message)
+        //
+        // [coroutineContext] is this failure's own job. When the failing
+        // coroutine *is* the bring-up, shutdown must not wait for it to end --
+        // it is ending inside this very call.
+        shutdown(preserveError = message, self = coroutineContext[Job])
     }
 
     // --------------------------------------------------------------- shutdown
@@ -427,9 +460,20 @@ class RixVpnService : VpnService() {
      * idle, but a failed start used to do the same thing through markIdle() a
      * few hundred milliseconds after markError(), so the reason flashed once
      * and then the screen said «آماده به اتصال» with no explanation.
+     *
+     * [self] is the job of the coroutine calling this, when there is one. The
+     * teardown waits for the bring-up to finish before it touches the runtime;
+     * it must not wait for itself when the bring-up is what failed.
      */
-    fun shutdown(preserveError: String? = null) {
-        val mine = session.get()
+    fun shutdown(preserveError: String? = null, self: Job? = null) {
+        // Claimed, not read. A cancellation has to be visible to the bring-up
+        // that is still in flight -- every checkpoint in it compares against
+        // its own generation -- and the generation a plain stop used to take
+        // was the one the running attempt already held, so the cancelled
+        // attempt still looked current to itself all the way down to its
+        // "core stopped" watcher. Taking the next generation is also what makes
+        // this teardown own the runtime and a later start own it in turn.
+        val mine = session.incrementAndGet()
         if (preserveError != null) {
             RixRuntime.markError(preserveError)
         } else {
@@ -464,7 +508,25 @@ class RixVpnService : VpnService() {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         }.onFailure { LogBus.e("vpn", "stopForeground: ${it.message}") }
 
+        // Taken before the coroutine below, and cleared so a stop that arrives
+        // while this teardown runs is answered by the newer session.
+        val dying = worker
+        worker = null
+        // Cancelled here rather than in the coroutine so the attempt stops
+        // reading the runtime the moment stop is pressed, instead of whenever a
+        // thread picks the teardown up. The join below still has to happen:
+        // cancelled is not finished.
+        if (dying !== null && dying !== self) dying.cancel()
+
         scope.launch {
+            // A cancelled coroutine is not a finished one. The bring-up may
+            // still be inside startCore() at this instant, and a stopCore()
+            // that overtook it would leave the core it spawned running with
+            // nothing left holding a reference to it -- the stray-core case the
+            // generation checks above cannot see, because the stray is started
+            // after they have all been passed.
+            if (dying != null && dying !== self) withTimeoutOrNull(BRING_UP_JOIN_MS) { dying.cancelAndJoin() }
+
             // Before the core, always: Psiphon is the core's own client while it
             // is in the path, and it blocks for a few seconds on the way down.
             RixRuntime.stopTun2Socks(token)
@@ -489,8 +551,6 @@ class RixVpnService : VpnService() {
                 stopSelf()
             }
         }
-        worker?.cancel()
-        worker = null
     }
 
     override fun onRevoke() {
@@ -612,6 +672,17 @@ class RixVpnService : VpnService() {
          * WARP, so it is measured in a minute rather than in seconds.
          */
         private const val PSIPHON_PROBE_MS = 60_000L
+
+        /**
+         * How long the teardown waits for a cancelled bring-up to end.
+         *
+         * A cancelled coroutine is not a finished one, and the teardown must
+         * not free the core underneath a bring-up that is still starting it.
+         * The bring-up itself only ever waits on cancellable suspending calls,
+         * so this is a bound on a wedged native call, not on normal work: the
+         * screen's own STOP_GIVE_UP_MS handles the case where it is hit.
+         */
+        private const val BRING_UP_JOIN_MS = 5_000L
         const val ACTION_START = "com.rix.vpn.START_TUNNEL"
         const val ACTION_STOP = "com.rix.vpn.STOP_TUNNEL"
         const val EXTRA_OPTIONS = "options"

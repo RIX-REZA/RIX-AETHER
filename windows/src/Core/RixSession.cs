@@ -127,7 +127,7 @@ public sealed class RixSession : IDisposable
             var exe = AetherProcess.Locate();
             if (exe == null)
             {
-                Fail("فایل هسته پیدا نشد / the core was not found beside the app (core\\aether.exe)");
+                Fail(cts, "فایل هسته پیدا نشد / the core was not found beside the app (core\\aether.exe)");
                 return;
             }
 
@@ -175,7 +175,7 @@ public sealed class RixSession : IDisposable
                 var args = candidate.ToArgs(AppState.ConfigPath);
                 if (!_core.Start(exe, args, working))
                 {
-                    Fail("هسته اجرا نشد / the core could not be started");
+                    Fail(cts, "هسته اجرا نشد / the core could not be started");
                     return;
                 }
 
@@ -237,7 +237,7 @@ public sealed class RixSession : IDisposable
             // tunnel running that the window has already declared failed, and
             // it holds the port the next attempt will want.
             await Task.Run(() => StopCoreIfCurrent(cts));
-            Fail(chain[^1].Psiphon
+            Fail(cts, chain[^1].Psiphon
                 ? "سایفون بالا نیامد / Psiphon never came up. Its servers may be blocked on this network."
                 : "هیچ پروتکلی جواب نداد / no transport carried traffic. The network may be blocking all of them.");
         }
@@ -248,7 +248,7 @@ public sealed class RixSession : IDisposable
         catch (Exception ex)
         {
             await Task.Run(() => StopCoreIfCurrent(cts));
-            Fail(ex.Message);
+            Fail(cts, ex.Message);
         }
     }
 
@@ -283,8 +283,16 @@ public sealed class RixSession : IDisposable
             _session = null;
         }
         cts?.Cancel();
-        cts?.Dispose();
-
+        // Deliberately not disposed. The connect loop is still holding values
+        // taken from this source -- `cts.Token` and `cts.IsCancellationRequested`
+        // -- and both throw ObjectDisposedException once the source is disposed,
+        // so cancelling and then disposing raced the loop it had just
+        // cancelled: the loop's generic catch turned that into a connection
+        // error naming a CancellationTokenSource, published right after the user
+        // had pressed Cancel, and the core the loop had started in the meantime
+        // was never stopped. Cancelling is what this method needs; disposal buys
+        // nothing, because the source owns no unmanaged resource and the
+        // collector takes it with the attempt.
         if (!silent)
         {
             Publish(_snapshot with { Phase = Phase.Stopping, Message = "در حال قطع / disconnecting" });
@@ -392,17 +400,21 @@ public sealed class RixSession : IDisposable
 
     private void OnCoreExited(int code)
     {
+        CancellationTokenSource owner;
         lock (_gate)
         {
             if (_session == null) return;   // a stop the user asked for
-            _session.Cancel();
-            _session = null;
+            owner = _session;
         }
 
         SystemProxy.Disable();
 
         var detail = _core.Tail.LastOrDefault(l => l.Contains("core: exited"));
-        Fail("هسته متوقف شد / the core stopped" + (detail == null ? "" : " — " + detail));
+        // Through Fail rather than by hand, so the session is cleared only if
+        // this exit is still the live one: taking it out of the field here made
+        // an exit that arrived a moment after a new connect cleared the new
+        // attempt's token instead of this one's.
+        Fail(owner, "هسته متوقف شد / the core stopped" + (detail == null ? "" : " — " + detail));
     }
 
     /// <summary>
@@ -465,19 +477,29 @@ public sealed class RixSession : IDisposable
         }
     }
 
-    private void Fail(string message)
+    /// <summary>
+    /// Reports a failure of the attempt that owns <paramref name="owner"/>, and
+    /// of that attempt only.
+    ///
+    /// A replaced attempt still wakes up -- a probe times out, a core exits, a
+    /// stop lands while the next attempt is already starting -- and its failure
+    /// used to tear down whichever session happened to be current at that
+    /// moment: it cancelled the new attempt's token, cleared it, and put the
+    /// window in the error state, while the core the new attempt had already
+    /// started was left running with nothing owning it, holding the port the
+    /// attempt after that would want.
+    /// </summary>
+    private void Fail(CancellationTokenSource owner, string message)
     {
         // The session is over. Leaving the token in place would make a later
         // core exit look like an unexpected crash of a session that is not
         // there -- and would let a second connect try to cancel it twice.
-        CancellationTokenSource cts;
         lock (_gate)
         {
-            cts = _session;
+            if (!ReferenceEquals(_session, owner)) return;
             _session = null;
         }
-        try { cts?.Cancel(); } catch { }
-        cts?.Dispose();
+        try { owner.Cancel(); } catch { }
 
         Log?.Invoke("error: " + message);
         Publish(_snapshot with { Phase = Phase.Error, Message = message, ProxyOn = false });

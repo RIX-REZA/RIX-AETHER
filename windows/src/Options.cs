@@ -107,10 +107,45 @@ public sealed record RixOptions
     [JsonIgnore]
     public int ProxyPort => Psiphon ? PsiphonHttpPort : HttpPort;
 
-    // Fixed, and away from the two ports above, so the four listeners can never
-    // collide whatever the user types in.
-    private const int PsiphonSocksPort = 1821;
-    private const int PsiphonHttpPort = 1822;
+    /// <summary>
+    /// The SOCKS5 port Psiphon listens on while it is in the chain.
+    /// </summary>
+    /// <remarks>
+    /// Derived, not fixed. It used to be the constant 1821 -- as did the HTTP
+    /// port below, 1822 -- under a comment claiming the four listeners "can
+    /// never collide whatever the user types in". That holds only while the
+    /// user leaves the two ports above at their defaults. Type 1821 into the
+    /// SOCKS5 port and switch Psiphon on and the core is handed 1821 twice, once
+    /// for its own listener and once for Psiphon's; one of the two fails to
+    /// bind, and every connect ends in «هیچ پروتکلی جواب نداد» with nothing on
+    /// screen saying why. Walking up from 1821 until both are clear of the ports
+    /// the user did choose is what makes the claim true.
+    /// </remarks>
+    [JsonIgnore]
+    public int PsiphonSocksPort
+    {
+        get
+        {
+            var socks = PsiphonBaseSocksPort;
+            while (socks == BindPort || socks == HttpPort) socks++;
+            return socks;
+        }
+    }
+
+    /// <summary>The HTTP CONNECT port Psiphon listens on. See <see cref="PsiphonSocksPort"/>.</summary>
+    [JsonIgnore]
+    public int PsiphonHttpPort
+    {
+        get
+        {
+            var http = PsiphonSocksPort + 1;
+            while (http == BindPort || http == HttpPort) http++;
+            return http;
+        }
+    }
+
+    /// <summary>Where the two derived ports above start; where they used to be fixed.</summary>
+    private const int PsiphonBaseSocksPort = 1821;
 
     /// <summary>
     /// The argv handed to aether.exe.

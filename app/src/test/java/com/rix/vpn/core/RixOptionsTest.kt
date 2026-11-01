@@ -189,4 +189,90 @@ class RixOptionsTest {
         assertEquals(1024, options.corePort)
         assertEquals(1024, options.forCore().bindPort)
     }
+
+    // ------------------------------------------------------------------ psiphon
+
+    @Test
+    fun `every psiphon shape names only protocols this library accepts`() {
+        // tunnel-core validates the whole LimitTunnelProtocols list and aborts
+        // the start -- not the entry -- on the first name it does not know, so
+        // one stale name here is a Psiphon that never comes up.
+        for (shape in PsiphonProtocol.entries) {
+            assertEquals(
+                "${shape.name} declares a name the library would refuse",
+                shape.protocols,
+                shape.effectiveProtocols()
+            )
+            assertTrue("${shape.name} selects nothing", shape.effectiveProtocols().isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `the protocol names that broke the psiphon start are not selectable`() {
+        // Neither has ever existed in tunnel-core, and both sat in AUTO -- the
+        // default shape -- so every Psiphon connect died with
+        // "invalid tunnel protocol: FRONTED-MEEK-CDN-OSSH" before dialling.
+        val declared = PsiphonProtocol.entries.flatMap { it.protocols }.toSet()
+        assertFalse(declared.contains("FRONTED-MEEK-CDN-OSSH"))
+        assertFalse(declared.contains("FRONTED-MEEK-CDN-HTTP-OSSH"))
+        assertFalse(PsiphonProtocol.USABLE.contains("FRONTED-MEEK-CDN-OSSH"))
+        assertFalse(PsiphonProtocol.USABLE.contains("FRONTED-MEEK-CDN-HTTP-OSSH"))
+    }
+
+    @Test
+    fun `a name outside the library set is dropped instead of being passed on`() {
+        // The guard the shapes rely on: the QUIC and refraction names are real
+        // tunnel-core protocols but cannot run through a SOCKS5 upstream, so
+        // they must not survive into the config either.
+        val mixed = listOf(
+            "OSSH", "FRONTED-MEEK-CDN-OSSH", "QUIC-OSSH",
+            "TAPDANCE-OSSH", "INPROXY-WEBRTC-OSSH", "SHADOWSOCKS-OSSH"
+        )
+        assertEquals(
+            listOf("OSSH", "SHADOWSOCKS-OSSH"),
+            mixed.filter { it in PsiphonProtocol.USABLE }
+        )
+    }
+
+    @Test
+    fun `the default psiphon shape offers the whole usable set`() {
+        assertEquals(PsiphonProtocol.USABLE, PsiphonProtocol.AUTO.effectiveProtocols().toSet())
+    }
+
+    @Test
+    fun `the automatic shape is exactly the usable set, with nothing left over`() {
+        // "Offers the whole usable set" and "contains only usable names" are two
+        // different claims, and only the second one is what stops the shipped
+        // bug: AUTO held every usable name *and* FRONTED-MEEK-CDN-OSSH, so the
+        // set comparison above passed while every connect was refused. This is
+        // the assertion that would have failed instead.
+        assertTrue("AUTO declares a name the library would refuse", PsiphonProtocol.AUTO.isComplete)
+        assertEquals(
+            "AUTO is the default shape; a name missing from it is a protocol no " +
+                "user ever gets to try",
+            PsiphonProtocol.USABLE,
+            PsiphonProtocol.AUTO_NAMES
+        )
+    }
+
+    @Test
+    fun `a list the library would refuse reports itself as incomplete`() {
+        // This predicate is the build's guard, not the app's runtime branch --
+        // the bridge reaches the same conclusion from the names it logs as
+        // dropped. It has to be false in both directions anyway: a list with
+        // nothing left, and a list holding a name the library would refuse.
+        // tunnel-core applies
+        // LimitTunnelProtocols without skip-on-error and validates with
+        // Validate(), which aborts on the first unknown name instead of
+        // filtering it -- so "not complete" is not cosmetic, it is the
+        // difference between a Psiphon that starts and one that does not.
+        assertTrue(PsiphonProtocol.AUTO.isComplete)
+        assertFalse(PsiphonProtocol.onlyUsable(emptyList()))
+        assertFalse(PsiphonProtocol.onlyUsable(listOf("NOT-A-PROTOCOL")))
+        assertFalse(
+            "one unknown name beside valid ones is still a refused list",
+            PsiphonProtocol.onlyUsable(listOf("OSSH", "NOT-A-PROTOCOL"))
+        )
+        assertTrue(PsiphonProtocol.onlyUsable(listOf("OSSH")))
+    }
 }

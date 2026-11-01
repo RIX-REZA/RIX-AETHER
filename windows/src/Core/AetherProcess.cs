@@ -186,7 +186,30 @@ public sealed class AetherProcess : IDisposable
             try { job.Add(process.Handle); }
             catch { /* the explicit kill below still covers it */ }
         }
-        _job = job;
+
+        // Published under the same lock Stop takes it under. Assigned outside,
+        // a Stop landing between the two looked, found no job, and walked away:
+        // the job handle was never disposed, and -- the part that matters -- the
+        // kill-on-close guarantee that keeps a Psiphon child from outliving the
+        // app was silently off for the rest of that run.
+        var superseded = false;
+        lock (_gate)
+        {
+            if (ReferenceEquals(_process, process)) _job = job;
+            else superseded = true;
+        }
+        if (superseded)
+        {
+            // Stop took the child while this method was building its job;
+            // closing the job here kills anything that child left behind, which
+            // is the same guarantee Stop would have applied.
+            // The child itself is Stop's now -- it took the field, so it owns
+            // the kill and the disposal, and disposing it from here would only
+            // race that.
+            job.Dispose();
+            Emit("core: stopped before it was ready; discarded");
+            return false;
+        }
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
