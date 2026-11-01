@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -30,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rix.vpn.core.RixRuntime
 
 /** Canvas with two soft colour wells so the UI is not flat. */
 @Composable
@@ -312,12 +315,36 @@ fun RixChip(
  */
 @Composable
 fun PowerOrb(
-    active: Boolean,
-    busy: Boolean,
+    phase: RixRuntime.Phase,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val animating = active || busy
+    val s = LocalStrings.current
+    val active = phase == RixRuntime.Phase.RUNNING
+    // Both waiting phases are cancellable, and they are cancellable for the
+    // same reason: the user has asked for a connection they no longer want, and
+    // waiting for the attempt to give up on its own takes minutes. STOPPING is
+    // the one phase that is not -- a teardown is already on its way.
+    val cancellable = phase == RixRuntime.Phase.STARTING || phase == RixRuntime.Phase.CONNECTING
+    val stopping = phase == RixRuntime.Phase.STOPPING
+    val failed = phase == RixRuntime.Phase.ERROR
+    val animating = active || cancellable || stopping
+
+    val accent = when {
+        active -> RixColors.Teal
+        failed -> RixColors.Danger
+        cancellable || stopping -> RixColors.Warning
+        else -> RixColors.Violet
+    }
+    val deep = when {
+        active -> RixColors.TealDeep
+        failed -> RixColors.Danger
+        else -> RixColors.VioletDeep
+    }
+
+    // Created only while there is something to animate: an infinite transition
+    // left on an idle screen keeps a frame callback alive forever for a picture
+    // that never changes.
     val pulse: State<Float>? = if (animating) {
         val transition = rememberInfiniteTransition(label = "orb")
         transition.animateFloat(
@@ -333,7 +360,30 @@ fun PowerOrb(
         null
     }
 
-    val accent = if (active) RixColors.Teal else RixColors.Violet
+    // A separate, faster, linear turn for the sweep. It is an indeterminate
+    // spinner on purpose: how long a connect takes depends on the network, and
+    // a bar that filled on a timer would be inventing a number.
+    val spin: State<Float>? = if (cancellable || stopping) {
+        val transition = rememberInfiniteTransition(label = "orb-sweep")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1500, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "sweep"
+        )
+    } else {
+        null
+    }
+
+    val (glyph, label) = when {
+        active -> Icons.Rounded.PowerSettingsNew to s.s("قطع", "Disconnect")
+        cancellable -> Icons.Rounded.Close to s.s("لغو", "Cancel")
+        stopping -> Icons.Rounded.Close to s.s("قطع...", "Stopping")
+        else -> Icons.Rounded.Security to s.s("اتصال", "Connect")
+    }
 
     Box(
         modifier = modifier.size(232.dp),
@@ -342,7 +392,7 @@ fun PowerOrb(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val base = size.minDimension / 2f
 
-            if (animating) {
+            if (active || cancellable) {
                 val phase0 = pulse?.value ?: 0f
                 repeat(3) { index ->
                     val phase = (phase0 + index / 3f) % 1f
@@ -365,34 +415,58 @@ fun PowerOrb(
                 ),
                 radius = base * 0.72f
             )
+
+            // The track the sweep runs on, so the arc reads as something moving
+            // along a rail rather than a stray line.
+            drawCircle(
+                color = accent.copy(alpha = 0.16f),
+                radius = base * 0.86f,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.2f)
+            )
+            spin?.let {
+                val arcRadius = base * 0.86f
+                drawArc(
+                    color = accent,
+                    startAngle = it.value * 360f,
+                    sweepAngle = 92f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
+                    size = androidx.compose.ui.geometry.Size(arcRadius * 2f, arcRadius * 2f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 3.2f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                )
+            }
         }
 
         Box(
             modifier = Modifier
                 .size(150.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            if (active) RixColors.TealDeep else RixColors.VioletDeep,
-                            RixColors.Surface
-                        )
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(deep, RixColors.Surface)))
                 .border(1.5.dp, accent.copy(alpha = 0.75f), CircleShape)
-                .clickable(enabled = !busy, onClick = onClick),
+                // Enabled wherever a press means something. It used to be
+                // `enabled = !busy`, which is the whole reason a second tap
+                // during a connect did nothing: the control the user was
+                // pressing to cancel had been switched off until the thing they
+                // wanted to cancel had finished.
+                .clickable(
+                    enabled = phase != RixRuntime.Phase.STOPPING,
+                    onClick = onClick
+                ),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
-                    imageVector = if (active) Icons.Rounded.PowerSettingsNew else Icons.Rounded.Security,
+                    imageVector = glyph,
                     contentDescription = null,
                     tint = accent,
                     modifier = Modifier.size(40.dp)
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = if (active) "قطع" else "اتصال",
+                    text = label,
                     color = RixColors.Text,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
