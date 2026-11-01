@@ -256,16 +256,23 @@ class RixOptionsTest {
     }
 
     @Test
-    fun `a shape that lost every name reports itself as incomplete`() {
-        // isComplete is what the bridge keys its fallback off, and it has to be
-        // false in both directions: a shape with nothing left, and a shape
-        // holding a name the library would refuse. tunnel-core applies
+    fun `a list the library would refuse reports itself as incomplete`() {
+        // This predicate is the build's guard, not the app's runtime branch --
+        // the bridge reaches the same conclusion from the names it logs as
+        // dropped. It has to be false in both directions anyway: a list with
+        // nothing left, and a list holding a name the library would refuse.
+        // tunnel-core applies
         // LimitTunnelProtocols without skip-on-error and validates with
         // Validate(), which aborts on the first unknown name instead of
         // filtering it -- so "not complete" is not cosmetic, it is the
         // difference between a Psiphon that starts and one that does not.
         assertTrue(PsiphonProtocol.AUTO.isComplete)
-        assertFalse(PsiphonProtocol.AUTO.copy(protocols = emptyList()).isComplete)
-        assertFalse(PsiphonProtocol.AUTO.copy(protocols = listOf("NOT-A-PROTOCOL")).isComplete)
+        assertFalse(PsiphonProtocol.onlyUsable(emptyList()))
+        assertFalse(PsiphonProtocol.onlyUsable(listOf("NOT-A-PROTOCOL")))
+        assertFalse(
+            "one unknown name beside valid ones is still a refused list",
+            PsiphonProtocol.onlyUsable(listOf("OSSH", "NOT-A-PROTOCOL"))
+        )
+        assertTrue(PsiphonProtocol.onlyUsable(listOf("OSSH")))
     }
 }

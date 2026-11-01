@@ -166,13 +166,15 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
     /**
      * Whether every name in this shape is one the bundled library accepts.
      *
-     * `AUTO` is the only shape that promises "let Psiphon try everything", and
-     * it is the default, so a name it does not list is a real loss: it used to
-     * hold `FRONTED-MEEK-CDN-OSSH`, which never existed in tunnel-core, and the
-     * default shape was therefore refused outright. Returning false is what
-     * lets [AUTO] fail a unit test rather than a user's connect.
+     * Nothing at runtime branches on this -- [PsiphonBridge] gets the same
+     * answer out of the names [effectiveProtocols] drops, and logs them by name.
+     * It exists so a unit test can fail when a name drifts: `AUTO` held every
+     * usable name *and* `FRONTED-MEEK-CDN-OSSH`, so a comparison of the
+     * *filtered* list against [USABLE] stayed green while the shape itself was
+     * one the library refused, and every connect died on it. A test is the only
+     * place this can be caught before a device runs it.
      */
-    val isComplete: Boolean get() = protocols.all { it in USABLE }
+    val isComplete: Boolean get() = onlyUsable(protocols)
 
     companion object {
         /**
@@ -210,6 +212,17 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
          * opened the options screen -- is the one that shipped once already.
          */
         val AUTO_NAMES: Set<String> = AUTO.protocols.toSet()
+
+        /**
+         * Whether [names] is a list the bundled library would accept as a whole.
+         *
+         * Takes the list rather than reading one off a shape so the two ways it
+         * can be false -- a name the library does not know, and a list with
+         * nothing in it -- are both reachable from a test. An enum has no
+         * `copy`, so there is no other way to put a wrong list in front of it.
+         */
+        fun onlyUsable(names: List<String>): Boolean =
+            names.isNotEmpty() && names.all { it in USABLE }
     }
 }
 
