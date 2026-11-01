@@ -67,7 +67,7 @@ jobs:
           if [ -n "$found" ]; then
             echo "::error::Signing material is tracked in git:"
             echo "$found"
-            echo "::error::Remove it; store keys in the RIX_KEYSTORE_B64 repository variable or secret. See SECURITY.md."
+            echo "::error::Remove it; store keys in the RIX_KEYSTORE_B64 repository secret -- never a variable, which CI prints. See SECURITY.md."
             exit 1
           fi
           echo "no signing material is tracked"

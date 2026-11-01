@@ -31,11 +31,19 @@ What that does and does not mean:
    that fallback published the key a second time: the runner prints every step's
    `env:` block, and it masks a value only when that value is a registered
    secret. Run `41331524238` therefore carried the base64 of `rix.p12`, private
-   key included, in the job log in readable form, for anyone who can read the
-   repository. A repository variable can never hold key material -- there is no
+   key included, in the job log in readable form. The repository is public, so
+   that run -- and the log on its page -- is readable by anyone; the REST
+   endpoint that downloads logs needs a token, which limits the API route but
+   not the page. A repository variable can never hold key material: there is no
    way to reference one that keeps its value out of the log. The variable path
-   is gone; if a variable of that name still exists, delete it, because a value
-   left there is readable through the API regardless of what CI does.
+   is gone.
+
+   What the variable itself is not is anonymously readable -- `GET
+   /repos/.../actions/variables/RIX_KEYSTORE_B64` answers `401` without a
+   token, so the leak is the log, not the variable's storage. It should still be
+   deleted rather than left in place, because it is readable by anyone with
+   write access to the repository and a value that exists is a value that can be
+   referenced again by an older commit of this workflow.
 3. A CI step refuses to build if any signing material is tracked in git.
 4. Every build prints the APK's signing certificate with
    `apksigner verify --print-certs`, so a change of key is visible in the log.
