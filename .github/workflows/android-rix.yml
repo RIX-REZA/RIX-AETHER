@@ -326,35 +326,38 @@ jobs:
         # still update in place; a rotation that would break API 24-27 updates
         # is a separate, deliberate release, never a silent side effect.
         #
-        # The key comes from a secret if one exists, then from a repository
-        # variable. A missing key is a hard failure on purpose: falling back to
-        # the Android debug keystore would produce an APK that installs fine and
+        # A secret, and only a secret. It used to fall back to a repository
+        # *variable* of the same name, and that fallback put the whole signing
+        # key into the job log: the runner prints every step's `env:` block, and
+        # it masks a value only when that value is registered as a secret. A
+        # variable is not, so run 41331524238 carried the base64 of rix.p12 --
+        # private key included -- in plain text, readable by anyone who can read
+        # the repository. A repository variable can therefore never hold key
+        # material: there is no way to reference one without the value landing
+        # in the log.
+        #
+        # A missing key stays a hard failure on purpose. Falling back to the
+        # Android debug keystore would produce an APK that installs fine and
         # then refuses to update over the last one, silently.
         env:
           RIX_KEYSTORE_SECRET: ${{ secrets.RIX_KEYSTORE_B64 }}
-          RIX_KEYSTORE_VAR: ${{ vars.RIX_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           key="keystore/rix.p12"
 
           b64="${RIX_KEYSTORE_SECRET:-}"
-          origin="secret RIX_KEYSTORE_B64"
           if [ -z "$b64" ]; then
-            b64="${RIX_KEYSTORE_VAR:-}"
-            origin="repository variable RIX_KEYSTORE_B64"
-          fi
-
-          if [ -n "$b64" ]; then
-            mkdir -p "$(dirname "$key")"
-            printf '%s' "$b64" | base64 -d > "$key"
-            chmod 600 "$key"
-            echo "signing key written from $origin"
-          else
-            echo "::error::$key cannot be restored: neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
+            echo "::error::$key cannot be restored: secrets.RIX_KEYSTORE_B64 is not set."
+            echo "::error::Add it under Settings -> Secrets and variables -> Actions -> Secrets."
+            echo "::error::It must be a secret, never a variable: variables are printed in the log."
             echo "::error::An unsigned build cannot update an installed app. See SECURITY.md."
             exit 1
           fi
 
+          mkdir -p "$(dirname "$key")"
+          printf '%s' "$b64" | base64 -d > "$key"
+          chmod 600 "$key"
+          echo "signing key written from secret RIX_KEYSTORE_B64"
           ls -l "$key"
 
       - name: Assemble debug APK
