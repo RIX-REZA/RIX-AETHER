@@ -20,12 +20,16 @@ import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.coroutineContext
 
 /**
  * Proxy mode.
@@ -85,6 +89,8 @@ class RixProxyService : LifecycleService() {
 
             var winner: RixOptions? = null
             var egress: TunnelProbe.Egress? = null
+            // See [RixVpnService.bringUp].
+            var psiphonFailure: String? = null
 
             for ((index, candidate) in chain.withIndex()) {
                 if (session.get() != mine) {
@@ -116,6 +122,9 @@ class RixProxyService : LifecycleService() {
                 val listening = try {
                     RixRuntime.startCore(this, candidate.forCore())
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
+                } catch (c: CancellationException) {
+                    // Cancelled, not failed: see [RixVpnService.bringUp].
+                    throw c
                 } catch (t: Throwable) {
                     LogBus.e("proxy", "${candidate.transport.label}: ${t.message}")
                     false
@@ -137,7 +146,12 @@ class RixProxyService : LifecycleService() {
                         candidate.psiphonProtocol
                     )
                     if (!up) {
-                        LogBus.e("proxy", "psiphon: nothing listening on ${candidate.bindPort}")
+                        // See [RixVpnService.bringUp]: the library's own reason
+                        // beats "nothing listening", which describes the same
+                        // symptom for two different faults.
+                        psiphonFailure = PsiphonBridge.lastError
+                            ?: l10n(R.string.error_psiphon_unavailable)
+                        LogBus.e("proxy", "psiphon: $psiphonFailure")
                         continue
                     }
                 }
@@ -162,7 +176,9 @@ class RixProxyService : LifecycleService() {
             val chosen = winner
             val verified = egress
             if (chosen == null || verified == null) {
-                throw IllegalStateException(l10n(R.string.error_all_transports_failed))
+                throw IllegalStateException(
+                    psiphonFailure ?: l10n(R.string.error_all_transports_failed)
+                )
             }
             if (session.get() != mine) {
                 LogBus.i("proxy", "session $mine was replaced during verification; not reporting it as connected")
@@ -188,22 +204,35 @@ class RixProxyService : LifecycleService() {
                 }
                 val report = runCatching { RixRuntime.poll() }.getOrNull() ?: continue
                 if (report.failed || !report.running) {
-                    shutdown(preserveError = report.detail ?: l10n(R.string.error_core_stopped))
+                    shutdown(
+                        preserveError = report.detail ?: l10n(R.string.error_core_stopped),
+                        self = coroutineContext[Job]
+                    )
                     return
                 }
             }
+        } catch (c: CancellationException) {
+            // The second tap. Cancelling the attempt is the point of it, so it
+            // is reported as what it is instead of surfacing the cancellation
+            // itself as the reason the proxy "failed".
+            LogBus.i("proxy", "the attempt was cancelled while connecting")
+            throw c
         } catch (t: Throwable) {
-            shutdown(preserveError = t.message ?: l10n(R.string.error_unknown))
+            shutdown(preserveError = t.message ?: l10n(R.string.error_unknown), self = coroutineContext[Job])
         }
     }
 
-    private fun shutdown(preserveError: String? = null) {
+    private fun shutdown(preserveError: String? = null, self: Job? = null) {
         // Which session this teardown belongs to. Teardown runs on its own
         // coroutine and Psiphon can take seconds to stop, so by the time the
         // core would be freed the user may already have started a new
         // connection in this same service -- and stopping the core then would
         // kill the session that replaced the one being torn down.
-        val mine = session.get()
+        //
+        // Claimed rather than read: the attempt being torn down holds the
+        // generation this method used to read, so it stayed current to itself
+        // and its own checks could not tell it had been cancelled.
+        val mine = session.incrementAndGet()
         if (preserveError != null) {
             // Published before the teardown so the reason survives it: markIdle()
             // at the end of this method used to wipe it a moment later.
@@ -218,7 +247,14 @@ class RixProxyService : LifecycleService() {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         }.onFailure { LogBus.e("proxy", "stopForeground: ${it.message}") }
 
+        // See [RixVpnService.shutdown]: cancelled is not finished, and the
+        // teardown must not race a bring-up that is still inside startCore().
+        val dying = worker
+        worker = null
+        if (dying !== null && dying !== self) dying.cancel()
+
         lifecycleScope.launch {
+            if (dying != null && dying !== self) withTimeoutOrNull(BRING_UP_JOIN_MS) { dying.cancelAndJoin() }
             if (session.get() != mine) {
                 LogBus.i("proxy", "teardown of session $mine skipped: a newer session took over")
                 return@launch
@@ -235,8 +271,6 @@ class RixProxyService : LifecycleService() {
                 stopSelf()
             }
         }
-        worker?.cancel()
-        worker = null
     }
 
     override fun onDestroy() {
@@ -294,6 +328,9 @@ class RixProxyService : LifecycleService() {
 
         /** See [RixVpnService.PSIPHON_PROBE_MS]. */
         private const val PSIPHON_PROBE_MS = 60_000L
+
+        /** See [RixVpnService.BRING_UP_JOIN_MS]. */
+        private const val BRING_UP_JOIN_MS = 5_000L
         const val ACTION_START = "com.rix.vpn.START_PROXY"
         const val ACTION_STOP = "com.rix.vpn.STOP_PROXY"
         const val EXTRA_OPTIONS = "options"
