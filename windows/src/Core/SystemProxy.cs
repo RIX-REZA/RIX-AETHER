@@ -79,6 +79,9 @@ public static class SystemProxy
     public static bool Enable(int port, out string error)
     {
         error = null;
+        // Declared outside the try so the catch can reach it: it is the only
+        // thing that says whether the lock file on disk is this call's.
+        var wroteLock = false;
         try
         {
             Directory.CreateDirectory(AppState.Dir);
@@ -99,6 +102,12 @@ public static class SystemProxy
             // "restore" the machine to a proxy that is no longer running.
             if (!File.Exists(LockPath))
             {
+                // Marked before the write rather than after: a write that
+                // throws half way leaves a truncated lock file behind, and a
+                // truncated lock file is worse than none -- Disable would read
+                // it, fail, and fall back to defaults over the user's real
+                // settings. This way the catch removes it.
+                wroteLock = true;
                 File.WriteAllText(LockPath, JsonSerializer.Serialize(previous));
             }
 
@@ -106,7 +115,7 @@ public static class SystemProxy
             if (key == null)
             {
                 error = "the proxy registry key could not be opened";
-                File.Delete(LockPath);
+                DiscardLock(wroteLock);
                 return false;
             }
 
@@ -119,9 +128,27 @@ public static class SystemProxy
         catch (Exception ex)
         {
             error = ex.Message;
-            try { File.Delete(LockPath); } catch { }
+            DiscardLock(wroteLock);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Removes the lock file, but only the one this call wrote.
+    ///
+    /// The lock file is the backup of what the machine's proxy settings were
+    /// before RIX touched them, and <see cref="Disable"/> and
+    /// <see cref="RecoverIfNeeded"/> exist to put it back. A lock file found
+    /// already on disk is therefore someone else's -- usually the previous run's,
+    /// killed before it could revert -- and deleting it on a failure throws away
+    /// the only record of the user's own proxy settings. On a machine where the
+    /// Internet Settings key is policy-protected, the write fails every time, so
+    /// this deleted that record on every single connect.
+    /// </summary>
+    private static void DiscardLock(bool wroteLock)
+    {
+        if (!wroteLock) return;
+        try { File.Delete(LockPath); } catch { }
     }
 
     /// <summary>
