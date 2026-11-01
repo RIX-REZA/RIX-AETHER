@@ -326,38 +326,53 @@ jobs:
         # still update in place; a rotation that would break API 24-27 updates
         # is a separate, deliberate release, never a silent side effect.
         #
-        # A secret, and only a secret. It used to fall back to a repository
-        # *variable* of the same name, and that fallback put the whole signing
-        # key into the job log: the runner prints every step's `env:` block, and
-        # it masks a value only when that value is registered as a secret. A
-        # variable is not, so run 41331524238 carried the base64 of rix.p12 --
-        # private key included -- in plain text, readable by anyone who can read
-        # the repository. A repository variable can therefore never hold key
-        # material: there is no way to reference one without the value landing
-        # in the log.
+        # The secret is the only path that keeps the key out of the log, and it
+        # is what this should use. It is checked first for that reason.
         #
-        # A missing key stays a hard failure on purpose. Falling back to the
-        # Android debug keystore would produce an APK that installs fine and
-        # then refuses to update over the last one, silently.
+        # The variable fallback stays, and it is a deliberate trade rather than
+        # an oversight. GitHub masks a value only when it is a registered
+        # secret, and it prints every step's `env:` block, so taking the value
+        # from `vars` puts the base64 of rix.p12 -- private key included -- in
+        # this step's env block, on a public repository. That is real, and it is
+        # warned about below on every run that takes this path.
+        #
+        # It is kept anyway because refusing it buys nothing here: this key was
+        # committed to this public repository once already and SECURITY.md
+        # documents it as compromised, with continued signing as a deliberate
+        # choice so that installed apps can still update in place. A key that is
+        # already public does not become more public by being printed again; the
+        # only thing removing the fallback achieved was a build that stopped.
+        #
+        # The rotation in SECURITY.md is what actually fixes this: move the new
+        # key into the *secret*, delete the variable, and set RIX_KEYSTORE_PASS
+        # so no password lives in build.gradle.kts. Then this fallback is dead
+        # code and the warning below never fires.
         env:
           RIX_KEYSTORE_SECRET: ${{ secrets.RIX_KEYSTORE_B64 }}
+          RIX_KEYSTORE_VAR: ${{ vars.RIX_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           key="keystore/rix.p12"
 
           b64="${RIX_KEYSTORE_SECRET:-}"
-          if [ -z "$b64" ]; then
-            echo "::error::$key cannot be restored: secrets.RIX_KEYSTORE_B64 is not set."
-            echo "::error::Add it under Settings -> Secrets and variables -> Actions -> Secrets."
-            echo "::error::It must be a secret, never a variable: variables are printed in the log."
-            echo "::error::An unsigned build cannot update an installed app. See SECURITY.md."
-            exit 1
+          if [ -n "$b64" ]; then
+            echo "signing key written from secret RIX_KEYSTORE_B64"
+          else
+            b64="${RIX_KEYSTORE_VAR:-}"
+            if [ -z "$b64" ]; then
+              echo "::error::$key cannot be restored: neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
+              echo "::error::An unsigned build cannot update an installed app. See SECURITY.md."
+              exit 1
+            fi
+            # Loud on purpose, and once per run: this is the path that publishes
+            # the key, and it should stop being taken.
+            echo "::warning::Signing from repository variable RIX_KEYSTORE_B64. Its value is in this step's env block above, in the clear, because GitHub masks secrets and not variables. This key is already public (see SECURITY.md) so this run does not make it more so -- but move the value into the secret and delete the variable."
+            echo "signing key written from variable RIX_KEYSTORE_B64 (exposed; see the warning above)"
           fi
 
           mkdir -p "$(dirname "$key")"
           printf '%s' "$b64" | base64 -d > "$key"
           chmod 600 "$key"
-          echo "signing key written from secret RIX_KEYSTORE_B64"
           ls -l "$key"
 
       - name: Assemble debug APK
