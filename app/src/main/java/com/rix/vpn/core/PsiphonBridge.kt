@@ -414,11 +414,29 @@ object PsiphonBridge {
                 )
             }
             if (usable.isEmpty()) {
-                // Nothing left to restrict with: an absent list means "all
-                // protocols", which is still a working Psiphon.
+                // Either way the list is left off the config entirely.
+                //
+                // This was checked rather than assumed. tunnel-core validates a
+                // TunnelProtocols parameter by running `Validate()`, which
+                // refuses the whole apply on the first name it does not know,
+                // and it filters with `PruneInvalid()` only under
+                // `ValidationSkipOnError`. `LimitTunnelProtocols` is applied
+                // with no skip-on-error flag, and the library's own test asserts
+                // that an unknown name makes `Set` return an error -- `"OSSH"`
+                // and `"SSH"` alongside it are not applied either. So a single
+                // stale name here is not a protocol that gets dropped: it is a
+                // failed parameter apply. An empty list in that same place
+                // parses cleanly, which is why it is the safer of the two, but
+                // neither is what this app should ever build. `USABLE` is
+                // checked against the bundled library's
+                // `SupportedTunnelProtocols` / `DisabledTunnelProtocols`, and
+                // `PsiphonProtocolTest` fails if a declared name drifts out of
+                // it, so `usable` being empty means the set itself is wrong and
+                // the log line is a bug report rather than a routine fallback.
                 LogBus.e(
                     "psiphon",
-                    "no usable tunnel protocol in ${protocol.name}; letting Psiphon choose"
+                    "no usable tunnel protocol in ${protocol.name}; leaving the list unset " +
+                        "and letting Psiphon choose"
                 )
             } else {
                 put("LimitTunnelProtocols", JSONArray(usable))

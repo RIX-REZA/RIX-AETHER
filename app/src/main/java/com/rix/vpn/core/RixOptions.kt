@@ -163,6 +163,17 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
      */
     fun effectiveProtocols(): List<String> = protocols.filter { it in USABLE }
 
+    /**
+     * Whether every name in this shape is one the bundled library accepts.
+     *
+     * `AUTO` is the only shape that promises "let Psiphon try everything", and
+     * it is the default, so a name it does not list is a real loss: it used to
+     * hold `FRONTED-MEEK-CDN-OSSH`, which never existed in tunnel-core, and the
+     * default shape was therefore refused outright. Returning false is what
+     * lets [AUTO] fail a unit test rather than a user's connect.
+     */
+    val isComplete: Boolean get() = protocols.all { it in USABLE }
+
     companion object {
         /**
          * The tunnel protocol names that are both accepted by the bundled
@@ -188,6 +199,17 @@ enum class PsiphonProtocol(val label: String, val protocols: List<String>) {
             "FRONTED-MEEK-OSSH",
             "FRONTED-MEEK-HTTP-OSSH"
         )
+
+        /**
+         * Every name in [AUTO], which is the shape the app offers by default.
+         *
+         * [AUTO]'s own list is the thing that has to stay complete, and a unit
+         * test asserts exactly that against this set: it is the only place the
+         * two can be compared without a device, and the failure it prevents --
+         * "invalid tunnel protocol" on every connect, for every user who never
+         * opened the options screen -- is the one that shipped once already.
+         */
+        val AUTO_NAMES: Set<String> = AUTO.protocols.toSet()
     }
 }
 

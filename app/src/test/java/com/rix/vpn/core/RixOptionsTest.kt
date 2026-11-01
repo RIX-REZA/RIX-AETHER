@@ -238,4 +238,34 @@ class RixOptionsTest {
     fun `the default psiphon shape offers the whole usable set`() {
         assertEquals(PsiphonProtocol.USABLE, PsiphonProtocol.AUTO.effectiveProtocols().toSet())
     }
+
+    @Test
+    fun `the automatic shape is exactly the usable set, with nothing left over`() {
+        // "Offers the whole usable set" and "contains only usable names" are two
+        // different claims, and only the second one is what stops the shipped
+        // bug: AUTO held every usable name *and* FRONTED-MEEK-CDN-OSSH, so the
+        // set comparison above passed while every connect was refused. This is
+        // the assertion that would have failed instead.
+        assertTrue("AUTO declares a name the library would refuse", PsiphonProtocol.AUTO.isComplete)
+        assertEquals(
+            "AUTO is the default shape; a name missing from it is a protocol no " +
+                "user ever gets to try",
+            PsiphonProtocol.USABLE,
+            PsiphonProtocol.AUTO_NAMES
+        )
+    }
+
+    @Test
+    fun `a shape that lost every name reports itself as incomplete`() {
+        // isComplete is what the bridge keys its fallback off, and it has to be
+        // false in both directions: a shape with nothing left, and a shape
+        // holding a name the library would refuse. tunnel-core applies
+        // LimitTunnelProtocols without skip-on-error and validates with
+        // Validate(), which aborts on the first unknown name instead of
+        // filtering it -- so "not complete" is not cosmetic, it is the
+        // difference between a Psiphon that starts and one that does not.
+        assertTrue(PsiphonProtocol.AUTO.isComplete)
+        assertFalse(PsiphonProtocol.AUTO.copy(protocols = emptyList()).isComplete)
+        assertFalse(PsiphonProtocol.AUTO.copy(protocols = listOf("NOT-A-PROTOCOL")).isComplete)
+    }
 }
