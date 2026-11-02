@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/34220601/README.md)
 <div align="center">
   <img src="docs/banner.svg" alt="RIX — WARP and MASQUE network client" width="920">
   <h1>RIX-AETHER</h1>
@@ -57,22 +56,23 @@
 
 | Package | Latest published artifact | Notes |
 |:--|:--|:--|
-| **Android** | [`RIX-1.0.6-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-1.0.6-debug.apk) · 33.2 MB | Android package; see release notes before installing |
-| **Windows Installer** | [`RIX-Setup-1.0.6.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-Setup-1.0.6.exe) · 76.5 MB | Per-user installer |
-| **Windows Portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-Portable.zip) · 82.5 MB | Extract and run; no installation step |
-| **Release Bundle** | [`RIX-1.0.6.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.6/RIX-1.0.6.zip) | APK, install notes and release notes |
-| **Release Notes** | [v1.0.6](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.6) | Bug-fix release |
+| **Android** | [`RIX-1.0.7-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7-debug.apk) · 33.2 MB | Android package, `arm64-v8a`; see release notes before installing |
+| **Windows Installer** | [`RIX-Setup-1.0.7.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Setup-1.0.7.exe) · 76.5 MB | Per-user installer |
+| **Windows Portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Portable.zip) · 82.5 MB | Extract and run; no installation step |
+| **Release Bundle** | [`RIX-1.0.7.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7.zip) | APK and its `SHA256SUMS.txt` |
+| **Release Notes** | [v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | New interfaces on both platforms, and the lag's cause fixed |
 
 <details>
   <summary><strong>📦 Release integrity · SHA-256</strong></summary>
 
   ```text
-  ba6b13a7b2dfe4491d06b4f1d01081d13e70cd59e894694c257cb1c47d43eb8a
+  RIX-1.0.7-debug.apk  b96cf63163280b89c3f60d08640a7c5722c80c6846355cc3445b40fce00efb6b
+  RIX-1.0.7.zip        20b461e37c7dc5346b37cdfb1e3649993595b0abf19cb644427304f1c9f49158
   ```
 </details>
 
 > [!NOTE]
-> Version **1.0.6** is a bug-fix release. It fixes the Android Psiphon error reporting and VPN teardown, and prevents a Windows disconnect/reconnect while a fallback attempt replaces the core.
+> Version **1.0.7** rebuilds the interface on both platforms and fixes the cause of the Android lag: the engine's traffic counters were carried in the same state as the connection phase, so every reading rebuilt the whole screen — once a second, for as long as a tunnel was up. They now live on a flow of their own, and only the session clock, the chart and the two traffic tiles follow them. The live log no longer animates a scroll to the tail on every line.
 >
 > [!IMPORTANT]
 > Users upgrading from **1.0.2 or older** must uninstall the old build once because those versions used a changing CI debug signature. Builds from **1.0.3 onward** use the fixed signing identity documented in the repository.
@@ -116,6 +116,8 @@
 - 🧾 Live, colour-coded logs that can be copied or cleared.
 - 🌐 IPv4 and IPv6 tunnel routes.
 - 🧪 Visible connection stages: idle, preparing, connecting, verifying, running and error.
+- 🪜 A stage strip lights each hop on evidence — core, listener, Psiphon, tunnel, exit — so a listener that merely opened a port is never drawn as a tunnel.
+- 🛑 A second tap on the connect button cancels an attempt that is still in flight.
 - 🔒 No account, analytics SDK, ads, telemetry or crash-reporting service is built into the app, as documented by the project.
 
 ## 🧩 TRANSPORT LOADOUT
@@ -206,6 +208,8 @@ The Windows client uses the same core and transport logic, with a desktop interf
 
 | Item | Details |
 |:--|:--|
+| Interface | Borderless window drawn by an embedded WebView2 page, with rounded corners where the system provides them; the same stage strip, chart and readings as the phone |
+| Languages and skins | Persian and English, light and dark |
 | Installer | Per-user setup; no driver and no administrator prompt for the normal install path |
 | Portable | Extract the ZIP and run `RIX.exe` |
 | Minimum OS | Windows 10 version 1809 or newer, 64-bit |
