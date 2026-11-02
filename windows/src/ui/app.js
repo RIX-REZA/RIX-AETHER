@@ -630,6 +630,12 @@ function renderHome() {
   el('vUp').textContent = bytes(snap.up);
   el('vTime').textContent = duration(snap.uptime);
 
+  // A dash until two readings of the counters are far enough apart to divide
+  // by. The chart starts empty too, so nothing on this panel claims a
+  // measurement before one exists.
+  const rate = (SERIES.down[SERIES.down.length - 1] || 0) + (SERIES.up[SERIES.up.length - 1] || 0);
+  el('vRate').textContent = SERIES.down.length ? bytes(Math.round(rate)) + '/s' : t('none');
+
   const local = snap.local;
   el('vLocal').textContent = local && local.ip ? local.ip : t('none');
   el('mLocal').textContent = local
@@ -745,7 +751,8 @@ function sample() {
   if (SERIES.up.length > SERIES_MAX) SERIES.up.shift();
   if (SERIES.down.length > SERIES_MAX) SERIES.down.shift();
 
-  el('vRate').textContent = bytes(Math.round(downRate + upRate)) + '/s';
+  // The caption is written by the renderer, from the series this just pushed
+  // to -- one place decides what the panel says.
   drawChart();
 }
 
