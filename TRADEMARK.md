@@ -42,9 +42,10 @@ The AGPL lets you do all three. Do them under **your own name**, not this one:
 5. Say plainly, in the app and in your release notes, that your build is an
    unofficial fork and who made it. A line such as "an unofficial fork of
    RIX-AETHER" is enough, and it is allowed.
-6. Keep the licence and attribution notices intact: `LICENSE`, `NOTICE`, the
-   upstream Aether notice, and the copyright headers. AGPL section 5 requires
-   this, and section 7(b) lets this project require it explicitly.
+6. Keep the licence and attribution notices intact: `LICENSE`, `NOTICE` and the
+   upstream Aether notice it carries, including in a build you modified. AGPL
+   section 5 requires this, and section 7(b) lets this project require it
+   explicitly.
 7. Do not sign with, or claim, this project's signing identity, and do not
    publish anything as an update to an installed RIX.
 8. Do not relicense the combined work under terms more restrictive than
@@ -63,8 +64,10 @@ follows is what this project can actually do, and does:
 - The release page is the only distribution channel this project controls. An
   app downloaded from somewhere else is not an official build, whatever it is
   signed with.
-- Official Android builds carry a GitHub build-provenance attestation, which a
-  fork cannot obtain for its own binaries. The README documents how to check it.
+- Official builds carry a GitHub build-provenance attestation issued to *this*
+  repository. A fork can attest its own binaries in its own repository -- that
+  is the normal use of the feature -- but it cannot obtain one that names this
+  repository, which is what the README tells a user to check.
 - Trademark rights, where they exist, are enforced by asking, and by takedown
   where a store or host requires it -- not by code.
 
