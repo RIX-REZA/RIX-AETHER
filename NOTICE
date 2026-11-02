@@ -33,6 +33,14 @@ Trademarks:
   branding of this application, and nothing here implies endorsement by or
   affiliation with the Aether project. See upstream TRADEMARK.md.
 
+  "RIX", the RIX icon and the release asset names are this project's own name
+  and branding. The AGPL grants no licence to them, and neither does anything
+  else here: a fork or a redistributed build is welcome and has to be published
+  under its own name, with its own application id and its own icons, described
+  as unofficial. TRADEMARK.md lists exactly what a redistribution must change;
+  those requirements are the additional terms this project sets under AGPL
+  section 7(b) (preserve the notices) and section 7(e) (no trademark licence).
+
 No warranty:
 
   This program is distributed in the hope that it will be useful, but WITHOUT

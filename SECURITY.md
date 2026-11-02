@@ -19,6 +19,14 @@ What that does and does not mean:
 - Checksums published with a release only help if the user compares them; they
   are not a substitute for a key that was never published.
 
+A build attestation is the one check that survives all of this. Official builds
+now carry a GitHub build-provenance attestation, which binds the artifact's
+digest to this repository and to the workflow that produced it, and which a fork
+cannot obtain for its own binary. The README documents the command. The signing
+certificate fingerprint is still printed on every build and is still in the
+release notes, but read it as "signed by our key, or by whoever else has it" --
+which, until the rotation above happens, is everyone.
+
 ### What the repository does now
 
 1. The key is **not** in the working tree and is ignored by `.gitignore`

@@ -71,6 +71,24 @@
   ```
 </details>
 
+### 🧾 Is this build official?
+
+Download from the [releases page](https://github.com/RIX-REZA/RIX-AETHER/releases) and nowhere else. Anything from another source is somebody else's build, however it is signed. Three checks, weakest first:
+
+1. **Checksum.** The `RIX-1.0.7.zip` bundle carries a `SHA256SUMS.txt`; compare it with the file you downloaded (`sha256sum -c SHA256SUMS.txt`). This catches a truncated or swapped download and nothing more — anyone can publish a matching sum for their own file.
+2. **Android signature.** `apksigner verify --print-certs RIX-1.0.7-debug.apk` prints `CN=RIX VPN` and the certificate SHA-256 `dc351af6…`. It proves the file was not signed by some *other* key. It does **not** prove the build is ours: that key has been public since it was committed to this repository, so a forged build can show the same fingerprint. [SECURITY.md](SECURITY.md) is the full account, and the rotation plan in it is what ends this.
+3. **Build provenance — the check a copy cannot pass.** Official builds are attested by the workflow that produced them:
+
+   ```bash
+   gh attestation verify RIX-1.0.7-debug.apk --repo RIX-REZA/RIX-AETHER
+   ```
+
+   `Verification succeeded` means GitHub signed a statement binding that file's digest to a run of `android-rix.yml` in this repository. An attestation is issued to the repository that ran the build, so a binary built in someone else's fork can be attested there and still fail this check — which is exactly the question being asked.
+
+   The 1.0.7 APK is covered: its statement names commit `8b1ae01` and was verified on 2026-11-02. Verifying `RIX-Setup-1.0.7.exe` fails, because that asset was published before `windows-rix.yml` attested anything and so has no statement — Windows builds are attested from this release onward, not retroactively.
+
+If you redistribute a modified build, [TRADEMARK.md](TRADEMARK.md) lists what has to change first — the name, the application id and the icons. Forking is allowed and this project does not try to prevent it; the name and the artwork are what stay here.
+
 > [!NOTE]
 > Version **1.0.7** rebuilds the interface on both platforms and fixes the cause of the Android lag: the engine's traffic counters were carried in the same state as the connection phase, so every reading rebuilt the whole screen — once a second, for as long as a tunnel was up. They now live on a flow of their own, and only the session clock, the chart and the two traffic tiles follow them. The live log no longer animates a scroll to the tail on every line.
 >
@@ -295,6 +313,10 @@ RIX-AETHER/
 ├── app/src/main/java/       Kotlin app, core, services and UI
 ├── docs/                    README artwork and architecture diagrams
 ├── windows/                 Windows desktop client and installer
+├── LICENSE                  AGPL-3.0-only
+├── NOTICE                   attribution and trademark notices
+├── SECURITY.md              the disclosed signing key, and what is being done
+├── TRADEMARK.md             name and branding rules for redistributed builds
 ├── README.md                English project guide
 └── README.fa.md             Persian project guide
 ```
@@ -308,6 +330,8 @@ RIX-AETHER/
 - **Cloudflare WARP:** network service used by the upstream components.
 
 RIX is a derivative work and is licensed under **AGPL-3.0-only**. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The application itself is named **RIX**. The repository name identifies its integration context; it does not imply ownership of, or endorsement by, the upstream Aether project. The upstream naming and trademark policy applies; do not present Aether as the app's own brand without written permission from the relevant rights holder.
+
+This project's own name and artwork are covered by [TRADEMARK.md](TRADEMARK.md), which also states what a redistribution has to change. Those requirements are the additional terms this project sets under AGPL section 7(b) (preserve the notices) and 7(e) (no trademark licence), and they are the reason a fork publishes under its own name rather than this one.
 
 ---
 

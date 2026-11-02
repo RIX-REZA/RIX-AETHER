@@ -260,6 +260,14 @@ jobs:
     needs: native
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Job-level permissions replace the workflow-level block for this job, so
+    # all three are repeated here. The two write scopes are what the attestation
+    # step needs and nothing else: an OIDC token to sign with, and permission to
+    # write the attestation. Neither one can push a commit or edit a release.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -394,6 +402,19 @@ jobs:
           # version; print it so a key change shows up in the build log.
           apksigner=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
           "$apksigner" verify --print-certs "$apk" | head -6
+
+      - name: Attest the build provenance of the APK
+        # The signing key was published in this repository's history, so a
+        # signature only proves that a file was not signed by some *other* key
+        # (SECURITY.md). Provenance is the check a copy cannot pass: GitHub
+        # signs a statement that binds the APK's digest to this workflow and
+        # this commit, and no fork can obtain one for its own binary.
+        #
+        # `gh attestation verify <file> --repo RIX-REZA/RIX-AETHER` is the other
+        # end of this step, and it is documented in the README.
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: app/build/outputs/apk/debug/*.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
