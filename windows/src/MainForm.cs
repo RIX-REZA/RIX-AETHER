@@ -315,7 +315,10 @@ public sealed class MainForm : Form
         {
             ["type"] = "init",
             ["options"] = options,
-            ["version"] = typeof(MainForm).Assembly.GetName().Version?.ToString(3) ?? "1.0.5",
+            // The assembly's own version, which is set in the csproj and is what
+            // the installer writes into Apps & Features; the fallback only
+            // covers a build that somehow has no assembly version at all.
+            ["version"] = typeof(MainForm).Assembly.GetName().Version?.ToString(3) ?? "1.0.7",
             ["core"] = AetherProcess.Locate() ?? "",
             ["psiphon"] = File.Exists(Path.Combine(AppContext.BaseDirectory, "core", "pt", "psiphon-tunnel-core.exe")),
             ["autostart"] = AutoStartEnabled(),

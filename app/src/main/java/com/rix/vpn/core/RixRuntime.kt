@@ -53,19 +53,29 @@ object RixRuntime {
         /** Network the exit address belongs to, e.g. "Cloudflare, Inc.". */
         val egressIsp: String = "",
         /** Human label of the transport that actually carried the tunnel. */
-        val activeTransport: String = "",
+        val activeTransport: String = ""
+    )
+
+    /**
+     * The engine's cumulative counters, on a flow of their own.
+     *
+     * They are the only thing in this object that changes every second, and
+     * they used to be fields of [State] -- so every counter tick recomposed
+     * every screen that reads the phase, the ports or the exit address, which
+     * is the whole of the interface, once a second, for as long as a tunnel was
+     * up. Apart, only the two small composables that actually show traffic
+     * recompose when traffic moves.
+     *
+     * [available] is false when the native side could not answer, which is not
+     * the same thing as "no traffic": showing 0 B/s over a tunnel the user is
+     * downloading through is a lie, and the UI draws a dash instead.
+     */
+    data class Traffic(
         val txBytes: Long = 0L,
         val rxBytes: Long = 0L,
         val txPackets: Long = 0L,
         val rxPackets: Long = 0L,
-        /**
-         * Whether [txBytes] and its neighbours are real readings.
-         *
-         * False means the native side could not answer, which is not the same
-         * thing as "no traffic": showing 0 B/s over a tunnel the user is
-         * downloading through is a lie, and the UI draws a dash instead.
-         */
-        val statsAvailable: Boolean = false
+        val available: Boolean = false
     )
 
     /** Thrown for a refused/failed start; carries the core's own message. */
@@ -79,6 +89,9 @@ object RixRuntime {
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
+
+    private val _traffic = MutableStateFlow(Traffic())
+    val traffic: StateFlow<Traffic> = _traffic.asStateFlow()
 
     /** Written from the service threads and from the disposal thread. */
     @Volatile
@@ -118,6 +131,7 @@ object RixRuntime {
             LogBus.e("core", "job $leftover was still registered at teardown; disposing it")
             disposeAsync(leftover)
         }
+        _traffic.value = Traffic()
         synchronized(hevLock) {
             hevThread = null
             hevInFlight = false
@@ -139,18 +153,17 @@ object RixRuntime {
      * user never sent.
      */
     fun markStarting(mode: RixMode, message: String) {
+        // The counters live on their own flow, which the UI observes separately:
+        // resetting them here must not touch `State`, or every screen would
+        // recompose for a change none of them draw.
+        _traffic.value = Traffic()
         update {
             it.copy(
                 phase = Phase.STARTING,
                 mode = mode,
                 message = message,
                 error = null,
-                startedAt = 0L,
-                txBytes = 0L,
-                rxBytes = 0L,
-                txPackets = 0L,
-                rxPackets = 0L,
-                statsAvailable = false
+                startedAt = 0L
             )
         }
     }
@@ -243,6 +256,9 @@ object RixRuntime {
     }
 
     fun markIdle() {
+        // The session's counters go with the session; `State` carries them no
+        // longer, so the reset has to name the flow they moved to.
+        _traffic.value = Traffic()
         update { State(mode = it.mode) }
     }
 
@@ -711,7 +727,7 @@ object RixRuntime {
      *
      * Null is not zero. A dead engine reported as "0 B/s" looks exactly like a
      * tunnel that is up and idle, which is the more convincing of the two
-     * wrong answers; so the failure is logged once per run and the state says
+     * wrong answers; so the failure is logged once per run and [traffic] says
      * the numbers are unavailable instead.
      */
     fun stats(): LongArray? = try {
@@ -730,21 +746,30 @@ object RixRuntime {
         null
     }
 
+    /**
+     * Publishes one reading of the engine's counters.
+     *
+     * This is the only thing in the runtime that changes every second, and it
+     * writes to [traffic] alone. It used to write into [State], which the root
+     * composable collects -- so one counter tick recomposed the whole interface,
+     * once a second, for as long as a tunnel was up.
+     */
     fun pushStats() {
         val s = stats()
         if (s == null) {
             // Only touch the flow if something changes: this runs once a second
-            // for as long as the service lives.
-            update { if (it.statsAvailable) it.copy(statsAvailable = false) else it }
+            // for as long as the service lives, and an equal value would be a
+            // no-op write that still wakes every collector.
+            if (_traffic.value.available) _traffic.value = Traffic()
             return
         }
-        update {
-            it.copy(
-                txPackets = s[0], txBytes = s[1],
-                rxPackets = s[2], rxBytes = s[3],
-                statsAvailable = true
-            )
-        }
+        _traffic.value = Traffic(
+            txPackets = s[0],
+            txBytes = s[1],
+            rxPackets = s[2],
+            rxBytes = s[3],
+            available = true
+        )
     }
 
     // ------------------------------------------------------------ stop

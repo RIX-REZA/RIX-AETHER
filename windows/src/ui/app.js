@@ -5,6 +5,10 @@
  * something. Nothing decides on its own that the tunnel is up: that verdict
  * comes from a real request the host made through it, because a listener that
  * accepts is not the same thing as a tunnel that carries.
+ *
+ * The one thing drawn that is not a field of the snapshot is the throughput
+ * chart, and it is built from the difference between two of the host's own
+ * readings of the core's counters -- never from a number invented here.
  */
 
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : null;
@@ -19,28 +23,33 @@ const T = {
   fa: {
     connect: 'اتصال', disconnect: 'قطع', cancel: 'لغو', retry: 'تلاش دوباره',
     ready: 'آماده', idle: 'آماده',
-    down: 'دانلود', up: 'آپلود', time: 'زمان اتصال',
-    exit: 'آی‌پی خروجی', you: 'اتصال شما', proto: 'پروتکل',
+    down: 'دانلود', up: 'آپلود', time: 'زمان اتصال', chart: 'گذر لحظهای',
+    exit: 'آیپی خروجی', you: 'اتصال شما', proto: 'پروتکل', route: 'مسیر خروج',
     check: 'بررسی', copy: 'کپی', copied: 'کپی شد',
     home: 'خانه', settings: 'تنظیمات', log: 'گزارش', about: 'درباره',
     saved: 'ذخیره شد', clear: 'پاک کردن', folder: 'پوشه',
     none: '—', unknown: 'نامشخص',
-    running: 'متصل', connecting: 'در حال اتصال', starting: 'آماده‌سازی',
+    running: 'متصل', connecting: 'در حال اتصال', starting: 'آمادهسازی',
     stopping: 'در حال قطع', error: 'خطا',
     proxyOn: 'پروکسی سیستم روشن', proxyOff: 'پروکسی سیستم خاموش',
     socks: 'پورت', beta: 'بتا',
     lang: 'زبان', theme: 'پوسته', dark: 'تیره', light: 'روشن',
     minTray: 'بستن به سینی سیستم',
     autostart: 'اجرا با ویندوز',
-    openFolder: 'پوشه تنظیمات', reset: 'بازگردانی پیش‌فرض',
-    resetAsk: 'همه تنظیمات به حالت پیش‌فرض برگردد؟',
+    openFolder: 'پوشه تنظیمات', reset: 'بازگردانی پیشفرض',
+    resetAsk: 'همه تنظیمات به حالت پیشفرض برگردد؟',
     on: 'روشن', off: 'خاموش', auto: 'خودکار',
+    core: 'هسته', listener: 'شنونده SOCKS5', tunnel: 'تونل',
+    exitStage: 'خروج', internet: 'اینترنت',
+    steps: 'مراحل', waiting: 'در انتظار',
+    rate: 'نرخ', noAnswer: 'پاسخی نیامد / no answer',
+    extra: 'اضافه', value: 'مقدار',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
     ready: 'Ready', idle: 'Ready',
-    down: 'Download', up: 'Upload', time: 'Connected for',
-    exit: 'Exit address', you: 'Your connection', proto: 'Transport',
+    down: 'Download', up: 'Upload', time: 'Connected for', chart: 'Live throughput',
+    exit: 'Exit address', you: 'Your connection', proto: 'Transport', route: 'Exit route',
     check: 'Check', copy: 'Copy', copied: 'Copied',
     home: 'Home', settings: 'Settings', log: 'Log', about: 'About',
     saved: 'Saved', clear: 'Clear', folder: 'Folder',
@@ -55,6 +64,11 @@ const T = {
     openFolder: 'Settings folder', reset: 'Restore defaults',
     resetAsk: 'Put every setting back to its default?',
     on: 'On', off: 'Off', auto: 'Automatic',
+    core: 'Core', listener: 'SOCKS5 listener', tunnel: 'Tunnel',
+    exitStage: 'Exit', internet: 'Internet',
+    steps: 'Stages', waiting: 'waiting',
+    rate: 'Rate', noAnswer: 'no answer',
+    extra: 'Extra', value: 'Value',
   }
 };
 
@@ -75,8 +89,8 @@ const TRANSPORTS = [
 ];
 
 const SCANS = [
-  { v: 'DEFAULT', fa: 'پیش‌فرض هسته', en: 'Core default' },
-  { v: 'TURBO', fa: 'Turbo — سریع‌ترین', en: 'Turbo — fastest' },
+  { v: 'DEFAULT', fa: 'پیشفرض هسته', en: 'Core default' },
+  { v: 'TURBO', fa: 'Turbo — سریعترین', en: 'Turbo — fastest' },
   { v: 'BALANCED', fa: 'Balanced', en: 'Balanced' },
   { v: 'THOROUGH', fa: 'Thorough — کامل', en: 'Thorough' },
   { v: 'VERIFIED', fa: 'Verified', en: 'Verified' },
@@ -93,7 +107,7 @@ const LOG_LEVELS = [
   { v: 'ERROR', fa: 'خطا', en: 'Error' },
   { v: 'WARN', fa: 'هشدار', en: 'Warn' },
   { v: 'INFO', fa: 'معمولی', en: 'Info' },
-  { v: 'DEBUG', fa: 'اشکال‌زدایی', en: 'Debug' },
+  { v: 'DEBUG', fa: 'اشکالزدایی', en: 'Debug' },
 ];
 
 const PERF = [
@@ -124,11 +138,11 @@ const REGIONS = [
 
 const PSIPHON_MODES = [
   { v: 'auto', fa: 'خودکار — انتخاب سایفون', en: 'Automatic — Psiphon decides' },
-  { v: 'direct', fa: 'مستقیم — سریع‌تر', en: 'Direct — faster' },
-  { v: 'cdn', fa: 'از پشت CDN — مقاوم‌تر', en: 'Behind a CDN — harder to block' },
+  { v: 'direct', fa: 'مستقیم — سریعتر', en: 'Direct — faster' },
+  { v: 'cdn', fa: 'از پشت CDN — مقاومتر', en: 'Behind a CDN — harder to block' },
 ];
 
-/* --------------------------------------------------------------- svg glyphs */
+/* ---------------------------------------------------------------- svg glyphs */
 
 const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>',
@@ -151,19 +165,19 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const NAV = [
-  { id: 'home', label: 'خانه', icon: ICON.home },
-  { id: 'settings', label: 'تنظیمات', icon: ICON.gear },
-  { id: 'log', label: 'گزارش', icon: ICON.list },
-  { id: 'about', label: 'درباره', icon: ICON.info },
+  { id: 'home', icon: ICON.home },
+  { id: 'settings', icon: ICON.gear },
+  { id: 'log', icon: ICON.list },
+  { id: 'about', icon: ICON.info },
 ];
 
-function buildRail() {
-  const rail = el('rail');
-  rail.innerHTML = NAV.map((item) =>
+function buildTabs() {
+  const tabs = el('tabs');
+  tabs.innerHTML = NAV.map((item) =>
     `<button data-view="${item.id}">${item.icon}<span>${t(item.id)}</span></button>`
   ).join('');
 
-  rail.querySelectorAll('button').forEach((button) => {
+  tabs.querySelectorAll('button').forEach((button) => {
     button.onclick = () => show(button.dataset.view);
   });
 }
@@ -174,9 +188,10 @@ function show(view) {
   currentView = view;
   document.querySelectorAll('.view').forEach((node) => node.classList.remove('on'));
   el('view-' + view).classList.add('on');
-  document.querySelectorAll('.rail button').forEach((button) => {
+  document.querySelectorAll('.tabs button').forEach((button) => {
     button.classList.toggle('on', button.dataset.view === view);
   });
+  if (view === 'home') drawChart();
 }
 
 /* ----------------------------------------------------------------- settings */
@@ -263,47 +278,38 @@ const GROUPS = [
   },
 ];
 
-function buildGroups() {
-  const root = el('groups');
+let currentGroup = 'connection';
 
-  // Rebuilding the list -- which a language or theme change does -- must not
-  // close whatever the user had opened.
-  const open = new Set(
-    Array.from(root.querySelectorAll('.group.open')).map((node) => node.dataset.group)
-  );
-
-  root.innerHTML = GROUPS.map((group) => `
-    <section class="group" data-group="${group.id}">
-      <header>
-        <span class="ico">${group.icon}</span>
-        <span class="titles">
-          <b>${L(group.title)}${group.badge ? ` <span class="pill beta">${group.badge}</span>` : ''}</b>
-          <span>${L(group.sub)}</span>
-        </span>
-        <span class="chev">›</span>
-      </header>
-      <div class="body"></div>
-    </section>
+function buildCat() {
+  const node = el('cat');
+  node.innerHTML = GROUPS.map((group) => `
+    <button data-cat="${group.id}" class="${group.id === currentGroup ? 'on' : ''}">
+      ${group.icon}<span>${L(group.title)}${group.badge ? ` <span class="pill beta">${group.badge}</span>` : ''}</span>
+    </button>
   `).join('');
 
-  root.querySelectorAll('.group').forEach((node) => {
-    if (open.has(node.dataset.group)) node.classList.add('open');
-    node.querySelector('header').onclick = () => node.classList.toggle('open');
+  node.querySelectorAll('button').forEach((button) => {
+    button.onclick = () => {
+      currentGroup = button.dataset.cat;
+      buildCat();
+      renderFields();
+    };
   });
-
-  GROUPS.forEach(renderGroup);
 }
 
-function renderGroup(group) {
-  const node = document.querySelector(`.group[data-group="${group.id}"]`);
-  const body = node.querySelector('.body');
+function renderFields() {
+  const group = GROUPS.find((g) => g.id === currentGroup) || GROUPS[0];
+  el('catTitle').innerHTML =
+    `${L(group.title)}${group.badge ? ` <span class="pill beta">${group.badge}</span>` : ''}`;
+  el('catSub').textContent = L(group.sub);
+
+  const body = el('fields');
   body.innerHTML = '';
 
   group.fields.forEach((field) => {
     if (field.t === 'note') {
       const note = document.createElement('p');
       note.className = 'hint';
-      note.style.padding = '10px 0';
       note.textContent = L(field.text);
       body.appendChild(note);
       return;
@@ -313,8 +319,9 @@ function renderGroup(group) {
       const row = document.createElement('div');
       row.className = 'field';
       row.innerHTML = `<span class="name">${L(field.name)}</span>
-        <span class="ctl"><span class="chain"><b>${transportLabel(options.transport)}</b>
-        <i>→</i> WARP <i>→</i> Psiphon <i>→</i> Internet</span></span>`;
+        <span class="ctl"><span class="chain"><b>${esc(transportLabel(options.transport))}</b>
+        <span class="dot">→</span> WARP <span class="dot">→</span> Psiphon
+        <span class="dot">→</span> ${t('internet')}</span></span>`;
       body.appendChild(row);
       return;
     }
@@ -337,8 +344,9 @@ function renderGroup(group) {
         if (!confirm(t('resetAsk'))) return;
         options = defaults();
         persist();
-        buildGroups();
-        applyTheme();
+        buildCat();
+        renderFields();
+        applyLangTheme();
         toast(t('saved'));
       };
 
@@ -367,7 +375,6 @@ function renderGroup(group) {
           wrap.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
           chip.classList.add('on');
           if (field.app) applyLangTheme();
-          if (field.k === 'transport') renderGroupByName('psiphon');
         };
         wrap.appendChild(chip);
       });
@@ -378,14 +385,12 @@ function renderGroup(group) {
     if (field.t === 'chips+custom') {
       const wrap = document.createElement('div');
       wrap.className = 'chips';
-      wrap.style.width = '100%';
 
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'short';
       input.maxLength = 2;
       input.placeholder = 'CC';
-      input.style.textTransform = 'uppercase';
       input.value = value || '';
 
       field.opts.forEach((opt) => {
@@ -397,7 +402,6 @@ function renderGroup(group) {
           input.value = opt.v;
           wrap.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
           chip.classList.add('on');
-          renderGroupByName('psiphon');
         };
         wrap.appendChild(chip);
       });
@@ -407,7 +411,6 @@ function renderGroup(group) {
         input.value = code;
         set(field.k, code);
         wrap.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
-        renderGroupByName('psiphon');
       };
 
       ctl.appendChild(input);
@@ -458,13 +461,10 @@ function renderGroup(group) {
   });
 }
 
-function renderGroupByName(id) {
-  const group = GROUPS.find((g) => g.id === id);
-  if (!group) return;
-  const node = document.querySelector(`.group[data-group="${id}"]`);
-  const wasOpen = node && node.classList.contains('open');
-  renderGroup(group);
-  if (wasOpen) node.classList.add('open');
+/** The old name kept so the rest of the file reads unchanged. */
+function buildGroups() {
+  buildCat();
+  renderFields();
 }
 
 function transportLabel(value) {
@@ -477,6 +477,9 @@ function transportLabel(value) {
 let options = {};
 let snap = { phase: 'idle', message: '', up: 0, down: 0, uptime: 0 };
 let saveTimer = null;
+
+/** When the check button was last pressed, 0 when no check is in flight. */
+let probingAt = 0;
 
 function defaults() {
   return {
@@ -518,31 +521,33 @@ function applyLangTheme() {
   el('langBtn').textContent = lang === 'fa' ? 'EN' : 'فا';
   el('themeBtn').textContent = theme === 'dark' ? '☀' : '☾';
 
-  buildRail();
+  buildTabs();
   buildGroups();
-  renderHome();
   renderStatic();
+  renderHome();
   renderAbout();
-}
-
-/** Language or theme changed: re-draw everything, and stay on the same screen. */
-function applyTheme() {
-  applyLangTheme();
   show(currentView);
 }
 
 /* --------------------------------------------------------------------- home */
 
 function renderStatic() {
+  el('kChart').textContent = t('chart');
   el('kDown').textContent = t('down');
   el('kUp').textContent = t('up');
   el('kTime').textContent = t('time');
-  el('kExit').textContent = t('exit');
   el('kYou').textContent = t('you');
   el('kProto').textContent = t('proto');
+  el('kRoute').textContent = t('route');
+  el('probeBtn').textContent = t('check');
   el('logCopy').textContent = t('copy');
   el('logClear').textContent = t('clear');
   el('logFolder').textContent = t('folder');
+  el('logTitle').textContent = t('log');
+  el('stCoreName').textContent = t('core');
+  el('stListenerName').textContent = t('listener');
+  el('stTunnelName').textContent = t('tunnel');
+  el('stExitName').textContent = t('exitStage');
 }
 
 function bytes(value) {
@@ -569,76 +574,258 @@ const PHASE_TEXT = {
 
 function renderHome() {
   const phase = snap.phase || 'idle';
-  const orb = el('orb');
+  const busy = phase === 'starting' || phase === 'connecting' || phase === 'stopping';
+  const running = phase === 'running';
+  const failed = phase === 'error';
 
-  orb.classList.toggle('busy', phase === 'starting' || phase === 'connecting' || phase === 'stopping');
-  orb.classList.toggle('on', phase === 'running');
-  orb.classList.toggle('err', phase === 'error');
+  const main = el('heroMain');
+  main.classList.toggle('busy', busy);
+  main.classList.toggle('on', running);
+  main.classList.toggle('err', failed);
 
-  const title = el('orbTitle');
-  const sub = el('orbSub');
+  const dot = el('phaseDot');
+  dot.classList.toggle('busy', busy);
+  dot.classList.toggle('on', running);
+  dot.classList.toggle('err', failed);
 
-  if (phase === 'running') {
-    title.textContent = t('disconnect');
-    const parts = [snap.transportLabel || transportLabel(options.transport)];
-    if (snap.psiphon) parts.push('Psiphon' + (snap.psiphonRegion ? ' · ' + snap.psiphonRegion : ''));
-    sub.textContent = parts.join(' · ');
-  } else if (phase === 'connecting' || phase === 'starting' || phase === 'stopping') {
-    title.textContent = t('cancel');
-    sub.textContent = snap.message || t(PHASE_TEXT[phase]);
-  } else if (phase === 'error') {
-    title.textContent = t('retry');
-    sub.textContent = snap.message || t('error');
-  } else {
-    title.textContent = t('connect');
-    sub.textContent = t('ready');
+  el('phaseText').textContent = snap.message || t(PHASE_TEXT[phase] || 'ready');
+  el('tbState').className = 'tb-state' + (running ? ' ok' : failed ? ' bad' : '');
+  el('tbState').textContent = running
+    ? (snap.egress && snap.egress.ip ? snap.egress.ip : t('running'))
+    : (failed ? (snap.message || t('error')) : t(PHASE_TEXT[phase] || 'ready'));
+
+  const transport = snap.transport || options.transport;
+  el('heroTransport').textContent = transport ? transportLabel(transport) : t('none');
+
+  // The big line is the exit address when there is one, because that is the
+  // fact the user came for; otherwise it says what is happening instead of
+  // pretending to have an address.
+  const exit = snap.egress;
+  el('heroIp').textContent = exit && exit.ip
+    ? exit.ip
+    : (busy ? (snap.message || t(PHASE_TEXT[phase])) : failed ? t('error') : t('ready'));
+
+  const parts = [];
+  if (exit) {
+    if (exit.country) parts.push(exit.country);
+    if (exit.colo) parts.push('colo ' + exit.colo);
+    if (exit.warp) parts.push('warp ' + exit.warp);
+  } else if (running) {
+    parts.push(t('unknown'));
   }
+  if (snap.psiphon) parts.push('Psiphon' + (snap.psiphonRegion ? ' · ' + snap.psiphonRegion : ''));
+  el('heroSub').textContent = parts.join(' · ');
+
+  el('connectBtn').textContent = running ? t('disconnect') : busy ? t('cancel') : failed ? t('retry') : t('connect');
+  el('connectBtn').className = 'primary' + (running ? ' on' : busy ? ' busy' : '');
+
+  const fill = el('trackFill');
+  fill.classList.toggle('slide', busy);
+  if (!busy) fill.style.width = running ? '100%' : failed ? '100%' : '0';
 
   el('vDown').textContent = bytes(snap.down);
   el('vUp').textContent = bytes(snap.up);
   el('vTime').textContent = duration(snap.uptime);
-  el('bar').classList.toggle('hidden', !(phase === 'starting' || phase === 'connecting'));
-  // Also the reset: every state message is the answer to whatever was asked,
-  // so the check button is live again by the time one arrives.
-  el('probeBtn').textContent = t('check');
 
-  const exit = snap.egress;
-  el('vExit').textContent = exit ? exit.ip : t('none');
-  el('mExit').textContent = exit
-    ? [exit.country, exit.colo ? 'colo ' + exit.colo : '', exit.warp ? 'warp ' + exit.warp : '']
-        .filter(Boolean).join(' · ')
-    : (phase === 'running' ? t('unknown') : '');
+  // A dash until two readings of the counters are far enough apart to divide
+  // by. The chart starts empty too, so nothing on this panel claims a
+  // measurement before one exists.
+  const rate = (SERIES.down[SERIES.down.length - 1] || 0) + (SERIES.up[SERIES.up.length - 1] || 0);
+  el('vRate').textContent = SERIES.down.length ? bytes(Math.round(rate)) + '/s' : t('none');
 
   const local = snap.local;
-  el('vLocal').textContent = local ? local.ip : t('none');
+  el('vLocal').textContent = local && local.ip ? local.ip : t('none');
   el('mLocal').textContent = local
     ? [local.country, local.colo ? 'colo ' + local.colo : ''].filter(Boolean).join(' · ')
     : '';
 
   const proto = el('vProto');
-  proto.innerHTML = '';
-  const name = document.createElement('span');
-  name.textContent = transportLabel(snap.transport || options.transport);
-  proto.appendChild(name);
+  proto.textContent = transportLabel(transport);
+  el('mProto').textContent = running ? `${t('socks')} ${snap.port} · 127.0.0.1` : '';
 
-  if (snap.psiphon || options.psiphon) {
-    const pill = document.createElement('span');
-    pill.className = 'pill beta';
-    pill.textContent = 'Psiphon ' + t('beta');
-    proto.appendChild(pill);
-  }
-  if (phase === 'running') {
-    const pill = document.createElement('span');
-    pill.className = 'pill ' + (snap.proxyOn ? 'ok' : 'off');
-    pill.textContent = snap.proxyOn ? t('proxyOn') : t('proxyOff');
-    proto.appendChild(pill);
+  const route = el('vRoute');
+  if (running) {
+    route.textContent = snap.proxyOn ? t('proxyOn') : t('proxyOff');
+    el('mRoute').textContent = `127.0.0.1:${options.httpPort || 1820}`;
+  } else {
+    route.textContent = t('none');
+    el('mRoute').textContent = '';
   }
 
-  const mProto = el('mProto');
-  mProto.textContent = phase === 'running'
-    ? `${t('socks')} ${snap.port} · 127.0.0.1`
-    : '';
+  renderStrip(phase);
+  renderAlert(phase);
 }
+
+/**
+ * The four stages, lit only on evidence.
+ *
+ *   core      a child process is up -- the phase says so, nothing else does
+ *   listener  a SOCKS5 port is known, which only happens once one accepted
+ *   tunnel    the probe came back through it, which is the only real proof
+ *   exit      an address was answered through the tunnel
+ */
+function renderStrip(phase) {
+  const started = phase !== 'idle';
+  const listener = snap.port > 0;
+  const tunnel = phase === 'running';
+  const exit = !!(snap.egress && snap.egress.ip);
+
+  const core = el('stCore');
+  core.classList.toggle('lit', started && !tunnel);
+  core.classList.toggle('done', tunnel);
+
+  const lis = el('stListener');
+  lis.classList.toggle('lit', listener && !tunnel);
+  lis.classList.toggle('done', listener || tunnel);
+
+  const psi = el('stPsiphon');
+  const inPath = !!snap.psiphon || !!options.psiphon;
+  psi.classList.toggle('lit', inPath && !tunnel);
+  psi.classList.toggle('done', inPath && tunnel);
+  psi.classList.toggle('hidden', !inPath);
+  el('stPsiphonArrow').classList.toggle('hidden', !inPath);
+  // A stage that is not in the path is not drawn at all: a dimmed stage reads
+  // as "waiting" when the truth is "not part of this connection".
+  el('stPsiphonArrow').classList.toggle('off', !inPath);
+
+  const tun = el('stTunnel');
+  tun.classList.toggle('lit', tunnel && !exit);
+  tun.classList.toggle('done', tunnel);
+
+  const ex = el('stExit');
+  ex.classList.toggle('lit', tunnel && !exit);
+  ex.classList.toggle('done', exit);
+}
+
+/** The failure, said once and in place, rather than only in the chrome. */
+function renderAlert(phase) {
+  const node = el('alert');
+  if (phase === 'error' && snap.message) {
+    node.classList.remove('hidden');
+    el('alertText').textContent = snap.message;
+  } else {
+    node.classList.add('hidden');
+  }
+}
+
+/* -------------------------------------------------------------------- chart */
+
+/**
+ * Throughput over the last minute.
+ *
+ * The host reports the core's own cumulative byte counters about once a
+ * second, so a rate is the difference between two readings divided by the time
+ * between them -- measured here rather than assumed, because the host also
+ * sends a state message whenever the phase changes and those are not a second
+ * apart. A counter that goes backwards is a counter that was reset by a new
+ * connection, and that sample is dropped rather than drawn as a spike.
+ */
+const SERIES = { up: [], down: [], last: null, lastAt: 0 };
+const SERIES_MAX = 60;
+
+function sample() {
+  const now = Date.now();
+  const up = snap.up || 0;
+  const down = snap.down || 0;
+
+  if (SERIES.last === null) {
+    SERIES.last = { up, down };
+    SERIES.lastAt = now;
+    return;
+  }
+
+  const elapsed = (now - SERIES.lastAt) / 1000;
+  if (elapsed < 0.25) return;
+
+  const reset = up < SERIES.last.up || down < SERIES.last.down;
+  const upRate = reset ? 0 : Math.max(0, (up - SERIES.last.up) / elapsed);
+  const downRate = reset ? 0 : Math.max(0, (down - SERIES.last.down) / elapsed);
+
+  SERIES.last = { up, down };
+  SERIES.lastAt = now;
+  SERIES.up.push(upRate);
+  SERIES.down.push(downRate);
+  if (SERIES.up.length > SERIES_MAX) SERIES.up.shift();
+  if (SERIES.down.length > SERIES_MAX) SERIES.down.shift();
+
+  // The caption is written by the renderer, from the series this just pushed
+  // to -- one place decides what the panel says.
+  drawChart();
+}
+
+function drawChart() {
+  const canvas = el('chart');
+  if (!canvas || !canvas.getContext) return;
+
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 400;
+  const height = 132;
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const style = getComputedStyle(document.documentElement);
+  const up = style.getPropertyValue('--accent').trim() || '#7c5cff';
+  const down = style.getPropertyValue('--cyan').trim() || '#22d3ee';
+  const line = style.getPropertyValue('--line').trim() || 'rgba(255,255,255,.08)';
+
+  // Three rules, so an empty chart still reads as a chart.
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 3; i += 1) {
+    const y = Math.round((height / 4) * i) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  const peak = Math.max(1024, ...SERIES.up, ...SERIES.down);
+  const step = SERIES.up.length > 1 ? width / (SERIES_MAX - 1) : width;
+  // Right-aligned: the newest sample sits at the trailing edge, so the chart
+  // fills from the direction the page reads in.
+  const offset = width - (SERIES_MAX - 1) * step;
+
+  const series = [{ data: SERIES.down, color: down }, { data: SERIES.up, color: up }];
+
+  series.forEach(({ data, color }) => {
+    if (data.length < 2) return;
+    const at = (index) => offset + index * step;
+
+    ctx.beginPath();
+    ctx.moveTo(at(SERIES_MAX - data.length), height);
+    data.forEach((value, index) => {
+      const x = at(SERIES_MAX - data.length + index);
+      const y = height - Math.min(height - 4, (value / peak) * (height - 10));
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo(at(SERIES_MAX - 1), height);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.14;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    data.forEach((value, index) => {
+      const x = at(SERIES_MAX - data.length + index);
+      const y = height - Math.min(height - 4, (value / peak) * (height - 10));
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  });
+}
+
+window.addEventListener('resize', drawChart);
 
 /* --------------------------------------------------------------- from host */
 
@@ -653,11 +840,21 @@ function onMessage(event) {
       state.corePath = message.core;
       state.hasPsiphon = message.psiphon;
       state.proxy = message.proxy;
-      applyTheme();
+      applyLangTheme();
       break;
 
     case 'state':
       snap = message;
+      // A counter tick also arrives as a state message, about once a second,
+      // so the check button waits out a short grace before believing that this
+      // one is its answer.
+      if (probingAt && Date.now() - probingAt > 1_200) {
+        probingAt = 0;
+        el('probeBtn').textContent = t('check');
+      }
+      // Sampled first, so the rate in the caption is the rate the chart is
+      // drawing rather than the reading before it.
+      sample();
       renderHome();
       break;
 
@@ -695,11 +892,12 @@ function appendLog(line) {
 function renderAbout() {
   const version = el('ver').textContent || '';
   el('about').innerHTML = `
-    <h2>RIX <span class="ver">${version}</span></h2>
+    <h2><span class="logo"></span>RIX <span class="ver">${esc(version)}</span></h2>
     <p>${lang === 'fa'
-      ? 'کلاینت عبور از فیلتر برای ویندوز. ترافیک از یک تونل WARP بیرون می‌رود و به‌صورت پروکسی SOCKS5 و پروکسی سیستم در اختیار برنامه‌ها قرار می‌گیرد.'
-      : 'A censorship-circumvention client for Windows. Traffic leaves through a WARP tunnel and is offered to applications as a local SOCKS5 endpoint and as the system proxy.'}</p>
-    <div class="group"><div class="body" style="display:block;border:0;padding:14px 16px">
+      ? 'کلاینت عبور از فیلتر برای ویندوز. ترافیک از یک تونل بیرون می‌رود و به‌صورت پروکسی SOCKS5 و پروکسی سیستم در اختیار برنامه‌ها قرار می‌گیرد.'
+      : 'A censorship-circumvention client for Windows. Traffic leaves through a tunnel and is offered to applications as a local SOCKS5 endpoint and as the system proxy.'}</p>
+
+    <div class="facts">
       <div class="field"><span class="name">${lang === 'fa' ? 'هسته' : 'Core'}</span>
         <span class="ctl"><code>${esc(state.corePath || '—')}</code></span></div>
       <div class="field"><span class="name">Psiphon</span>
@@ -708,7 +906,9 @@ function renderAbout() {
         <span class="ctl"><code>127.0.0.1:${snap.port || options.bindPort || 1819}</code></span></div>
       <div class="field"><span class="name">${lang === 'fa' ? 'پروکسی سیستم' : 'System proxy'}</span>
         <span class="ctl"><code>${esc(state.proxy || '—')}</code></span></div>
-    </div></div>
+    </div>
+
+    <h3>${lang === 'fa' ? 'محدودیت‌ها' : 'LIMITS'}</h3>
     <p>${lang === 'fa'
       ? 'پروکسی سیستم همه برنامه‌ها را پوشش نمی‌دهد: فایرفاکس تنظیم پروکسی خودش را دارد و برنامه‌هایی که سوکت خودشان را باز می‌کنند باید دستی به SOCKS5 بالا وصل شوند.'
       : 'The system proxy does not cover everything: Firefox keeps its own proxy settings, and applications that open their own sockets have to be pointed at the SOCKS5 endpoint above by hand.'}</p>
@@ -734,31 +934,47 @@ function toast(text, bad) {
 /* ------------------------------------------------------------------- wiring */
 
 function wire() {
-  const orb = el('orb');
-  orb.onclick = () => {
-    if (snap.phase === 'running' || snap.phase === 'connecting' || snap.phase === 'starting') {
+  // One button for all four states: connect, cancel, disconnect, retry. A
+  // second press while connecting is a cancel, which is what a user means by
+  // pressing it again.
+  el('connectBtn').onclick = () => {
+    if (snap.phase === 'running') {
       send({ type: 'disconnect' });
+    } else if (snap.phase === 'connecting' || snap.phase === 'starting') {
+      send({ type: 'disconnect' });
+    } else if (snap.phase === 'stopping') {
+      return;
     } else {
       persistNow();
       send({ type: 'connect' });
     }
   };
 
+  // The check runs wherever the host runs it and answers with a state message,
+  // which is what clears this. The timer is only the bound that keeps the
+  // button from saying "..." forever if that answer never comes.
   el('probeBtn').onclick = () => {
-    el('probeBtn').textContent = '…';
+    probingAt = Date.now();
+    el('probeBtn').textContent = '...';
     send({ type: 'probe' });
+    setTimeout(() => {
+      if (probingAt && Date.now() - probingAt >= 11_000) {
+        probingAt = 0;
+        el('probeBtn').textContent = t('check');
+      }
+    }, 12_000);
   };
 
   el('langBtn').onclick = () => {
     options.lang = lang === 'fa' ? 'en' : 'fa';
     persist();
-    applyTheme();
+    applyLangTheme();
   };
 
   el('themeBtn').onclick = () => {
     options.theme = theme === 'dark' ? 'light' : 'dark';
     persist();
-    applyTheme();
+    applyLangTheme();
   };
 
   el('minBtn').onclick = () => send({ type: 'minimize' });
@@ -795,5 +1011,6 @@ else window.addEventListener('message', onMessage);
 
 options = defaults();
 wire();
-applyTheme();
+applyLangTheme();
+drawChart();
 send({ type: 'ready' });
