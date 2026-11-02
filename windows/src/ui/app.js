@@ -478,6 +478,9 @@ let options = {};
 let snap = { phase: 'idle', message: '', up: 0, down: 0, uptime: 0 };
 let saveTimer = null;
 
+/** When the check button was last pressed, 0 when no check is in flight. */
+let probingAt = 0;
+
 function defaults() {
   return {
     transport: 'MASQUE_H3', autoFallback: true, bindPort: 1819, httpPort: 1820,
@@ -526,11 +529,6 @@ function applyLangTheme() {
   show(currentView);
 }
 
-/** Kept for the call sites that meant "language or theme changed". */
-function applyTheme() {
-  applyLangTheme();
-}
-
 /* --------------------------------------------------------------------- home */
 
 function renderStatic() {
@@ -541,6 +539,7 @@ function renderStatic() {
   el('kYou').textContent = t('you');
   el('kProto').textContent = t('proto');
   el('kRoute').textContent = t('route');
+  el('probeBtn').textContent = t('check');
   el('logCopy').textContent = t('copy');
   el('logClear').textContent = t('clear');
   el('logFolder').textContent = t('folder');
@@ -572,8 +571,6 @@ const PHASE_TEXT = {
   idle: 'ready', starting: 'starting', connecting: 'connecting',
   running: 'running', stopping: 'stopping', error: 'error',
 };
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function renderHome() {
   const phase = snap.phase || 'idle';
@@ -848,8 +845,17 @@ function onMessage(event) {
 
     case 'state':
       snap = message;
-      renderHome();
+      // A counter tick also arrives as a state message, about once a second,
+      // so the check button waits out a short grace before believing that this
+      // one is its answer.
+      if (probingAt && Date.now() - probingAt > 1_200) {
+        probingAt = 0;
+        el('probeBtn').textContent = t('check');
+      }
+      // Sampled first, so the rate in the caption is the rate the chart is
+      // drawing rather than the reading before it.
       sample();
+      renderHome();
       break;
 
     case 'log':
@@ -944,12 +950,19 @@ function wire() {
     }
   };
 
+  // The check runs wherever the host runs it and answers with a state message,
+  // which is what clears this. The timer is only the bound that keeps the
+  // button from saying "..." forever if that answer never comes.
   el('probeBtn').onclick = () => {
+    probingAt = Date.now();
     el('probeBtn').textContent = '...';
     send({ type: 'probe' });
-    // The host answers with a state message; the button is reset there. This
-    // is the bound that keeps it from saying "..." forever if it does not.
-    sleep(12_000).then(() => { el('probeBtn').textContent = t('check'); });
+    setTimeout(() => {
+      if (probingAt && Date.now() - probingAt >= 11_000) {
+        probingAt = 0;
+        el('probeBtn').textContent = t('check');
+      }
+    }, 12_000);
   };
 
   el('langBtn').onclick = () => {
