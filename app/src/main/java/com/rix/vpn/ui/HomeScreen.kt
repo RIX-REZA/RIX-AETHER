@@ -36,11 +36,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -92,63 +93,14 @@ fun HomeScreen(
         connecting ||
         state.phase == RixRuntime.Phase.STOPPING
 
-    var elapsed by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(state.startedAt, running) {
-        while (running && state.startedAt > 0) {
-            // Same monotonic clock markRunning used: a wall-clock correction
-            // would otherwise make the session timer jump or run backwards.
-            elapsed = ((SystemClock.elapsedRealtime() - state.startedAt) / 1000).coerceAtLeast(0L)
-            delay(1000)
-        }
-        if (!running) elapsed = 0
-    }
-
-    val downSeries = remember { mutableStateListOf<Float>() }
-    val upSeries = remember { mutableStateListOf<Float>() }
-    // The loop below outlives the composition that started it only until the
-    // next session; reading the counters through rememberUpdatedState is what
-    // keeps it looking at the current readings rather than the ones that were
-    // there when it was launched.
-    val live = rememberUpdatedState(state)
-
-    var lastRx by remember { mutableLongStateOf(0L) }
-    var lastTx by remember { mutableLongStateOf(0L) }
-    var lastAt by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(running) {
-        downSeries.clear()
-        upSeries.clear()
-        lastRx = 0L
-        lastTx = 0L
-        lastAt = 0L
-        if (!running) return@LaunchedEffect
-
-        while (true) {
-            delay(1000)
-            val now = live.value
-            if (!now.statsAvailable) {
-                // Null is not zero: the engine cannot answer, so there is no
-                // rate to draw and the series goes back to empty.
-                downSeries.clear()
-                upSeries.clear()
-                lastAt = 0L
-                continue
-            }
-            if (lastAt != 0L) {
-                val seconds = (SystemClock.elapsedRealtime() - lastAt) / 1000f
-                if (seconds > 0f) {
-                    sample(downSeries, now.rxBytes, lastRx, seconds)
-                    sample(upSeries, now.txBytes, lastTx, seconds)
-                }
-            }
-            lastRx = now.rxBytes
-            lastTx = now.txBytes
-            lastAt = SystemClock.elapsedRealtime()
-        }
-    }
+    // Nothing that changes once a second is read here. The session clock, the
+    // chart and the two traffic tiles each own their ticking value in their own
+    // composable, so a counter tick recomposes those four and not this body --
+    // which is the header, the hero panel, the stage strip, the mode switch and
+    // the navigation, i.e. the whole screen, once a second, for as long as a
+    // tunnel was up.
 
     val accent = phaseAccent(state.phase)
-    val rate = (downSeries.lastOrNull() ?: 0f) + (upSeries.lastOrNull() ?: 0f)
 
     RixSurface {
         Column(
@@ -223,11 +175,9 @@ fun HomeScreen(
 
                 when {
                     running -> {
-                        MonoText(
-                            text = formatDuration(elapsed),
-                            color = RixColors.Text,
-                            size = 26
-                        )
+                        // The clock is its own composable: it is one of the two
+                        // things on this screen that move every second.
+                        SessionClock(startedAt = state.startedAt)
                         Spacer(Modifier.height(6.dp))
                         MonoText(
                             text = "127.0.0.1:${state.socksPort}",
@@ -275,28 +225,10 @@ fun HomeScreen(
             Spacer(Modifier.height(16.dp))
 
             // ---- throughput ---------------------------------------------
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    ChartLegend(
-                        downLabel = s.s("دریافت", "Down"),
-                        upLabel = s.s("ارسال", "Up"),
-                        rateLabel = if (state.statsAvailable) {
-                            "${formatBytes(rate.toLong())}/s"
-                        } else {
-                            "—"
-                        }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    ThroughputChart(
-                        down = downSeries,
-                        up = upSeries,
-                        // A tunnel that is not running has nothing to draw, and
-                        // a flat line at zero would read as a real measurement.
-                        modifier = Modifier.fillMaxWidth(),
-                        height = 84.dp
-                    )
-                }
-            }
+            ThroughputPanel(
+                running = running,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -306,11 +238,9 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                StatTile(
+                LiveStatTile(
                     label = s.s("دریافت", "Down"),
-                    // A dash, not "0 B": the counters are missing, and drawing
-                    // zero would claim the tunnel is up and moving nothing.
-                    value = if (state.statsAvailable) formatBytes(state.rxBytes) else "—",
+                    bytes = { it.rxBytes },
                     accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowDownward,
                     modifier = Modifier.weight(1f)
@@ -325,9 +255,9 @@ fun HomeScreen(
                     live = running || connecting,
                     modifier = Modifier.weight(1.4f)
                 )
-                StatTile(
+                LiveStatTile(
                     label = s.s("ارسال", "Up"),
-                    value = if (state.statsAvailable) formatBytes(state.txBytes) else "—",
+                    bytes = { it.txBytes },
                     accent = RixColors.Violet,
                     icon = Icons.Rounded.ArrowUpward,
                     modifier = Modifier.weight(1f)
@@ -399,6 +329,134 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/**
+ * The session timer.
+ *
+ * It is on its own so that the once-a-second tick recomposes this line and
+ * nothing else. The mark it counts from is the one [RixRuntime.markRunning]
+ * took, on the monotonic clock: a wall-clock correction would otherwise make
+ * the timer jump or run backwards, and a VPN is exactly the app opened on a
+ * phone that just came back from airplane mode.
+ */
+@Composable
+private fun SessionClock(startedAt: Long) {
+    var elapsed by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(startedAt) {
+        elapsed = 0L
+        if (startedAt <= 0L) return@LaunchedEffect
+        while (true) {
+            elapsed = ((SystemClock.elapsedRealtime() - startedAt) / 1000).coerceAtLeast(0L)
+            delay(1000)
+        }
+    }
+    MonoText(text = formatDuration(elapsed), color = RixColors.Text, size = 26)
+}
+
+/**
+ * The chart and its caption.
+ *
+ * It collects the engine's counters itself, so the readings that change every
+ * second invalidate this card rather than the screen it sits on. The series is
+ * built by differencing two readings against the monotonic clock, which is what
+ * makes an idle tunnel draw a flat line instead of a plausible-looking curve.
+ */
+@Composable
+private fun ThroughputPanel(running: Boolean, modifier: Modifier = Modifier) {
+    val s = LocalStrings.current
+
+    val downSeries = remember { mutableStateListOf<Float>() }
+    val upSeries = remember { mutableStateListOf<Float>() }
+
+    var lastRx by remember { mutableLongStateOf(0L) }
+    var lastTx by remember { mutableLongStateOf(0L) }
+    var lastAt by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(running) {
+        downSeries.clear()
+        upSeries.clear()
+        lastRx = 0L
+        lastTx = 0L
+        lastAt = 0L
+        if (!running) return@LaunchedEffect
+
+        // The service publishes one reading a second, so reacting to those is
+        // both the right pace and the only honest one: no reading, no sample,
+        // and never a curve drawn from a number the engine did not give.
+        RixRuntime.traffic.collect { reading ->
+            val now = SystemClock.elapsedRealtime()
+            if (!reading.available) {
+                // Null is not zero: the engine cannot answer, so there is no
+                // rate to draw and the series goes back to empty.
+                if (downSeries.isNotEmpty() || upSeries.isNotEmpty()) {
+                    downSeries.clear()
+                    upSeries.clear()
+                }
+                lastAt = 0L
+            } else {
+                if (lastAt != 0L) {
+                    val seconds = (now - lastAt) / 1000f
+                    if (seconds > 0f) {
+                        sample(downSeries, reading.rxBytes, lastRx, seconds)
+                        sample(upSeries, reading.txBytes, lastTx, seconds)
+                    }
+                }
+                lastRx = reading.rxBytes
+                lastTx = reading.txBytes
+                lastAt = now
+            }
+        }
+    }
+
+    // The same reading the tiles use, so the caption cannot claim a rate while
+    // they are drawing a dash for the very same counters.
+    val traffic by RixRuntime.traffic.collectAsState()
+    val rate = (downSeries.lastOrNull() ?: 0f) + (upSeries.lastOrNull() ?: 0f)
+
+    GlassCard(modifier = modifier) {
+        Column {
+            ChartLegend(
+                downLabel = s.s("دریافت", "Down"),
+                upLabel = s.s("ارسال", "Up"),
+                rateLabel = if (traffic.available) "${formatBytes(rate.toLong())}/s" else "—"
+            )
+            Spacer(Modifier.height(10.dp))
+            ThroughputChart(
+                down = downSeries,
+                up = upSeries,
+                // A tunnel that is not running has nothing to draw, and
+                // a flat line at zero would read as a real measurement.
+                modifier = Modifier.fillMaxWidth(),
+                height = 84.dp
+            )
+        }
+    }
+}
+
+/**
+ * A traffic tile that reads the counters on their own flow.
+ *
+ * The dash is not decoration: when the engine cannot answer, drawing "0 B"
+ * would claim the tunnel is up and moving nothing, which is the more
+ * convincing of the two wrong answers.
+ */
+@Composable
+private fun LiveStatTile(
+    label: String,
+    bytes: (RixRuntime.Traffic) -> Long,
+    accent: Color,
+    icon: ImageVector,
+    modifier: Modifier = Modifier
+) {
+    val traffic by RixRuntime.traffic.collectAsState()
+    StatTile(
+        label = label,
+        value = if (traffic.available) formatBytes(bytes(traffic)) else "—",
+        accent = accent,
+        icon = icon,
+        modifier = modifier
+    )
 }
 
 /**

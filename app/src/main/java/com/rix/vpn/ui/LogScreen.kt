@@ -29,7 +29,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +60,23 @@ fun LogScreen(
     // screen behind it. Now only this screen reacts.
     val lines by LogBus.lines.collectAsState()
 
-    // Follow the tail as new lines arrive.
+    // Whether the reader is already at the tail, which is the only case in
+    // which new lines should follow. Read from the layout rather than kept in a
+    // flag of our own, so a fling or a drag is accounted for too. Nothing reads
+    // this in the body, so scrolling does not recompose the header with it.
+    val atTail = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            last == null || last.index >= info.totalItemsCount - 1
+        }
+    }
+
+    // Follow the tail, and instantly. The animated version restarted on every
+    // line, so a burst of core messages was a scroll that never finished -- and
+    // it dragged a reader who had scrolled up back to the bottom each time.
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) listState.animateScrollToItem(lines.lastIndex)
+        if (lines.isNotEmpty() && atTail.value) listState.scrollToItem(lines.lastIndex)
     }
 
     RixSurface {
