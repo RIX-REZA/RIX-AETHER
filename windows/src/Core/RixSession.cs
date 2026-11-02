@@ -45,6 +45,20 @@ public sealed class RixSession : IDisposable
     /// <summary>How often the exit address is asked for again once running.</summary>
     private static readonly TimeSpan EgressRefresh = TimeSpan.FromSeconds(90);
 
+    /// <summary>
+    /// How long a stop waits for the attempt it cancelled to actually let go
+    /// before it stops the core anyway.
+    ///
+    /// The wait is not politeness. Cancelling only asks an attempt to stop, and
+    /// an attempt that is already past its last check can still call
+    /// <c>_core.Start()</c> a moment afterwards; stopping the core before that
+    /// lands leaves an aether.exe running that nothing owns and that holds the
+    /// SOCKS port the next attempt needs. The bound is what makes the wait safe
+    /// to do from a button press: a probe can be inside a socket timeout, and
+    /// the stop must not hang on it.
+    /// </summary>
+    private const int BringUpJoinMs = 5_000;
+
     private static readonly string[] Ranked =
     {
         Transports.MasqueH2,
@@ -60,6 +74,13 @@ public sealed class RixSession : IDisposable
     private CancellationTokenSource _session;
     private Snapshot _snapshot = new();
     private string _remembered;
+
+    /// <summary>
+    /// The attempt in flight, or the last one to have run. A stop waits on this
+    /// rather than only cancelling the token, because a token is a request and
+    /// this is the fact of the attempt being over.
+    /// </summary>
+    private Task _bringUp = Task.CompletedTask;
 
     /// <summary>
     /// Set when a Psiphon attempt never carried traffic, so the next attempt
@@ -96,9 +117,51 @@ public sealed class RixSession : IDisposable
 
     // ------------------------------------------------------------------ public
 
-    public async Task ConnectAsync(RixOptions options, bool useSystemProxy)
+    /// <summary>
+    /// Starts an attempt at the tunnel, replacing whatever was there.
+    ///
+    /// The new session and the task that will drive it are both taken under the
+    /// lock, before anything is cancelled and before this method returns. That
+    /// ordering is the whole point: a stop arriving at any moment afterwards
+    /// finds the attempt it must wait for, and an attempt still finishing has
+    /// already lost ownership, so it cannot publish a running state for a core
+    /// nobody is watching.
+    /// </summary>
+    public Task ConnectAsync(RixOptions options, bool useSystemProxy)
     {
-        await DisconnectAsync(silent: true);
+        CancellationTokenSource previous;
+        Task attempt;
+        CancellationTokenSource mine;
+        lock (_gate)
+        {
+            previous = _session;
+            attempt = _bringUp;
+            mine = new CancellationTokenSource();
+            _session = mine;
+            return _bringUp = RunConnectAsync(options, useSystemProxy, previous, attempt, mine);
+        }
+    }
+
+    private async Task RunConnectAsync(
+        RixOptions options,
+        bool useSystemProxy,
+        CancellationTokenSource previous,
+        Task attempt,
+        CancellationTokenSource cts)
+    {
+        // Off the caller's thread and off its lock before anything else: this
+        // method stops a core and writes the machine's proxy settings, and
+        // neither belongs inside the lock ConnectAsync holds.
+        await Task.Yield();
+
+        // Stop what was running, and let it finish doing so, before this
+        // attempt starts a core of its own. The core is stopped after the wait
+        // and not before, so the attempt being replaced cannot start one behind
+        // us; and the wait is bounded, so a stop never hangs on a probe.
+        previous?.Cancel();
+        await JoinAsync(attempt);
+        SystemProxy.Disable();
+        await Task.Run(() => _core.Stop());
 
         // Psiphon keeps a datastore under its own directory, and tunnel-core
         // refuses to start against one that a killed process left half-written
@@ -110,9 +173,6 @@ public sealed class RixSession : IDisposable
             _psiphonFailed = false;
             ClearPsiphonState();
         }
-
-        var cts = new CancellationTokenSource();
-        lock (_gate) _session = cts;
 
         try
         {
@@ -142,11 +202,13 @@ public sealed class RixSession : IDisposable
             for (var index = 0; index < chain.Count; index++)
             {
                 var candidate = chain[index];
-                if (cts.IsCancellationRequested)
+                if (!Owns(cts) || cts.IsCancellationRequested)
                 {
                     // A stop can land between starting a core and getting here.
                     // DisconnectAsync stopped what was running then; this is for
-                    // the core this method started afterwards.
+                    // the core this method started afterwards -- and it stops
+                    // nothing at all if a newer attempt has taken over, because
+                    // that core belongs to the newer attempt now.
                     await Task.Run(() => StopCoreIfCurrent(cts));
                     return;
                 }
@@ -204,7 +266,11 @@ public sealed class RixSession : IDisposable
                     continue;
                 }
 
-                if (cts.IsCancellationRequested) return;
+                // Ownership, not just the flag: a probe that came back after a
+                // newer attempt took over must not claim the session, turn the
+                // machine's proxy on for a core that attempt is about to
+                // replace, or publish a running state nothing is behind.
+                if (!Owns(cts)) return;
 
                 Remembered = candidate.Transport;
 
@@ -229,7 +295,15 @@ public sealed class RixSession : IDisposable
                     Uptime = TimeSpan.Zero,
                 });
 
-                _ = WatchAsync(cts.Token);
+                // Fire and forget on purpose, but not unobserved: the watcher
+                // reads the core's counters and asks for the exit address, and
+                // a throw in it used to kill the watcher silently -- leaving a
+                // window that says "connected" and never notices the core go.
+                _ = WatchAsync(cts.Token).ContinueWith(
+                    task => Log?.Invoke("watch: " + task.Exception?.GetBaseException().Message),
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
                 return;
             }
 
@@ -277,10 +351,12 @@ public sealed class RixSession : IDisposable
     public async Task DisconnectAsync(bool silent = false)
     {
         CancellationTokenSource cts;
+        Task attempt;
         lock (_gate)
         {
             cts = _session;
             _session = null;
+            attempt = _bringUp;
         }
         cts?.Cancel();
         // Deliberately not disposed. The connect loop is still holding values
@@ -302,11 +378,41 @@ public sealed class RixSession : IDisposable
         // it has no working browser, and that gap is what a user notices.
         SystemProxy.Disable();
 
+        // Then wait for the attempt, and only then stop the core. Cancelling is
+        // a request; an attempt already past its last check can still start a
+        // core after this method has stopped one, and that core would be an
+        // aether.exe holding the SOCKS port with nothing left to stop it.
+        await JoinAsync(attempt);
+
         await Task.Run(() => _core.Stop());
 
         if (!silent)
         {
             Publish(new Snapshot { Phase = Phase.Idle, Message = "قطع شد / disconnected" });
+        }
+    }
+
+    /// <summary>
+    /// Waits for an attempt to finish, with a bound.
+    ///
+    /// The bound is the point: an attempt can be inside a socket timeout, and a
+    /// stop must not hang on it. The caller stops the core either way -- this
+    /// wait only exists to give the attempt time to let go first, so the core
+    /// it might still start is stopped rather than orphaned.
+    /// </summary>
+    private static async Task JoinAsync(Task attempt)
+    {
+        if (attempt == null || attempt.IsCompleted) return;
+
+        var finished = await Task.WhenAny(attempt, Task.Delay(BringUpJoinMs));
+        if (finished != attempt)
+        {
+            // Whatever it throws from here on has no caller to catch it.
+            _ = attempt.ContinueWith(
+                task => { _ = task.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
         }
     }
 
@@ -365,9 +471,9 @@ public sealed class RixSession : IDisposable
     /// </summary>
     private async Task WatchAsync(CancellationToken token)
     {
-        var nextEgress = DateTime.UtcNow + EgressRefresh;
         try
         {
+            var nextEgress = DateTime.UtcNow + EgressRefresh;
             while (!token.IsCancellationRequested)
             {
                 await Task.Delay(2000, token);
@@ -396,6 +502,9 @@ public sealed class RixSession : IDisposable
         catch (OperationCanceledException)
         {
         }
+        // Anything else is deliberately left to the continuation that armed
+        // this watcher, which names it in the log. Catching it here and saying
+        // nothing is what used to let a dead watcher pass for a healthy one.
     }
 
     private void OnCoreExited(int code)
@@ -516,7 +625,10 @@ public sealed class RixSession : IDisposable
         CancellationTokenSource cts;
         lock (_gate) { cts = _session; _session = null; }
         cts?.Cancel();
-        cts?.Dispose();
+        // Not disposed, for the reason DisconnectAsync spells out: the attempt
+        // is still holding the token, and disposing it under the attempt turns
+        // an orderly shutdown into an ObjectDisposedException reported as a
+        // connection failure. The source owns nothing unmanaged.
         SystemProxy.Disable();
         _core.Dispose();
         GC.SuppressFinalize(this);

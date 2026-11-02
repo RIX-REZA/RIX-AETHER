@@ -11,6 +11,8 @@
 <header class="titlebar">
   <div class="tb-drag" id="drag">
     <span class="brand"><span class="logo"></span>RIX<span class="ver" id="ver"></span></span>
+    <span class="tb-sep"></span>
+    <span class="tb-state" id="tbState">آماده</span>
   </div>
   <div class="tb-actions">
     <button class="icon-btn" id="langBtn" title="زبان / Language">EN</button>
@@ -22,77 +24,130 @@
   </div>
 </header>
 
+<!-- The sections run across the top. On a narrow window the labels drop out
+     and the icons carry the navigation on their own. -->
+<nav class="tabs" id="tabs"></nav>
+
 <main>
-  <nav class="rail" id="rail"></nav>
 
-  <div class="views">
+  <!-- -------------------------------------------------------------- home -->
+  <section class="view on" id="view-home">
+    <div class="home">
 
-    <!-- ------------------------------------------------------------ home -->
-    <section class="view on" id="view-home">
-      <div class="home">
-        <div class="orb-wrap">
-          <button class="orb" id="orb">
-            <span class="orb-core">
-              <b id="orbTitle">اتصال</b>
-              <span id="orbSub">آماده</span>
-            </span>
-          </button>
-        </div>
-
-        <div class="stats">
-          <div class="stat"><span class="k" id="kDown">دانلود</span><b class="down" id="vDown">0 B</b></div>
-          <div class="stat"><span class="k" id="kUp">آپلود</span><b class="up" id="vUp">0 B</b></div>
-          <div class="stat"><span class="k" id="kTime">زمان اتصال</span><b id="vTime">00:00:00</b></div>
-        </div>
-
-        <div class="cards">
-          <div class="card">
-            <div class="row">
-              <span class="label" id="kExit">آی‌پی خروجی</span>
-              <button class="ghost" id="probeBtn">بررسی</button>
-            </div>
-            <div class="ip" id="vExit">—</div>
-            <div class="meta" id="mExit"></div>
+      <div class="hero">
+        <div class="hero-main" id="heroMain">
+          <div class="hero-top">
+            <span class="phase-dot" id="phaseDot"></span>
+            <span class="phase-text" id="phaseText">آماده</span>
+            <span class="hero-spacer"></span>
+            <span class="hero-transport" id="heroTransport">—</span>
           </div>
 
-          <div class="card">
-            <div class="row"><span class="label" id="kYou">اتصال شما</span></div>
-            <div class="ip small" id="vLocal">—</div>
-            <div class="meta" id="mLocal"></div>
-          </div>
+          <div class="hero-ip" id="heroIp">—</div>
+          <div class="hero-sub" id="heroSub"></div>
 
-          <div class="card">
-            <div class="row"><span class="label" id="kProto">پروتکل</span></div>
-            <div class="transport" id="vProto">—</div>
-            <div class="meta" id="mProto"></div>
+          <div class="track"><span class="track-fill" id="trackFill"></span></div>
+
+          <div class="hero-actions">
+            <button class="primary" id="connectBtn">اتصال</button>
+            <button class="ghost" id="probeBtn">بررسی</button>
           </div>
         </div>
 
-        <div class="bar hidden" id="bar"></div>
+        <div class="hero-side">
+          <div class="chart-head">
+            <span id="kChart">گذر لحظهای</span>
+            <span class="chart-key"><i class="d"></i><span id="kDown">دانلود</span>
+              <i class="u"></i><span id="kUp">آپلود</span></span>
+          </div>
+          <canvas class="chart" id="chart" width="620" height="190"></canvas>
+          <div class="chart-foot">
+            <span id="vDown">0 B</span>
+            <span class="dot">·</span>
+            <span id="vUp">0 B</span>
+            <span class="hero-spacer"></span>
+            <span id="vRate">0 B/s</span>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <!-- -------------------------------------------------------- settings -->
-    <section class="view" id="view-settings">
-      <div id="groups"></div>
-    </section>
-
-    <!-- ------------------------------------------------------------- log -->
-    <section class="view" id="view-log">
-      <div class="logbar">
-        <button class="ghost" id="logCopy">کپی</button>
-        <button class="ghost" id="logClear">پاک کردن</button>
-        <button class="ghost" id="logFolder">پوشه</button>
+      <div class="tiles">
+        <div class="tile">
+          <span class="tile-k" id="kTime">زمان اتصال</span>
+          <b class="tile-v" id="vTime">00:00:00</b>
+        </div>
+        <div class="tile">
+          <span class="tile-k" id="kYou">اتصال شما</span>
+          <b class="tile-v small" id="vLocal">—</b>
+          <span class="tile-m" id="mLocal"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-k" id="kProto">پروتکل</span>
+          <b class="tile-v" id="vProto">—</b>
+          <span class="tile-m" id="mProto"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-k" id="kRoute">مسیر خروج</span>
+          <b class="tile-v small" id="vRoute">—</b>
+          <span class="tile-m" id="mRoute"></span>
+        </div>
       </div>
-      <pre class="logbox" id="logBox"></pre>
-    </section>
 
-    <!-- ----------------------------------------------------------- about -->
-    <section class="view" id="view-about">
-      <div class="about" id="about"></div>
-    </section>
+      <!-- Four stages, and each one lights only on evidence: the core lights
+           when a child process is up, the tunnel only once a real request has
+           come back through it, the exit only once an address was answered. A
+           listener that accepts is not a tunnel, so it is not drawn as one. -->
+      <div class="strip">
+        <span class="stage" id="stCore"><i></i><b id="stCoreName">هسته</b></span>
+        <span class="stage-arrow">→</span>
+        <span class="stage" id="stListener"><i></i><b id="stListenerName">شنونده SOCKS5</b></span>
+        <span class="stage-arrow" id="stPsiphonArrow">→</span>
+        <span class="stage" id="stPsiphon"><i></i><b>Psiphon</b></span>
+        <span class="stage-arrow" id="stTunnelArrow">→</span>
+        <span class="stage" id="stTunnel"><i></i><b id="stTunnelName">تونل</b></span>
+        <span class="stage-arrow" id="stExitArrow">→</span>
+        <span class="stage" id="stExit"><i></i><b id="stExitName">خروج</b></span>
+      </div>
 
-  </div>
+      <div class="alert hidden" id="alert">
+        <span class="alert-ico">!</span>
+        <span id="alertText"></span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- settings -->
+  <section class="view" id="view-settings">
+    <div class="split">
+      <aside class="cat" id="cat"></aside>
+      <div class="cat-body">
+        <div class="cat-head">
+          <b id="catTitle"></b>
+          <span id="catSub"></span>
+        </div>
+        <div class="fields" id="fields"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- log -->
+  <section class="view" id="view-log">
+    <div class="logbar">
+      <span class="log-title" id="logTitle">گزارش</span>
+      <span class="hero-spacer"></span>
+      <button class="ghost" id="logCopy">کپی</button>
+      <button class="ghost" id="logClear">پاک کردن</button>
+      <button class="ghost" id="logFolder">پوشه</button>
+    </div>
+    <pre class="logbox" id="logBox"></pre>
+  </section>
+
+  <!-- ------------------------------------------------------------- about -->
+  <section class="view" id="view-about">
+    <div class="about" id="about"></div>
+  </section>
+
 </main>
 
 <div class="toast" id="toast"></div>

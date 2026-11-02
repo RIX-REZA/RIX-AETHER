@@ -38,7 +38,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,14 +58,21 @@ import com.rix.vpn.core.RixRuntime
 import kotlinx.coroutines.delay
 
 /**
- * The home screen, kept to what a user looks at while connecting.
+ * The home screen.
  *
- * Between the orb and the two ways out of the screen there used to be four rows
- * of statistics, a mode switch, a caption, and a line of library diagnostics:
- * six blocks of equal weight, so nothing led. The diagnostics moved to the log
- * screen where they are useful, the packet counters went with them (the byte
- * tiles say the same thing at a glance), and what is left is the status, one
- * row of live numbers, and the way in.
+ * It reads top to bottom as one answer: what is happening, how far the
+ * connection has actually got, how much is moving, and only then the settings
+ * that change any of it. The two blocks above the tiles are the point of this
+ * version:
+ *
+ *  - the stage strip lights each hop on evidence, so "connected" cannot be
+ *    claimed by a listener that merely accepts (the same rule the Windows
+ *    client follows);
+ *  - the chart is drawn from the engine's own counters, differenced over time,
+ *    so an idle tunnel draws a flat line rather than a plausible-looking curve.
+ *
+ * The orb keeps the behaviour the user asked for and could not find: a second
+ * tap while an attempt is in flight cancels it.
  */
 @Composable
 fun HomeScreen(
@@ -94,7 +103,52 @@ fun HomeScreen(
         if (!running) elapsed = 0
     }
 
+    val downSeries = remember { mutableStateListOf<Float>() }
+    val upSeries = remember { mutableStateListOf<Float>() }
+    // The loop below outlives the composition that started it only until the
+    // next session; reading the counters through rememberUpdatedState is what
+    // keeps it looking at the current readings rather than the ones that were
+    // there when it was launched.
+    val live = rememberUpdatedState(state)
+
+    var lastRx by remember { mutableLongStateOf(0L) }
+    var lastTx by remember { mutableLongStateOf(0L) }
+    var lastAt by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(running) {
+        downSeries.clear()
+        upSeries.clear()
+        lastRx = 0L
+        lastTx = 0L
+        lastAt = 0L
+        if (!running) return@LaunchedEffect
+
+        while (true) {
+            delay(1000)
+            val now = live.value
+            if (!now.statsAvailable) {
+                // Null is not zero: the engine cannot answer, so there is no
+                // rate to draw and the series goes back to empty.
+                downSeries.clear()
+                upSeries.clear()
+                lastAt = 0L
+                continue
+            }
+            if (lastAt != 0L) {
+                val seconds = (SystemClock.elapsedRealtime() - lastAt) / 1000f
+                if (seconds > 0f) {
+                    sample(downSeries, now.rxBytes, lastRx, seconds)
+                    sample(upSeries, now.txBytes, lastTx, seconds)
+                }
+            }
+            lastRx = now.rxBytes
+            lastTx = now.txBytes
+            lastAt = SystemClock.elapsedRealtime()
+        }
+    }
+
     val accent = phaseAccent(state.phase)
+    val rate = (downSeries.lastOrNull() ?: 0f) + (upSeries.lastOrNull() ?: 0f)
 
     RixSurface {
         Column(
@@ -134,13 +188,12 @@ fun HomeScreen(
                 StatusBadge(state)
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
             // ---- hero ---------------------------------------------------
             // One panel holds the whole answer to "what is happening": the
             // state, the reason for it, the control, and the two readings that
-            // belong to the session. They used to be five separate blocks of
-            // equal weight, which is why nothing on the screen led.
+            // belong to the session.
             HeroPanel(accent = accent) {
                 Text(
                     text = statusTitle(state, s),
@@ -190,14 +243,17 @@ fun HomeScreen(
                 }
             }
 
+            // The error, in place and unedited. It used to live only in the log,
+            // which is a screen the user has to know to open.
+            if (state.phase == RixRuntime.Phase.ERROR && !state.error.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                AlertBar(text = state.error)
+            }
+
             // The affordance, spelled out. The orb says «لغو» while an attempt
             // is in flight, and this is the sentence that tells the user the
-            // second tap is the way to use it -- which is the behaviour they
-            // asked for and could not find, because the orb used to be switched
-            // off for the whole of the wait.
-            if (state.phase == RixRuntime.Phase.CONNECTING ||
-                state.phase == RixRuntime.Phase.STARTING
-            ) {
+            // second tap is the way to use it.
+            if (connecting || state.phase == RixRuntime.Phase.STARTING) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     text = s.s(
@@ -211,52 +267,40 @@ fun HomeScreen(
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ---- mode --------------------------------------------------
-            // A live session cannot be moved between modes -- the tunnel owns a
-            // TUN and the proxy does not -- and letting the switch move used to
-            // change which service the orb would stop while the other kept
-            // running. Lock it while something is up and say why.
-            SegmentedRow(
-                options = listOf(
-                    RixMode.TUNNEL.label(s),
-                    RixMode.PROXY.label(s)
-                ),
-                selectedIndex = if (options.mode == RixMode.TUNNEL) 0 else 1,
-                onSelect = { index ->
-                    onModeChange(if (index == 0) RixMode.TUNNEL else RixMode.PROXY)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !running && !busy
-            )
+            // ---- how far it has got -------------------------------------
+            StageStrip(stages = stages(state, options, running, s))
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(16.dp))
 
-            Text(
-                text = when {
-                    running || busy ->
-                        s.s("برای تغییر حالت، اول اتصال را قطع کن.", "Disconnect first to change mode.")
-                    options.mode == RixMode.TUNNEL ->
-                        s.s(
-                            "همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService).",
-                            "Every app's traffic goes through the tunnel (VpnService)."
-                        )
-                    else ->
-                        s.s(
-                            "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمی‌شود.",
-                            "A local SOCKS5 proxy only; no traffic is captured."
-                        )
-                },
-                color = RixColors.TextMuted,
-                fontSize = 11.5.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // ---- throughput ---------------------------------------------
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ChartLegend(
+                        downLabel = s.s("دریافت", "Down"),
+                        upLabel = s.s("ارسال", "Up"),
+                        rateLabel = if (state.statsAvailable) {
+                            "${formatBytes(rate.toLong())}/s"
+                        } else {
+                            "—"
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    ThroughputChart(
+                        down = downSeries,
+                        up = upSeries,
+                        // A tunnel that is not running has nothing to draw, and
+                        // a flat line at zero would read as a real measurement.
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 84.dp
+                    )
+                }
+            }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(12.dp))
 
-            // ---- live numbers ------------------------------------------
+            // ---- live numbers -------------------------------------------
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -290,7 +334,50 @@ fun HomeScreen(
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // ---- mode ---------------------------------------------------
+            // A live session cannot be moved between modes -- the tunnel owns a
+            // TUN and the proxy does not -- and letting the switch move used to
+            // change which service the orb would stop while the other kept
+            // running. Lock it while something is up and say why.
+            SegmentedRow(
+                options = listOf(
+                    RixMode.TUNNEL.label(s),
+                    RixMode.PROXY.label(s)
+                ),
+                selectedIndex = if (options.mode == RixMode.TUNNEL) 0 else 1,
+                onSelect = { index ->
+                    onModeChange(if (index == 0) RixMode.TUNNEL else RixMode.PROXY)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !running && !busy
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            Text(
+                text = when {
+                    running || busy ->
+                        s.s("برای تغییر حالت، اول اتصال را قطع کن.", "Disconnect first to change mode.")
+                    options.mode == RixMode.TUNNEL ->
+                        s.s(
+                            "همهٔ ترافیک گوشی از تونل عبور میکند (VpnService).",
+                            "Every app's traffic goes through the tunnel (VpnService)."
+                        )
+                    else ->
+                        s.s(
+                            "فقط یک پروکسی SOCKS5 محلی؛ هیچ ترافیکی گرفته نمیشود.",
+                            "A local SOCKS5 proxy only; no traffic is captured."
+                        )
+                },
+                color = RixColors.TextMuted,
+                fontSize = 11.5.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(18.dp))
 
             // ---- navigation --------------------------------------------
             Row(
@@ -311,6 +398,78 @@ fun HomeScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * One reading of a counter, turned into a rate.
+ *
+ * A counter that has gone backwards does not belong to this session -- the
+ * service clears the counters when an attempt starts -- so the sample is
+ * dropped and the series begins again rather than drawing a spike that never
+ * happened.
+ */
+private fun sample(series: MutableList<Float>, total: Long, previous: Long, seconds: Float) {
+    if (total < previous) {
+        series.clear()
+        return
+    }
+    series.add(((total - previous) / seconds).coerceAtLeast(0f))
+    while (series.size > 60) series.removeAt(0)
+}
+
+/**
+ * The four (or five) stages of a connection, and the evidence for each.
+ *
+ * `running` is only reached after a real request came back through the tunnel,
+ * so it is the proof for the tunnel stage and for nothing else: the exit stage
+ * waits for an address to actually answer.
+ */
+private fun stages(
+    state: RixRuntime.State,
+    options: RixOptions,
+    running: Boolean,
+    s: Strings
+): List<Pair<String, StageState>> {
+    val started = state.phase != RixRuntime.Phase.IDLE
+
+    return buildList {
+        add(
+            s.s("هسته", "Core") to when {
+                running -> StageState.DONE
+                started -> StageState.LIT
+                else -> StageState.OFF
+            }
+        )
+        add(
+            s.s("شنونده", "Listener") to when {
+                state.socksPort <= 0 -> StageState.OFF
+                running -> StageState.DONE
+                else -> StageState.LIT
+            }
+        )
+        // Left out entirely when Psiphon is off: a greyed stage reads as one
+        // that is waiting, and this one is not in the path at all.
+        if (options.psiphon) {
+            add(
+                "Psiphon" to when {
+                    running -> StageState.DONE
+                    state.phase == RixRuntime.Phase.CONNECTING ||
+                        state.phase == RixRuntime.Phase.STARTING -> StageState.LIT
+                    else -> StageState.OFF
+                }
+            )
+        }
+        add(
+            s.s("تونل", "Tunnel") to if (running) StageState.DONE else StageState.OFF
+        )
+        add(
+            s.s("خروج", "Exit") to when {
+                !running -> StageState.OFF
+                state.egressIp.isNotBlank() -> StageState.DONE
+                else -> StageState.LIT
+            }
+        )
     }
 }
 
@@ -368,7 +527,7 @@ private fun StatusBadge(state: RixRuntime.State) {
     val (label, color) = when (state.phase) {
         RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
         RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
-        RixRuntime.Phase.STARTING -> s.s("آماده‌سازی", "Preparing") to RixColors.Warning
+        RixRuntime.Phase.STARTING -> s.s("آمادهسازی", "Preparing") to RixColors.Warning
         RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
         RixRuntime.Phase.ERROR -> s.s("خطا", "Error") to RixColors.Danger
         RixRuntime.Phase.IDLE -> s.s("خاموش", "Off") to RixColors.TextMuted
@@ -425,7 +584,7 @@ private fun statusTitle(state: RixRuntime.State, s: Strings): String = when (sta
         if (state.tun2socks) s.s("تونل برقرار است", "Tunnel is up")
         else s.s("پروکسی آماده است", "Proxy is ready")
     RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال...", "Connecting...")
-    RixRuntime.Phase.STARTING -> s.s("در حال آماده‌سازی...", "Preparing...")
+    RixRuntime.Phase.STARTING -> s.s("در حال آمادهسازی...", "Preparing...")
     RixRuntime.Phase.STOPPING -> s.s("در حال قطع...", "Disconnecting...")
     RixRuntime.Phase.ERROR -> s.s("اتصال ناموفق", "Connection failed")
     RixRuntime.Phase.IDLE -> s.s("آماده به اتصال", "Ready to connect")
@@ -446,7 +605,7 @@ private fun statusSubtitle(
         }
     RixRuntime.Phase.STARTING ->
         state.message.ifBlank {
-            s.s("جست‌وجوی گیت‌وی و ساخت تونل", "Finding a gateway and building the tunnel")
+            s.s("جستوجوی گیتوی و ساخت تونل", "Finding a gateway and building the tunnel")
         }
     RixRuntime.Phase.RUNNING -> buildString {
         // The label is the transport that actually carried the tunnel, which
