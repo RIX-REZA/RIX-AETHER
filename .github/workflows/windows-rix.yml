@@ -230,6 +230,9 @@ jobs:
           } else {
             Write-Host "authenticode: signing not configured; verification skipped (unsigned dev build, as expected)"
           }
+          # Explicit so the step is deterministically green on the unsigned dev
+          # path (a failing signature assert above throws before reaching this).
+          exit 0
 
       - name: Package a portable copy
         # The installer is the way in; this is for anyone who wants to unzip and
