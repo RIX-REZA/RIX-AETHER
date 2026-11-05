@@ -211,25 +211,24 @@ jobs:
       - name: Verify Authenticode (optional)
         # When signing was enabled, every release binary must end up with a
         # Valid Authenticode signature; a build that asked to be signed but is
-        # not, fails here. When signing was off this step proves nothing was
-        # silently claimed as signed.
+        # not, fails here. When signing was off this step only says so -- it
+        # never touches the files and never fails, so an unsigned dev build
+        # stays a normal green build.
         shell: pwsh
         run: |-
           $ErrorActionPreference = "Stop"
-          $files = @()
-          $files += "windows/publish/RIX.exe"
-          $files += Get-ChildItem "windows/publish/core" -Filter "*.exe" -Recurse | ForEach-Object { $_.FullName }
           if (${{ vars.RIX_SIGNING_ENABLED == 'true' }}) {
+            $files = @()
+            $files += "windows/publish/RIX.exe"
+            $files += Get-ChildItem "windows/publish/core" -Filter "*.exe" -Recurse | ForEach-Object { $_.FullName }
             $files += Get-ChildItem "windows/dist" -Filter "RIX-Setup-*.exe" | ForEach-Object { $_.FullName }
-          }
-          foreach ($f in $files) {
-            $sig = Get-AuthenticodeSignature $f
-            if (${{ vars.RIX_SIGNING_ENABLED == 'true' }}) {
+            foreach ($f in $files) {
+              $sig = Get-AuthenticodeSignature $f
               if ($sig.Status -ne "Valid") { throw "not validly signed: $f ($($sig.Status))" }
               Write-Host "signed ok: $(Split-Path $f -Leaf) by $($sig.SignerCertificate.Subject)"
-            } else {
-              Write-Host "unsigned (expected, dev build without certificate): $(Split-Path $f -Leaf) status=$($sig.Status)"
             }
+          } else {
+            Write-Host "authenticode: signing not configured; verification skipped (unsigned dev build, as expected)"
           }
 
       - name: Package a portable copy
