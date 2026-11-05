@@ -68,6 +68,11 @@ Source: "..\publish\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 ; The core, and the Psiphon client it spawns for the BETA chain. The
 ; `pt` folder name is not decoration: the core looks for the binary there.
 Source: "..\publish\core\aether.exe"; DestDir: "{app}\core"; Flags: ignoreversion
+; The integrity sidecar the launcher checks before it will run the core. It is
+; generated in CI from the exact verified aether.exe (CoreIntegrity), so the
+; installer always ships the verified binary and a corrupted or replaced core
+; is diagnosed instead of launched.
+Source: "..\publish\core\aether.sha256"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "..\publish\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
 Source: "..\publish\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
