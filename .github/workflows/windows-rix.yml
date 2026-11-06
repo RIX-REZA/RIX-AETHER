@@ -40,6 +40,25 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
+  # --- Optional Authenticode signing (see windows/scripts/sign-release.ps1) ----
+  # All credential material comes from repository secrets; nothing is stored in
+  # the tree. Enable the whole stage by setting the repository VARIABLE
+  # RIX_SIGNING_ENABLED=true and providing one signing configuration (a cert
+  # thumbprint, a PFX secret, or Azure Artifact Signing). With nothing
+  # configured the build stays a normal unsigned dev build and signs nothing --
+  # it never claims a missing signature is trusted.
+  RIX_SIGNING_ENABLED: ${{ vars.RIX_SIGNING_ENABLED }}
+  RIX_CERT_THUMBPRINT: ${{ secrets.RIX_CERT_THUMBPRINT }}
+  RIX_PFX_B64: ${{ secrets.RIX_PFX_B64 }}
+  RIX_PFX_PASSWORD: ${{ secrets.RIX_PFX_PASSWORD }}
+  RIX_SIGN_AZURE: ${{ secrets.RIX_SIGN_AZURE }}
+  RIX_AZURE_ENDPOINT: ${{ secrets.RIX_AZURE_ENDPOINT }}
+  RIX_AZURE_TENANT: ${{ secrets.RIX_AZURE_TENANT }}
+  RIX_AZURE_CLIENT_ID: ${{ secrets.RIX_AZURE_CLIENT_ID }}
+  RIX_AZURE_CLIENT_SECRET: ${{ secrets.RIX_AZURE_CLIENT_SECRET }}
+  RIX_AZURE_CERT_NAME: ${{ secrets.RIX_AZURE_CERT_NAME }}
+  RIX_TIMESTAMP_URL: "http://timestamp.digicert.com"
+
 jobs:
   windows:
     name: build installer
@@ -117,6 +136,21 @@ jobs:
           Copy-Item core-tmp/pt/* windows/publish/core/pt/ -Force -Recurse
           Copy-Item core-tmp/LICENSES windows/publish/core/LICENSES -Recurse -Force
 
+      - name: Record the core integrity sidecar
+        # The launcher refuses to run a core whose SHA-256 does not match the
+        # one the release verified (CoreIntegrity). The sidecar travels beside
+        # aether.exe and into the installer and the portable zip, so the exact
+        # verified binary is what ships, and a corrupted or replaced core is
+        # diagnosed instead of launched.
+        shell: pwsh
+        run: |-
+          $ErrorActionPreference = "Stop"
+          $exe = "windows/publish/core/aether.exe"
+          if (-not (Test-Path $exe)) { throw "aether.exe is missing" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "windows/publish/core/aether.sha256" -Value $hash -NoNewline
+          Write-Host "core/aether.sha256 -> $hash"
+
       - name: Check what was built
         shell: pwsh
         run: |
@@ -163,6 +197,42 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
 
           Get-ChildItem windows/dist | Format-Table Name, Length
+
+      - name: Sign binaries and installer (optional)
+        # Runs only when the repository variable RIX_SIGNING_ENABLED=true and a
+        # certificate configuration exists. With nothing configured the script
+        # reports an unsigned dev build and changes nothing.
+        if: ${{ vars.RIX_SIGNING_ENABLED == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "windows/scripts/sign-release.ps1" -Installers
+
+      - name: Verify Authenticode (optional)
+        # When signing was enabled, every release binary must end up with a
+        # Valid Authenticode signature; a build that asked to be signed but is
+        # not, fails here. When signing was off this step only says so -- it
+        # never touches the files and never fails, so an unsigned dev build
+        # stays a normal green build.
+        shell: pwsh
+        run: |-
+          $ErrorActionPreference = "Stop"
+          if (${{ vars.RIX_SIGNING_ENABLED == 'true' }}) {
+            $files = @()
+            $files += "windows/publish/RIX.exe"
+            $files += Get-ChildItem "windows/publish/core" -Filter "*.exe" -Recurse | ForEach-Object { $_.FullName }
+            $files += Get-ChildItem "windows/dist" -Filter "RIX-Setup-*.exe" | ForEach-Object { $_.FullName }
+            foreach ($f in $files) {
+              $sig = Get-AuthenticodeSignature $f
+              if ($sig.Status -ne "Valid") { throw "not validly signed: $f ($($sig.Status))" }
+              Write-Host "signed ok: $(Split-Path $f -Leaf) by $($sig.SignerCertificate.Subject)"
+            }
+          } else {
+            Write-Host "authenticode: signing not configured; verification skipped (unsigned dev build, as expected)"
+          }
+          # Explicit so the step is deterministically green on the unsigned dev
+          # path (a failing signature assert above throws before reaching this).
+          exit 0
 
       - name: Package a portable copy
         # The installer is the way in; this is for anyone who wants to unzip and

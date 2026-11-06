@@ -237,7 +237,9 @@ public sealed class RixSession : IDisposable
                 var args = candidate.ToArgs(AppState.ConfigPath);
                 if (!_core.Start(exe, args, working))
                 {
-                    Fail(cts, "هسته اجرا نشد / the core could not be started");
+                    Fail(cts, _core.LastIssue == CoreStartIssue.None
+                        ? "هسته اجرا نشد / the core could not be started"
+                        : CoreIntegrity.Describe(_core.LastIssue));
                     return;
                 }
 

@@ -116,6 +116,15 @@ vulnerability, use GitHub's private vulnerability reporting on this repository
 
 - GitHub tokens used for development are not part of this repository and must
   never be written into git config or tracked files.
-- The Windows installer is currently unsigned. If Authenticode signing is added,
-  its certificate must be stored outside the repository in the same way, and
-  the private key must not be a build artifact.
+- The Windows release has an optional Authenticode signing stage
+  (`windows/scripts/sign-release.ps1`), driven entirely from repository secrets
+  and the repository variable `RIX_SIGNING_ENABLED`. It only ever signs with a
+  real certificate — a store thumbprint, a PFX supplied as a base64 secret, or
+  Azure Artifact Signing — and it never fakes a signature or claims a self-signed
+  build is trusted. With no certificate configured the build stays a normal
+  unsigned dev build. The private key is never a build artifact and never lives in
+  the repository. The launcher verifies the signed core's SHA-256 against an
+  `aether.sha256` sidecar shipped beside it, and reports unsigned / corrupted /
+  policy-blocked starts precisely instead of as a generic failure. No Windows
+  security feature (WDAC, Smart App Control, Defender, Code Integrity) is
+  disabled or bypassed by this stage.

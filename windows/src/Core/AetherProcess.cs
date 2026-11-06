@@ -52,6 +52,18 @@ public sealed class AetherProcess : IDisposable
 
     private Run _run;
 
+    private CoreStartIssue _lastIssue = CoreStartIssue.None;
+
+    /// <summary>
+    /// Why <see cref="Start"/> last refused to give the core to Windows, or
+    /// <c>None</c> after a successful start. Read by the session so a startup
+    /// failure can state its real reason instead of a generic message.
+    /// </summary>
+    public CoreStartIssue LastIssue
+    {
+        get { lock (_gate) return _lastIssue; }
+    }
+
     /// <summary>Every line the core prints, already timestamped.</summary>
     public event Action<string> LogLine;
 
@@ -104,6 +116,41 @@ public sealed class AetherProcess : IDisposable
     public bool Start(string exePath, IEnumerable<string> args, string workingDirectory)
     {
         Stop();
+        lock (_gate) _lastIssue = CoreStartIssue.None;
+
+        // Pre-flight the core so a refusal means something instead of a bare
+        // "could not be started": a missing file, a hash that does not match the
+        // sidecar, or an unsigned core each explain themselves before Windows is
+        // asked to run it. A missing signature alone never stops a dev/portable
+        // start -- only Windows itself gets to decide that, and when it does, the
+        // catch below names the policy instead of a generic error.
+        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
+        {
+            SetIssue(CoreStartIssue.MissingCore);
+            Emit("core: " + CoreIntegrity.Describe(CoreStartIssue.MissingCore));
+            return false;
+        }
+
+        var integrity = CoreIntegrity.VerifyAgainstSidecar(exePath);
+        if (!integrity.Verified)
+        {
+            // The sidecar is shipped by the release pipeline around the exact
+            // verified binary, so a mismatch here is tamper or corruption, and
+            // launching a core that failed its own hash is not something to do
+            // silently.
+            SetIssue(CoreStartIssue.CorruptedCore);
+            Emit("core: " + integrity.Detail);
+            return false;
+        }
+
+        var signature = CoreIntegrity.GetSignatureState(exePath);
+        if (signature == CoreSignatureState.NotSigned)
+        {
+            // Informational in the log and in LastIssue: dev builds are meant to
+            // run unsigned. The Windows policy verdict arrives via the catch.
+            SetIssue(CoreStartIssue.MissingSignature);
+            Emit("core: " + CoreIntegrity.SignatureText(signature));
+        }
 
         var info = new ProcessStartInfo
         {
@@ -143,6 +190,7 @@ public sealed class AetherProcess : IDisposable
             Emit("core: cannot start " + exePath + " -- " + ex.Message);
             lock (_gate) { if (ReferenceEquals(_run, run)) _run = null; }
             process.Dispose();
+            SetIssue(CoreIntegrity.StartFailure(ex));
             return false;
         }
 
@@ -213,6 +261,9 @@ public sealed class AetherProcess : IDisposable
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+
+        // It really did start; whatever the signature said is history now.
+        SetIssue(CoreStartIssue.None);
 
         Emit("core: started " + exePath);
         Emit("core: " + string.Join(' ', args));
@@ -326,6 +377,11 @@ public sealed class AetherProcess : IDisposable
 
         Emit(line.Trim());
         LogLine?.Invoke(line.Trim());
+    }
+
+    private void SetIssue(CoreStartIssue issue)
+    {
+        lock (_gate) _lastIssue = issue;
     }
 
     private void Emit(string line)
