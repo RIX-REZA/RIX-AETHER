@@ -1,0 +1,640 @@
+name: RIX Universal Release
+
+# Builds ALL architectures for Android + Windows, then publishes/updates
+# a single release tag (default v1.0.7). Windows assets are replaced;
+# Android assets are added/updated. Existing release is preserved.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create or update (default: v1.0.7)"
+        required: false
+        default: "v1.0.7"
+      abis:
+        description: "Comma-separated ABIs to build (default: all supported)"
+        required: false
+        default: "arm64-v8a,armeabi-v7a,x86_64,x86"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  # Android
+  AETHER_REPO: https://github.com/CluvexStudio/Aether
+  AETHER_REF: main
+  HEV_TAG: "2.19.3"
+  NDK_VERSION: "26.1.10909125"
+  # Windows
+  AETHER_TAG: v2.4.0
+  AETHER_ZIP: aether-windows-x86_64.zip
+  AETHER_SHA256: "21b1444628d37121e873878e2eddd7932215418af1a2a12470caee5809026f1a"
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # Signing (optional, controlled by repository variable)
+  RIX_SIGNING_ENABLED: ${{ vars.RIX_SIGNING_ENABLED }}
+  RIX_CERT_THUMBPRINT: ${{ secrets.RIX_CERT_THUMBPRINT }}
+  RIX_PFX_B64: ${{ secrets.RIX_PFX_B64 }}
+  RIX_PFX_PASSWORD: ${{ secrets.RIX_PFX_PASSWORD }}
+  RIX_SIGN_AZURE: ${{ secrets.RIX_SIGN_AZURE }}
+  RIX_AZURE_ENDPOINT: ${{ secrets.RIX_AZURE_ENDPOINT }}
+  RIX_AZURE_TENANT: ${{ secrets.RIX_AZURE_TENANT }}
+  RIX_AZURE_CLIENT_ID: ${{ secrets.RIX_AZURE_CLIENT_ID }}
+  RIX_AZURE_CLIENT_SECRET: ${{ secrets.RIX_AZURE_CLIENT_SECRET }}
+  RIX_AZURE_CERT_NAME: ${{ secrets.RIX_AZURE_CERT_NAME }}
+  RIX_TIMESTAMP_URL: "http://timestamp.digicert.com"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # ANDROID: Kotlin type-check (fast gate)
+  # ──────────────────────────────────────────────────────────────
+  kotlin:
+    name: kotlin compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      abis: ${{ steps.set-abis.outputs.abis }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Refuse committed signing material
+        run: |
+          set -euo pipefail
+          found=$(git ls-files -- '*.p12' '*.jks' '*.keystore' 'keystore/**' || true)
+          if [ -n "$found" ]; then
+            echo "::error::Signing material is tracked in git:"
+            echo "$found"
+            echo "::error::Remove it; store keys in the RIX_KEYSTORE_B64 repository secret."
+            exit 1
+          fi
+          echo "no signing material is tracked"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMGR"
+
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+          ls "${ANDROID_HOME}/ndk"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Parse ABIs
+        id: set-abis
+        run: |
+          ABIS="${{ github.event.inputs.abis }}"
+          echo "abis=$ABIS" >> "$GITHUB_OUTPUT"
+          echo "Building for ABIs: $ABIS"
+
+      - name: Compile Kotlin
+        working-directory: .
+        run: |
+          gradle :app:compileDebugKotlin -PrixAbis=${{ steps.set-abis.outputs.abis }} --no-daemon --stacktrace
+
+      - name: Unit tests
+        working-directory: .
+        run: |
+          gradle :app:testDebugUnitTest -PrixAbis=${{ steps.set-abis.outputs.abis }} --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-unit-tests
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+
+  # ──────────────────────────────────────────────────────────────
+  # ANDROID: Native libraries per ABI (parallel matrix)
+  # ──────────────────────────────────────────────────────────────
+  native:
+    name: native (${{ matrix.abi }})
+    needs: kotlin
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            rust: aarch64-linux-android
+            ndk_abi: arm64-v8a
+          - abi: armeabi-v7a
+            rust: armv7-linux-androideabi
+            ndk_abi: armeabi-v7a
+          - abi: x86_64
+            rust: x86_64-linux-android
+            ndk_abi: x86_64
+          - abi: x86
+            rust: i686-linux-android
+            ndk_abi: x86
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check if ABI is requested
+        id: sel
+        env:
+          REQUESTED: ${{ needs.kotlin.outputs.abis }}
+        run: |
+          if echo ",${REQUESTED}," | grep -q ",${{ matrix.abi }},"; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust
+        if: steps.sel.outputs.enabled == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+
+      - name: Install Go (BoringSSL build)
+        if: steps.sel.outputs.enabled == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake, Ninja and Perl
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build cmake perl
+
+      - name: Install Android NDK
+        if: steps.sel.outputs.enabled == 'true'
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Install cargo-ndk
+        if: steps.sel.outputs.enabled == 'true'
+        run: cargo install cargo-ndk --locked
+
+      - name: Fetch Aether
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          git clone --depth 1 --branch "${AETHER_REF}" "${AETHER_REPO}" aether-src
+          echo "aether $(git -C aether-src rev-parse --short HEAD)"
+          test -f aether-src/quiche/quiche/Cargo.toml
+
+      - name: Cache Rust artifacts
+        if: steps.sel.outputs.enabled == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "aether-src/aether -> target"
+          key: ${{ matrix.abi }}
+
+      - name: Build libaether.so
+        if: steps.sel.outputs.enabled == 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_PROFILE_RELEASE_LTO: thin
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+        run: |
+          set -euo pipefail
+          under=$(echo "${{ matrix.rust }}" | tr '-' '_')
+          export "BORING_BSSL_RUST_CPPLIB_${under}=static:-bundle=c++"
+
+          cd aether-src/aether
+          cargo ndk -t ${{ matrix.abi }} --platform 29 build --release --lib
+
+          so="target/${{ matrix.rust }}/release/libaether.so"
+          ls -lh "$so"
+          file "$so"
+          readelf -d "$so" | grep NEEDED || true
+
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}"
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Fetch hev-socks5-tunnel
+        if: steps.sel.outputs.enabled == 'true'
+        run: |
+          curl -sSL -o hev.tar.xz \
+            "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_TAG}/hev-socks5-tunnel-${HEV_TAG}.tar.xz"
+          tar -xJf hev.tar.xz
+          mv "hev-socks5-tunnel-${HEV_TAG}" hev-src
+
+      - name: Build libhev-socks5-tunnel.so
+        if: steps.sel.outputs.enabled == 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cd hev-src
+          "$ANDROID_NDK_HOME/ndk-build" \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=Android.mk \
+            NDK_APPLICATION_MK=Application.mk \
+            APP_ABI=${{ matrix.abi }} \
+            APP_PLATFORM=android-29 \
+            -j"$(nproc)"
+
+          so="libs/${{ matrix.abi }}/libhev-socks5-tunnel.so"
+          ls -lh "$so"
+          file "$so"
+
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Upload native libraries
+        if: steps.sel.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-native-${{ matrix.abi }}
+          path: app/src/main/jniLibs/${{ matrix.abi }}/*.so
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────
+  # ANDROID: Assemble APK with ALL collected ABIs
+  # ──────────────────────────────────────────────────────────────
+  apk:
+    name: apk (universal)
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMGR"
+
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+
+      - name: Collect native libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rix-native-*
+          path: _native
+
+      - name: Place libraries into jniLibs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          count=0
+          for dir in _native/rix-native-*; do
+            abi="${dir##*rix-native-}"
+            mkdir -p "app/src/main/jniLibs/${abi}"
+            cp "${dir}"/*.so "app/src/main/jniLibs/${abi}/"
+            echo "collected ${abi}: $(ls "${dir}" | tr '\n' ' ')"
+            count=$((count + 1))
+          done
+          if [ "$count" -eq 0 ]; then
+            echo "ERROR: no native artifacts were downloaded"; exit 1
+          fi
+          abis=$(ls _native | sed 's/^rix-native-//' | paste -sd, -)
+          echo "RIX_ABIS=${abis}" >> "$GITHUB_ENV"
+          find app/src/main/jniLibs -name '*.so' -exec ls -lh {} \;
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Restore signing key
+        env:
+          RIX_KEYSTORE_SECRET: ${{ secrets.RIX_KEYSTORE_B64 }}
+          RIX_KEYSTORE_VAR: ${{ vars.RIX_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          key="keystore/rix.p12"
+
+          b64="${RIX_KEYSTORE_SECRET:-}"
+          if [ -n "$b64" ]; then
+            echo "signing key written from secret RIX_KEYSTORE_B64"
+          else
+            b64="${RIX_KEYSTORE_VAR:-}"
+            if [ -z "$b64" ]; then
+              echo "::error::$key cannot be restored: neither secrets.RIX_KEYSTORE_B64 nor vars.RIX_KEYSTORE_B64 is set."
+              echo "::error::An unsigned build cannot update an installed app. See SECURITY.md."
+              exit 1
+            fi
+            echo "::warning::Signing from repository variable RIX_KEYSTORE_B64. Its value is in this step's env block above, in the clear, because GitHub masks secrets and not variables. This key is already public (see SECURITY.md) so this run does not make it more so -- but move the value into the secret and delete the variable."
+            echo "signing key written from variable RIX_KEYSTORE_B64 (exposed; see the warning above)"
+          fi
+
+          mkdir -p "$(dirname "$key")"
+          printf '%s' "$b64" | base64 -d > "$key"
+          chmod 600 "$key"
+          ls -l "$key"
+
+      - name: Assemble debug APK (universal)
+        working-directory: .
+        run: |
+          gradle :app:assembleDebug -PrixAbis="${RIX_ABIS}" --no-daemon --stacktrace
+
+      - name: Verify APK contents
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "APK=$apk"
+          unzip -l "$apk" | grep -E 'lib/.*\.so' || { echo "ERROR: no .so in APK"; exit 1; }
+          for need in libaether.so libhev-socks5-tunnel.so librixjni.so; do
+            unzip -l "$apk" | grep -q "$need" || { echo "ERROR: $need missing from APK"; exit 1; }
+          done
+
+          # The signature is what lets an update install over the previous version
+          apksigner=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
+          "$apksigner" verify --print-certs "$apk" | head -6
+
+      - name: Attest the build provenance of the APK
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-apk-universal
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────
+  # WINDOWS: Build installer + portable (same as windows-rix.yml)
+  # ──────────────────────────────────────────────────────────────
+  windows:
+    name: build installer (x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build
+        run: >
+          dotnet publish windows/src/Rix.Windows.csproj
+          -c Release
+          -o windows/publish
+          --nologo
+
+      - name: Fetch the WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = "windows/publish/MicrosoftEdgeWebview2Setup.exe"
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $out
+
+          $sig = Get-AuthenticodeSignature $out
+          if ($sig.Status -ne "Valid") {
+            throw "the WebView2 bootstrapper is not validly signed: $($sig.Status)"
+          }
+          if ($sig.SignerCertificate.Subject -notmatch "Microsoft") {
+            throw "unexpected signer: $($sig.SignerCertificate.Subject)"
+          }
+          Write-Host ("WebView2 bootstrapper {0:N1} MB, signed by {1}" -f `
+            ((Get-Item $out).Length / 1MB), $sig.SignerCertificate.Subject)
+
+      - name: Fetch the Aether core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/CluvexStudio/Aether/releases/download/$env:AETHER_TAG/$env:AETHER_ZIP"
+          Write-Host "downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile aether.zip
+
+          $actual = (Get-FileHash aether.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256 $actual"
+          if ($actual -ne $env:AETHER_SHA256) {
+            throw "the core archive does not match the pinned hash: $actual"
+          }
+
+          Expand-Archive aether.zip -DestinationPath core-tmp -Force
+
+          New-Item -ItemType Directory -Force windows/publish/core/pt | Out-Null
+          Copy-Item core-tmp/aether.exe windows/publish/core/ -Force
+          Copy-Item core-tmp/pt/* windows/publish/core/pt/ -Force -Recurse
+          Copy-Item core-tmp/LICENSES windows/publish/core/LICENSES -Recurse -Force
+
+      - name: Record the core integrity sidecar
+        shell: pwsh
+        run: |-
+          $ErrorActionPreference = "Stop"
+          $exe = "windows/publish/core/aether.exe"
+          if (-not (Test-Path $exe)) { throw "aether.exe is missing" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "windows/publish/core/aether.sha256" -Value $hash -NoNewline
+          Write-Host "core/aether.sha256 -> $hash"
+
+      - name: Check what was built
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = "windows/publish/RIX.exe"
+          if (-not (Test-Path $exe)) { throw "the app was not produced" }
+          Write-Host ("RIX.exe {0:N1} MB" -f ((Get-Item $exe).Length / 1MB))
+
+          foreach ($file in @(
+            "windows/publish/core/aether.exe",
+            "windows/publish/core/pt/psiphon-tunnel-core.exe",
+            "windows/publish/core/pt/lyrebird.exe",
+            "windows/publish/MicrosoftEdgeWebview2Setup.exe")) {
+            if (-not (Test-Path $file)) { throw "$file is missing" }
+          }
+
+          $p = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList "--selfcheck" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $report = "windows/publish/selfcheck.txt"
+            if (Test-Path $report) { Get-Content $report | Write-Host }
+            throw "the published app does not carry its interface (selfcheck exit $($p.ExitCode))"
+          }
+          Write-Host "interface embedded: selfcheck passed"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "windows\installer\Rix.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+
+          Get-ChildItem windows/dist | Format-Table Name, Length
+
+      - name: Sign binaries and installer (optional)
+        if: ${{ vars.RIX_SIGNING_ENABLED == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "windows/scripts/sign-release.ps1" -Installers
+
+      - name: Verify Authenticode (optional)
+        shell: pwsh
+        run: |-
+          $ErrorActionPreference = "Stop"
+          if (${{ vars.RIX_SIGNING_ENABLED == 'true' }}) {
+            $files = @()
+            $files += "windows/publish/RIX.exe"
+            $files += Get-ChildItem "windows/publish/core" -Filter "*.exe" -Recurse | ForEach-Object { $_.FullName }
+            $files += Get-ChildItem "windows/dist" -Filter "RIX-Setup-*.exe" | ForEach-Object { $_.FullName }
+            foreach ($f in $files) {
+              $sig = Get-AuthenticodeSignature $f
+              if ($sig.Status -ne "Valid") { throw "not validly signed: $f ($($sig.Status))" }
+              Write-Host "signed ok: $(Split-Path $f -Leaf) by $($sig.SignerCertificate.Subject)"
+            }
+          } else {
+            Write-Host "authenticode: signing not configured; verification skipped (unsigned dev build, as expected)"
+          }
+          exit 0
+
+      - name: Package a portable copy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = "windows/dist/RIX-portable"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item windows/publish/RIX.exe $stage/
+          Copy-Item windows/publish/core $stage/core -Recurse
+          Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/RIX-Portable.zip" -Force
+
+      - name: Attest the build provenance of the Windows artifacts
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            windows/dist/RIX-Setup-*.exe
+            windows/dist/RIX-Portable.zip
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-windows
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            windows/dist/RIX-Setup-*.exe
+            windows/dist/RIX-Portable.zip
+
+  # ──────────────────────────────────────────────────────────────
+  # RELEASE: Create or update v1.0.7 with ALL artifacts
+  # ──────────────────────────────────────────────────────────────
+  release:
+    name: publish to release (${{ github.event.inputs.release_tag }})
+    needs: [apk, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Download Android universal APK
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-apk-universal
+          path: _android
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-windows
+          path: _windows
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          ls -la _android/
+          ls -la _windows/
+
+          # Rename APK to include version
+          TAG="${{ github.event.inputs.release_tag }}"
+          VERSION="${TAG#v}"
+          mv _android/app-debug.apk "_android/RIX-${VERSION}-debug.apk"
+          echo "android_asset=_android/RIX-${VERSION}-debug.apk" >> "$GITHUB_OUTPUT"
+
+          # Windows assets keep their names (RIX-Setup-*.exe, RIX-Portable.zip)
+          SETUP=$(ls _windows/RIX-Setup-*.exe | head -1)
+          PORTABLE=$(ls _windows/RIX-Portable.zip | head -1)
+          echo "setup_asset=$SETUP" >> "$GITHUB_OUTPUT"
+          echo "portable_asset=$PORTABLE" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: "RIX ${{ github.event.inputs.release_tag }}"
+          body: |
+            **RIX ${{ github.event.inputs.release_tag }}** — Universal build for Android (arm64-v8a, armeabi-v7a, x86_64, x86) + Windows x86_64.
+
+            ### Android
+            - `RIX-${{ github.event.inputs.release_tag }}.apk` — Universal debug APK (all ABIs included)
+
+            ### Windows
+            - `RIX-Setup-*.exe` — Installer (diagnostics, SHA-256 integrity, optional Authenticode)
+            - `RIX-Portable.zip` — Portable bundle (same fixes)
+
+            ### Security
+            - Core integrity verified via pinned SHA-256
+            - Authenticode signing pipeline ready (enable via `RIX_SIGNING_ENABLED=true`)
+            - Build provenance attested
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: |
+            ${{ steps.prepare.outputs.android_asset }}
+            ${{ steps.prepare.outputs.setup_asset }}
+            ${{ steps.prepare.outputs.portable_asset }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
