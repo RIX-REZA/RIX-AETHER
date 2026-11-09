@@ -29,10 +29,13 @@ import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Telegram
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.GitHub
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -150,6 +153,17 @@ fun OptionsScreen(
                         splitApps = draft.splitApps
                     )
                 }
+                Spacer(Modifier.width(8.dp))
+                SocialIcon(
+                    icon = Icons.Rounded.Telegram,
+                    url = "https://t.me/RIXPANEL",
+                    contentDesc = "Telegram"
+                )
+                SocialIcon(
+                    icon = Icons.Rounded.GitHub,
+                    url = "https://github.com/RIX-REZA/RIX-AETHER",
+                    contentDesc = "GitHub"
+                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -204,7 +218,7 @@ fun OptionsScreen(
                 subtitle = "${draft.transport.label(s)} • ${draft.scanMode.label(s)}",
                 icon = Icons.Rounded.Route,
                 initiallyExpanded = true,
-                accent = RixColors.Violet
+                accent = RixColors.Accent
             ) {
                 SectionTitle(s.s("پروتکل", "Protocol"))
                 ChipFlow {
@@ -380,7 +394,7 @@ fun OptionsScreen(
                 title = s.s("شبکه", "Network"),
                 subtitle = "${s.s("پورت", "port")} ${draft.bindPort} • MTU ${draft.mtu} • ${draft.ipFamily.label(s)}",
                 icon = Icons.Rounded.Wifi,
-                accent = RixColors.Teal
+                accent = RixColors.Accent
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
@@ -472,7 +486,7 @@ fun OptionsScreen(
                         Icon(
                             Icons.Rounded.Apps,
                             contentDescription = null,
-                            tint = RixColors.Violet,
+                            tint = RixColors.Accent,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(10.dp))
@@ -504,7 +518,7 @@ fun OptionsScreen(
                     "reconnect ${draft.reconnectSecs}s • ${draft.perf.label(s)}"
                 ),
                 icon = Icons.Rounded.Speed,
-                accent = RixColors.Teal
+                accent = RixColors.Accent
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
@@ -783,7 +797,7 @@ private fun presets(): List<Preset> = listOf(
         labelFa = "سریع",
         labelEn = "Fast",
         icon = Icons.Rounded.RocketLaunch,
-        accent = RixColors.Teal,
+        accent = RixColors.Accent,
         configure = { o ->
             o.copy(
                 transport = Transport.MASQUE_H3,
@@ -806,7 +820,7 @@ private fun presets(): List<Preset> = listOf(
         labelFa = "ضد DPI",
         labelEn = "Anti-DPI",
         icon = Icons.Rounded.VerifiedUser,
-        accent = RixColors.Violet,
+        accent = RixColors.Accent,
         configure = { o ->
             o.copy(
                 transport = Transport.MIM,
@@ -936,12 +950,12 @@ private fun ChipFlow(content: @Composable () -> Unit) {
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = RixColors.Violet,
+    focusedBorderColor = RixColors.Accent,
     unfocusedBorderColor = RixColors.Stroke,
     focusedContainerColor = RixColors.Surface,
     unfocusedContainerColor = RixColors.Surface,
-    cursorColor = RixColors.Violet,
-    focusedLabelColor = RixColors.Violet,
+    cursorColor = RixColors.Accent,
+    focusedLabelColor = RixColors.Accent,
     unfocusedLabelColor = RixColors.TextMuted,
     focusedTextColor = RixColors.Text,
     unfocusedTextColor = RixColors.Text
@@ -1005,4 +1019,30 @@ private fun NumberField(
         ),
         colors = fieldColors()
     )
+}
+
+@Composable
+private fun SocialIcon(
+    icon: ImageVector,
+    url: String,
+    contentDesc: String
+) {
+    IconButton(onClick = { openUrl(url) }) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDesc,
+            tint = RixColors.TextMuted,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+private fun openUrl(url: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+        androidx.compose.ui.platform.LocalContext.current.startActivity(intent)
+    } catch (e: Exception) {
+        // ignore
+    }
 }

@@ -549,3 +549,31 @@ object TunnelProbe {
     private val HEAD_END = "\r\n\r\n".toByteArray(Charsets.US_ASCII)
     private val CRLF = "\r\n".toByteArray(Charsets.US_ASCII)
 }
+
+/**
+ * Extension to TunnelProbe for direct IP probing (bypasses DNS).
+ * Used by CloudflareIpManager for smart IP selection.
+ */
+suspend fun TunnelProbe.probeDirect(
+    ip: String,
+    port: Int,
+    timeoutMs: Int = 5000
+): Egress? = withContext(Dispatchers.IO) {
+    if (port <= 0 || timeoutMs <= 0) return@withContext null
+    val job = coroutineContext[Job]
+    val deadline = deadlineAfter(timeoutMs.toLong())
+
+    // Use IP literal directly as host for TLS SNI
+    val body = httpsGet(port, ip, "/cdn-cgi/trace", deadline, job) ?: return@withContext null
+    parseTraceBody(body)
+}
+
+// Copy the necessary private functions from TunnelProbe
+private fun deadlineAfter(timeoutMs: Long): Long =
+    System.nanoTime() + timeoutMs * 1_000_000L
+
+private fun remainingMs(deadline: Long): Long =
+    (deadline - System.nanoTime()) / 1_000_000L
+
+private fun connectTimeout(deadline: Long): Long =
+    remainingMs(deadline).coerceIn(1L, 10_000L)

@@ -31,7 +31,10 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Telegram
+import androidx.compose.material.icons.rounded.GitHub
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -136,6 +139,17 @@ fun HomeScreen(
                     )
                 }
                 ThemeIconButton(dark = dark, onClick = onToggleTheme)
+                Spacer(Modifier.width(8.dp))
+                SocialIcon(
+                    icon = Icons.Rounded.Telegram,
+                    url = "https://t.me/RIXPANEL",
+                    contentDesc = "Telegram"
+                )
+                SocialIcon(
+                    icon = Icons.Rounded.GitHub,
+                    url = "https://github.com/RIX-REZA/RIX-AETHER",
+                    contentDesc = "GitHub"
+                )
                 Spacer(Modifier.width(10.dp))
                 StatusBadge(state)
             }
@@ -241,7 +255,7 @@ fun HomeScreen(
                 LiveStatTile(
                     label = s.s("دریافت", "Down"),
                     bytes = { it.rxBytes },
-                    accent = RixColors.Teal,
+                    accent = RixColors.Accent,
                     icon = Icons.Rounded.ArrowDownward,
                     modifier = Modifier.weight(1f)
                 )
@@ -258,7 +272,7 @@ fun HomeScreen(
                 LiveStatTile(
                     label = s.s("ارسال", "Up"),
                     bytes = { it.txBytes },
-                    accent = RixColors.Violet,
+                    accent = RixColors.AccentDeep,
                     icon = Icons.Rounded.ArrowUpward,
                     modifier = Modifier.weight(1f)
                 )
@@ -539,12 +553,12 @@ private fun stages(
  */
 @Composable
 private fun phaseAccent(phase: RixRuntime.Phase): Color = when (phase) {
-    RixRuntime.Phase.RUNNING -> RixColors.Teal
+    RixRuntime.Phase.RUNNING -> RixColors.Accent
     RixRuntime.Phase.ERROR -> RixColors.Danger
     RixRuntime.Phase.STARTING,
     RixRuntime.Phase.CONNECTING,
     RixRuntime.Phase.STOPPING -> RixColors.Warning
-    RixRuntime.Phase.IDLE -> RixColors.Violet
+    RixRuntime.Phase.IDLE -> RixColors.Accent
 }
 
 /**
@@ -583,7 +597,7 @@ private fun HeroPanel(
 private fun StatusBadge(state: RixRuntime.State) {
     val s = LocalStrings.current
     val (label, color) = when (state.phase) {
-        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
+        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Accent
         RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
         RixRuntime.Phase.STARTING -> s.s("آمادهسازی", "Preparing") to RixColors.Warning
         RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
@@ -746,4 +760,30 @@ private fun formatBytes(bytes: Long): String {
         index++
     }
     return String.format(java.util.Locale.US, "%.2f %s", value, units[index])
+}
+
+@Composable
+private fun SocialIcon(
+    icon: ImageVector,
+    url: String,
+    contentDesc: String
+) {
+    IconButton(onClick = { openUrl(url) }) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDesc,
+            tint = RixColors.TextMuted,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+private fun openUrl(url: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+        androidx.compose.ui.platform.LocalContext.current.startActivity(intent)
+    } catch (e: Exception) {
+        // ignore
+    }
 }

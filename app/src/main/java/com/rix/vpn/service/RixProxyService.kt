@@ -18,6 +18,8 @@ import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
+import com.rix.vpn.core.CloudflareIpManager
+import com.rix.vpn.core.CoreCoordinator
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
 import kotlinx.coroutines.CancellationException
@@ -40,6 +42,8 @@ import kotlin.coroutines.coroutineContext
  */
 class RixProxyService : LifecycleService() {
 
+    private var coordinator: CoreCoordinator? = null
+    private var stateChannel: kotlinx.coroutines.channels.ReceiveChannel<CoreCoordinator.State>? = null
     private var worker: Job? = null
 
     /**
@@ -82,9 +86,19 @@ class RixProxyService : LifecycleService() {
             options.problems().forEach { LogBus.e("proxy", "settings: $it") }
             RixRuntime.markStarting(RixMode.PROXY, l10n(R.string.state_starting))
 
+            // Smart Cloudflare IP selection for direct WARP connections (no Psiphon)
+            // Fetches official ranges from cloudflare.com and evaluates IPs with real TLS probes
+            val optimizedOptions = if (!options.psiphon) {
+                CloudflareIpManager.getBestIp(this, options, options.safeBindPort)
+                    ?.let { bestIp ->
+                        LogBus.i("proxy", "Selected Cloudflare IP: $bestIp")
+                        options.copy(peer = "$bestIp:443")
+                    } ?: options
+            } else options
+
             // Same chain as tunnel mode: proxy or not, the core still has to
             // reach Cloudflare, and a blocked transport fails identically.
-            val chain = RixRuntime.transportChain(options, RixRuntime.rememberedTransport(this))
+            val chain = RixRuntime.transportChain(optimizedOptions, RixRuntime.rememberedTransport(this))
             LogBus.i("proxy", "transport chain: ${chain.joinToString(" → ") { it.transport.label }}")
 
             var winner: RixOptions? = null
@@ -195,6 +209,27 @@ class RixProxyService : LifecycleService() {
             )
             startForegroundSafely(l10n(R.string.notif_proxy_running, chosen.bindPort))
 
+            // Initialize CoreCoordinator for ongoing health monitoring and failover
+            coordinator = CoreCoordinator.create(this, chosen, RixRuntime)
+            stateChannel = coordinator.start()
+            lifecycleScope.launch {
+                stateChannel.consumeEach { state ->
+                    when (state) {
+                        is CoreCoordinator.State.Degraded -> {
+                            LogBus.i("proxy", "Coordinator: degraded - ${state.reason}")
+                        }
+                        is CoreCoordinator.State.Recovering -> {
+                            LogBus.i("proxy", "Coordinator: failover to ${state.transport.label}")
+                        }
+                        is CoreCoordinator.State.Error -> {
+                            LogBus.e("proxy", "Coordinator error: ${state.message}")
+                            lifecycleScope.launch { shutdown(state.message, coroutineContext[Job]) }
+                        }
+                        else -> {}
+                    }
+                }
+            }
+
             var ticks = 0
             while (lifecycleScope.isActive) {
                 delay(2000)
@@ -265,6 +300,12 @@ class RixProxyService : LifecycleService() {
                 return@launch
             }
             RixRuntime.stopCore()
+
+            // Shutdown CoreCoordinator
+            coordinator?.shutdown()
+            coordinator = null
+            stateChannel = null
+
             withContext(Dispatchers.Main) {
                 if (session.get() != mine) return@withContext
                 if (preserveError == null) RixRuntime.markIdle()

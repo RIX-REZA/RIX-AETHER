@@ -18,6 +18,8 @@ import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
+import com.rix.vpn.core.CloudflareIpManager
+import com.rix.vpn.core.CoreCoordinator
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
 import kotlinx.coroutines.CancellationException
@@ -43,6 +45,8 @@ import kotlin.coroutines.coroutineContext
  */
 class RixVpnService : VpnService() {
 
+    private var coordinator: CoreCoordinator? = null
+    private var stateChannel: kotlinx.coroutines.channels.ReceiveChannel<CoreCoordinator.State>? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Volatile: [isUp] reads it from the UI thread to spot a stray tunnel. */
@@ -108,14 +112,24 @@ class RixVpnService : VpnService() {
             options.problems().forEach { LogBus.e("vpn", "settings: $it") }
             RixRuntime.markStarting(RixMode.TUNNEL, l10n(R.string.state_starting))
 
-            val fd = establishTun(options)
+            // Smart Cloudflare IP selection for direct WARP connections (no Psiphon)
+            // Fetches official ranges from cloudflare.com and evaluates IPs with real TLS probes
+            val optimizedOptions = if (!options.psiphon) {
+                CloudflareIpManager.getBestIp(this, options, options.safeBindPort)
+                    ?.let { bestIp ->
+                        LogBus.i("vpn", "Selected Cloudflare IP: $bestIp")
+                        options.copy(peer = "$bestIp:443")
+                    } ?: options
+            } else options
+
+            val fd = establishTun(optimizedOptions)
             LogBus.i("vpn", "TUN established, fd=${fd.fd}")
 
             // WireGuard and MASQUE/HTTP-3 are UDP-first, and on the networks this
             // app is used on UDP is the first thing that gets blocked. A single
             // fixed transport therefore means "وصل نمیشود" rather than "کمی
             // کندتر", so the chosen protocol is only the first candidate.
-            val chain = RixRuntime.transportChain(options, RixRuntime.rememberedTransport(this))
+            val chain = RixRuntime.transportChain(optimizedOptions, RixRuntime.rememberedTransport(this))
             LogBus.i("vpn", "transport chain: ${chain.joinToString(" → ") { it.transport.label }}")
 
             var winner: RixOptions? = null
@@ -211,7 +225,7 @@ class RixVpnService : VpnService() {
                     // the ParcelFileDescriptor afterwards would close the same
                     // fd twice.
                     val raw = fd.detachFd()
-                    hevToken = RixRuntime.startTun2Socks(this, candidate, raw) { rc ->
+                    hevToken = RixRuntime.startTun2Socks(this, optimizedOptions, raw) { rc ->
                         LogBus.i("hev", "tun2socks exited rc=$rc")
                         // Only an engine that died while it was still the live
                         // session is a failure; one that exits as part of a
@@ -290,7 +304,29 @@ class RixVpnService : VpnService() {
             )
             startForegroundSafely(l10n(R.string.notif_running, chosen.bindPort))
             startTicker()
-            startCoreWatch(chosen)
+            startCoreWatch(optimizedOptions)
+
+            // Initialize CoreCoordinator for ongoing health monitoring and failover
+            coordinator = CoreCoordinator.create(this, optimizedOptions, RixRuntime)
+            stateChannel = coordinator.start()
+            scope.launch {
+                stateChannel.consumeEach { state ->
+                    when (state) {
+                        is CoreCoordinator.State.Degraded -> {
+                            LogBus.i("vpn", "Coordinator: degraded - ${state.reason}")
+                            // Trigger re-evaluation via coordinator
+                        }
+                        is CoreCoordinator.State.Recovering -> {
+                            LogBus.i("vpn", "Coordinator: failover to ${state.transport.label}")
+                        }
+                        is CoreCoordinator.State.Error -> {
+                            LogBus.e("vpn", "Coordinator error: ${state.message}")
+                            scope.launch { failAndStop(state.message) }
+                        }
+                        else -> {}
+                    }
+                }
+            }
 
         } catch (c: CancellationException) {
             // A second tap while connecting cancels this coroutine; so does a
@@ -520,9 +556,9 @@ class RixVpnService : VpnService() {
 
         scope.launch {
             // A cancelled coroutine is not a finished one. The bring-up may
-            // still be inside startCore() at this instant, and a stopCore()
-            // that overtook it would leave the core it spawned running with
-            // nothing left holding a reference to it -- the stray-core case the
+            // still be inside startCore() at this instant, and a stopCore() that
+            // overtook it would leave the core it spawned running with nothing
+            // left holding a reference to it -- the stray-core case the
             // generation checks above cannot see, because the stray is started
             // after they have all been passed.
             if (dying != null && dying !== self) withTimeoutOrNull(BRING_UP_JOIN_MS) { dying.cancelAndJoin() }
@@ -533,6 +569,11 @@ class RixVpnService : VpnService() {
             // A newer session may own the single core and the single Psiphon
             // instance by now. Stopping them here would end that session -- the
             // old connection terminating the new one -- so the teardown of
+
+            // Shutdown CoreCoordinator
+            coordinator?.shutdown()
+            coordinator = null
+            stateChannel = null
             // process-wide resources belongs only to the session that still
             // owns the runtime. The engine above is exempt: its token is
             // generation-guarded, so a stale one stops nothing.

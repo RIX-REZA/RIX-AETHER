@@ -23,12 +23,9 @@ import androidx.core.view.WindowCompat
 import com.rix.vpn.data.ThemeMode
 
 /**
- * One palette, two skins.
- *
- * Every screen reads colours through [RixColors], whose properties are
- * composable getters over [LocalRixPalette]; that is why adding the light skin
- * did not require touching the ~90 call sites that already said
- * `RixColors.Surface`.
+ * Professional minimal palette — NO PURPLE/VIOLET.
+ * Dark gray / charcoal / white with a single teal accent.
+ * Meets v1.0.8 design requirements: minimal, modern, no decorative purple.
  */
 data class RixPalette(
     val isDark: Boolean,
@@ -37,69 +34,65 @@ data class RixPalette(
     val surface: Color,
     val surfaceHigh: Color,
     val stroke: Color,
-    val violet: Color,
-    val violetDeep: Color,
-    val teal: Color,
-    val tealDeep: Color,
+    /** Primary accent — teal only, used for active/connected states. */
+    val accent: Color,
+    val accentDeep: Color,
+    /** Text/icon colour drawn on top of [accent]. */
+    val onAccent: Color,
+    /** Secondary accent — amber for warnings/pending. */
+    val warning: Color,
+    val warningDeep: Color,
+    /** Error/danger red. */
+    val danger: Color,
+    val dangerDeep: Color,
     val text: Color,
     val textMuted: Color,
-    val danger: Color,
-    val warning: Color,
-    /** Text/icon colour drawn on top of [violet] or [teal]. */
-    val onAccent: Color,
     /** Opacity of the decorative background wells; lower in light mode. */
-    val wellViolet: Float,
-    val wellTeal: Float
+    val wellAccent: Float
 )
 
 val RixDarkPalette = RixPalette(
     isDark = true,
-    background = Color(0xFF07070D),
-    backgroundLift = Color(0xFF0B0B16),
-    surface = Color(0xFF10101F),
-    surfaceHigh = Color(0xFF17172B),
-    stroke = Color(0xFF23233C),
-    violet = Color(0xFF8F7BFF),
-    violetDeep = Color(0xFF5B45D6),
-    teal = Color(0xFF2BD9C4),
-    tealDeep = Color(0xFF12A08F),
-    text = Color(0xFFEFEDFF),
-    textMuted = Color(0xFF8E8BAD),
-    danger = Color(0xFFFF5C7A),
-    warning = Color(0xFFFFC46B),
-    onAccent = Color(0xFF0B0616),
-    wellViolet = 0.16f,
-    wellTeal = 0.10f
+    background = Color(0xFF0A0A0F),        // Near-black charcoal
+    backgroundLift = Color(0xFF11111A),    // Slightly lifted
+    surface = Color(0xFF16161F),           // Card surface
+    surfaceHigh = Color(0xFF1E1E2A),       // Elevated surface
+    stroke = Color(0xFF2A2A3A),            // Borders/dividers
+    accent = Color(0xFF00D4AA),            // Teal accent (connected/active)
+    accentDeep = Color(0xFF00A888),        // Deeper teal
+    onAccent = Color(0xFF051A15),          // Text on teal
+    warning = Color(0xFFFFB800),           // Amber warning
+    warningDeep = Color(0xFFCC9300),
+    danger = Color(0xFFFF4D6A),            // Error red
+    dangerDeep = Color(0xFFCC3D55),
+    text = Color(0xFFE8E8ED),              // Primary text
+    textMuted = Color(0xFF8A8A9A),         // Muted text
+    wellAccent = 0.08f
 )
 
 val RixLightPalette = RixPalette(
     isDark = false,
-    background = Color(0xFFF3F3F9),
-    backgroundLift = Color(0xFFFFFFFF),
-    surface = Color(0xFFFCFCFE),
-    surfaceHigh = Color(0xFFFFFFFF),
-    stroke = Color(0xFFE1E1EE),
-    violet = Color(0xFF6847F0),
-    violetDeep = Color(0xFF4A2FC4),
-    teal = Color(0xFF0C9C8C),
-    tealDeep = Color(0xFF0A8377),
-    text = Color(0xFF14142B),
-    textMuted = Color(0xFF6C6C88),
-    danger = Color(0xFFD62B4B),
-    warning = Color(0xFFA96B05),
+    background = Color(0xFFFAFAFC),        // Off-white
+    backgroundLift = Color(0xFFFFFFFF),    // Pure white
+    surface = Color(0xFFFFFFFF),           // White cards
+    surfaceHigh = Color(0xFFF5F5F8),       // Slightly gray elevated
+    stroke = Color(0xFFE0E0E8),            // Light borders
+    accent = Color(0xFF00A888),            // Teal accent (darker for light mode)
+    accentDeep = Color(0xFF008A72),
     onAccent = Color(0xFFFFFFFF),
-    wellViolet = 0.09f,
-    wellTeal = 0.07f
+    warning = Color(0xFFCC9300),           // Amber warning
+    warningDeep = Color(0xFFA67700),
+    danger = Color(0xFFD62B4B),            // Error red
+    dangerDeep = Color(0xFFB0233D),
+    text = Color(0xFF1A1A2E),              // Dark text
+    textMuted = Color(0xFF6E6E82),         // Muted text
+    wellAccent = 0.05f
 )
 
 val LocalRixPalette = staticCompositionLocalOf { RixDarkPalette }
 
 /**
- * Colour accessor kept as an object so existing call sites stay unchanged.
- *
- * The getters are `@ReadOnlyComposable`, which is legal because each one only
- * reads a composition local; Compose therefore records the dependency and every
- * screen recomposes when the skin changes.
+ * Colour accessor — single accent (teal), no violet/purple anywhere.
  */
 object RixColors {
     val isDark: Boolean @Composable @ReadOnlyComposable get() = LocalRixPalette.current.isDark
@@ -108,25 +101,39 @@ object RixColors {
     val Surface: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.surface
     val SurfaceHigh: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.surfaceHigh
     val Stroke: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.stroke
-    val Violet: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.violet
-    val VioletDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.violetDeep
-    val Teal: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.teal
-    val TealDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.tealDeep
+    /** @deprecated Use [Accent] — kept for binary compatibility during migration. */
+    @Deprecated("Use Accent", ReplaceWith("Accent"))
+    val Violet: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accent
+    /** @deprecated Use [AccentDeep] — kept for binary compatibility during migration. */
+    @Deprecated("Use AccentDeep", ReplaceWith("AccentDeep"))
+    val VioletDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accentDeep
+    /** Primary accent — teal. */
+    val Accent: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accent
+    /** Deeper accent for pressed/hover states. */
+    val AccentDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accentDeep
+    /** @deprecated Use [Accent] — kept for binary compatibility. */
+    @Deprecated("Use Accent", ReplaceWith("Accent"))
+    val Teal: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accent
+    /** @deprecated Use [AccentDeep] — kept for binary compatibility. */
+    @Deprecated("Use AccentDeep", ReplaceWith("AccentDeep"))
+    val TealDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.accentDeep
     val Text: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.text
     val TextMuted: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.textMuted
     val Danger: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.danger
+    val DangerDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.dangerDeep
     val Warning: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.warning
+    val WarningDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.warningDeep
     val OnAccent: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.onAccent
 }
 
 private fun schemeFor(p: RixPalette) = if (p.isDark) {
     darkColorScheme(
-        primary = p.violet,
+        primary = p.accent,
         onPrimary = p.onAccent,
-        primaryContainer = p.violetDeep,
+        primaryContainer = p.accentDeep,
         onPrimaryContainer = p.text,
-        secondary = p.teal,
-        onSecondary = p.onAccent,
+        secondary = p.warning,
+        onSecondary = Color.Black,
         background = p.background,
         onBackground = p.text,
         surface = p.surface,
@@ -135,16 +142,16 @@ private fun schemeFor(p: RixPalette) = if (p.isDark) {
         onSurfaceVariant = p.textMuted,
         outline = p.stroke,
         error = p.danger,
-        onError = Color(0xFF2A0010)
+        onError = Color.White
     )
 } else {
     lightColorScheme(
-        primary = p.violet,
+        primary = p.accent,
         onPrimary = p.onAccent,
-        primaryContainer = p.violetDeep,
+        primaryContainer = p.accentDeep,
         onPrimaryContainer = Color.White,
-        secondary = p.teal,
-        onSecondary = p.onAccent,
+        secondary = p.warning,
+        onSecondary = Color.Black,
         background = p.background,
         onBackground = p.text,
         surface = p.surface,
@@ -161,7 +168,7 @@ private val RixTypography = Typography(
     displaySmall = TextStyle(fontSize = 34.sp, fontWeight = FontWeight.SemiBold),
     headlineMedium = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.SemiBold),
     titleLarge = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+    titleMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
     bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 23.sp),
     bodyMedium = TextStyle(fontSize = 13.5.sp, lineHeight = 20.sp),
     labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
@@ -170,16 +177,6 @@ private val RixTypography = Typography(
 
 /**
  * Applies the skin, the language and the direction they imply.
- *
- * The direction is pinned rather than left to the device locale: the screens are
- * Persian by default and the phone may well be set to English, which would lay
- * every Persian row out left-to-right. Picking a language now picks the
- * direction with it, so English reads left-to-right and Persian right-to-left.
- * Text that must stay left-to-right whatever the language -- addresses, ports,
- * logs -- opts out locally with `textDirection = TextDirection.Ltr`.
- *
- * Status- and navigation-bar icon colours are flipped with the skin, otherwise
- * light mode would draw white clock glyphs on a white bar.
  */
 @Composable
 fun RixTheme(
