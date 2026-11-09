@@ -11,6 +11,10 @@ import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * Manages Cloudflare IPv4 ranges and implements smart IP selection.
@@ -234,7 +238,7 @@ object CloudflareIpManager {
             val ip = ipToLong(ipStr)
             val mask = if (prefix == 0) 0L else (-1L shl (32 - prefix))
             val start = (ip and mask) + 1 // Skip network address
-            val end = (ip and mask) | (mask.inv()) - 1 // Skip broadcast
+            val end = ((ip and mask) or mask.inv()) - 1 // Skip broadcast
             if (start > end) return null
             start to end
         } catch (e: Exception) {
@@ -296,8 +300,8 @@ object CloudflareIpManager {
             // Calculate stability (inverse of coefficient of variation)
             val stabilityScore = if (latencies.size >= 2) {
                 val mean = latencies.average()
-                val variance = latencies.map { (it - mean).pow(2) }.average()
-                val stdDev = Math.sqrt(variance)
+                val variance = latencies.map { (it.toDouble() - mean).pow(2) }.average()
+                val stdDev = sqrt(variance)
                 if (mean > 0) (1.0 - (stdDev / mean).coerceIn(0.0, 1.0)) else 0.5
             } else {
                 0.5

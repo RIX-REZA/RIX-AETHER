@@ -210,10 +210,10 @@ class RixProxyService : LifecycleService() {
             startForegroundSafely(l10n(R.string.notif_proxy_running, chosen.bindPort))
 
             // Initialize CoreCoordinator for ongoing health monitoring and failover
-            coordinator = CoreCoordinator.create(this, chosen, RixRuntime)
+            coordinator = CoreCoordinator.create(this, chosen)
             stateChannel = coordinator.start()
             lifecycleScope.launch {
-                stateChannel.consumeEach { state ->
+                for (state in stateChannel) {
                     when (state) {
                         is CoreCoordinator.State.Degraded -> {
                             LogBus.i("proxy", "Coordinator: degraded - ${state.reason}")
@@ -221,9 +221,9 @@ class RixProxyService : LifecycleService() {
                         is CoreCoordinator.State.Recovering -> {
                             LogBus.i("proxy", "Coordinator: failover to ${state.transport.label}")
                         }
-                        is CoreCoordinator.State.Error -> {
-                            LogBus.e("proxy", "Coordinator error: ${state.message}")
-                            lifecycleScope.launch { shutdown(state.message, coroutineContext[Job]) }
+                        is CoreCoordinator.State.Disconnected -> {
+                            LogBus.e("proxy", "Coordinator disconnected: ${state.reason}")
+                            lifecycleScope.launch { shutdown(state.reason, coroutineContext[Job]) }
                         }
                         else -> {}
                     }

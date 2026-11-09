@@ -29,11 +29,9 @@ import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.Telegram
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material.icons.rounded.GitHub
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -155,12 +153,12 @@ fun OptionsScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 SocialIcon(
-                    icon = Icons.Rounded.Telegram,
+                    icon = TelegramIcon(),
                     url = "https://t.me/RIXPANEL",
                     contentDesc = "Telegram"
                 )
                 SocialIcon(
-                    icon = Icons.Rounded.GitHub,
+                    icon = GitHubIcon(),
                     url = "https://github.com/RIX-REZA/RIX-AETHER",
                     contentDesc = "GitHub"
                 )
@@ -1023,17 +1021,12 @@ private fun NumberField(
 
 @Composable
 private fun SocialIcon(
-    icon: ImageVector,
+    icon: @Composable () -> Unit,
     url: String,
     contentDesc: String
 ) {
     IconButton(onClick = { openUrl(url) }) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDesc,
-            tint = RixColors.TextMuted,
-            modifier = Modifier.size(24.dp)
-        )
+        icon()
     }
 }
 
@@ -1045,4 +1038,78 @@ private fun openUrl(url: String) {
     } catch (e: Exception) {
         // ignore
     }
+}
+
+/** Custom Telegram icon for the header social links. */
+@Composable
+private fun TelegramIcon() {
+    Icon(
+        imageVector = ImageVector.Builder(
+            name = "Telegram",
+            defaultWidth = 24.dp.toPx(),
+            defaultHeight = 24.dp.toPx(),
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        )
+            .addPath(
+                path = android.graphics.Path().apply {
+                    moveTo(21.5f, 4.5f)
+                    lineTo(2.5f, 19.5f)
+                    lineTo(5.5f, 12.5f)
+                    lineTo(13.5f, 18f)
+                    lineTo(21.5f, 6.5f)
+                    lineTo(18.5f, 3.5f)
+                    lineTo(2.5f, 19.5f)
+                    moveTo(15.5f, 16.5f)
+                    lineTo(9.5f, 10.5f)
+                    lineTo(2.5f, 19.5f)
+                    lineTo(8.5f, 15.5f)
+                    lineTo(15.5f, 16.5f)
+                }.toString(),
+                fill = androidx.compose.ui.graphics.Color.Unspecified
+            )
+            .build(),
+        contentDescription = "Telegram",
+        tint = RixColors.TextMuted,
+        modifier = Modifier.size(24.dp)
+    )
+}
+
+/** Custom GitHub icon for the header social links. */
+@Composable
+private fun GitHubIcon() {
+    Icon(
+        imageVector = ImageVector.Builder(
+            name = "GitHub",
+            defaultWidth = 24.dp.toPx(),
+            defaultHeight = 24.dp.toPx(),
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        )
+            .addPath(
+                path = android.graphics.Path().apply {
+                    moveTo(12f, 2f)
+                    curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
+                    curveTo(2f, 17.52f, 5.58f, 22.34f, 12f, 23.4f)
+                    curveTo(18.42f, 22.34f, 22f, 17.52f, 22f, 12f)
+                    curveTo(22f, 6.48f, 18.42f, 2f, 12f, 2f)
+                    close()
+                    moveTo(12f, 4f)
+                    curveTo(8.14f, 4f, 5f, 7.14f, 5f, 11f)
+                    curveTo(5f, 13.86f, 6.78f, 16.26f, 9.5f, 17.6f)
+                    lineTo(9.5f, 20f)
+                    lineTo(12f, 18f)
+                    lineTo(14.5f, 20f)
+                    lineTo(14.5f, 17.6f)
+                    curveTo(17.22f, 16.26f, 19f, 13.86f, 19f, 11f)
+                    curveTo(19f, 7.14f, 15.86f, 4f, 12f, 4f)
+                    close()
+                }.toString(),
+                fill = androidx.compose.ui.graphics.Color.Unspecified
+            )
+            .build(),
+        contentDescription = "GitHub",
+        tint = RixColors.TextMuted,
+        modifier = Modifier.size(24.dp)
+    )
 }

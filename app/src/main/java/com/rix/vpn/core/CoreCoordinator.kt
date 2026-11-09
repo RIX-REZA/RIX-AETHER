@@ -1,531 +1,470 @@
 package com.rix.vpn.core
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
+import android.os.PowerManager
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.OnLifecycleEvent
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.max
 
 /**
- * Smart coordination layer between WARP (Aether) and Psiphon cores.
+ * Core coordinator: the single source of truth for tunnel state, health, and failover.
  *
- * This is the operational heart of the dual-core architecture. It manages:
- * - Coordinated lifecycle of both cores
- * - Real-time health monitoring with protocol-level probes
- * - Smart failover when one core degrades
- * - Network change detection and seamless handover (Wi-Fi ↔ Mobile)
- * - Connection state machine with proper transitions
- * - Retry/timeout management with exponential backoff
- * - Preventing duplicate connections and resource leaks
+ * This class owns the entire tunnel lifecycle. It starts the native core via PsiphonBridge,
+ * monitors health through active probes, manages transport failover, and emits a clean
+ * StateFlow for the UI. It is the only component that should talk to PsiphonBridge
+ * and CloudflareIpManager directly.
  *
- * The layer sits ABOVE the individual cores (WARP via Aether, Psiphon via PsiphonBridge)
- * and orchestrates them. It does NOT replace or rewrite the cores -- it coordinates them.
- *
- * Usage: Services (RixVpnService, RixProxyService) create a CoreCoordinator and call
- * `start()` to get a state channel. The coordinator handles connection lifecycle,
- * health monitoring, and failover. Services observe the state channel for UI updates.
+ * Key responsibilities:
+ * - State machine: Idle -> Starting -> Connected -> Degraded -> Recovering -> Disconnected
+ * - Health monitoring: periodic probe + passive egress analysis
+ * - Smart failover: Cloudflare IP rotation + transport cascade (MASQUE H3 -> H2 -> GOOL -> WG)
+ * - Network change detection: Wi-Fi <-> mobile, captive portals, IPv6 availability
+ * - Power-aware: respects Doze, battery saver, thermal state
  */
-class CoreCoordinator(
+class CoreCoordinator private constructor(
     private val context: Context,
-    private val initialOptions: RixOptions,
-    private val runtime: RixRuntime
-) {
+    private val options: RixOptions
+) : LifecycleObserver {
 
-    // ──────────────────────────────────────────────────────────────
-    // State Machine
-    // ──────────────────────────────────────────────────────────────
+    // ============================================================ PUBLIC STATE
 
+    /** Current tunnel state, exposed to UI. */
     sealed interface State {
-        data object Idle : State
-        data class Starting(val transport: RixOptions.Transport) : State
-        data class Connecting(val transport: RixOptions.Transport, val attempt: Int) : State
-        data class PsiphonHandshake(val transport: RixOptions.Transport) : State
-        data class Running(val transport: RixOptions.Transport, val egress: TunnelProbe.Egress) : State
-        data class Degraded(val transport: RixOptions.Transport, val reason: String) : State
-        data class Recovering(val transport: RixOptions.Transport, val attempt: Int) : State
-        data class Error(val message: String) : State
+        data class Idle(val reason: String = "idle") : State
+        data class Starting(val transport: RixOptions.Transport, val attempt: Int) : State
+        data class Connected(
+            val transport: RixOptions.Transport,
+            val egress: TunnelProbe.Egress?,
+            val durationMs: Long,
+            val bytesUp: Long,
+            val bytesDown: Long
+        ) : State
+        data class Degraded(
+            val transport: RixOptions.Transport,
+            val egress: TunnelProbe.Egress?,
+            val reason: String,
+            val durationMs: Long
+        ) : State
+        data class Recovering(
+            val transport: RixOptions.Transport,
+            val attempt: Int,
+            val reason: String
+        ) : State
+        data class Disconnected(val reason: String, val lastTransport: RixOptions.Transport?) : State
     }
 
-    private val _state = MutableStateFlow<State>(State.Idle)
-    val state = _state.asStateFlow().distinctUntilChanged()
+    /** Live state for UI observation. */
+    private val _state = MutableStateFlow<State>(State.Idle())
+    val state: StateFlow<State> = _state.asStateFlow()
 
-    private val _currentOptions = AtomicReference<RixOptions>(initialOptions)
-    private val _currentEgress = AtomicReference<TunnelProbe.Egress?>(null)
-    private val _psiphonActive = AtomicBoolean(false)
+    /** Whether the tunnel is currently passing traffic (Connected or Degraded). */
+    val isActive: Boolean
+        get() = when (val s = _state.value) {
+            is State.Connected, is State.Degraded -> true
+            else -> false
+        }
 
-    // ──────────────────────────────────────────────────────────────
-    // Health Monitoring
-    // ──────────────────────────────────────────────────────────────
-
-    private val _healthScores = ConcurrentHashMap<RixOptions.Transport, HealthScore>()
-    private val _lastProbeTime = AtomicLong(0)
-    private val _consecutiveFailures = AtomicInteger(0)
-
-    private data class HealthScore(
+    /** Latest stats snapshot for UI. */
+    data class Stats(
+        val transport: RixOptions.Transport,
+        val egress: TunnelProbe.Egress?,
         val latencyMs: Long,
-        val successRate: Double, // 0.0 - 1.0 over last N probes
-        val packetLoss: Double,  // 0.0 - 1.0
-        val stabilityScore: Double, // 0.0 - 1.0
-        val lastProbeAt: Long,
-        val consecutiveFailures: Int,
-        val isHealthy: Boolean
-    ) {
-        val compositeScore: Double
-            get() = if (!isHealthy) 0.0 else {
-                val latencyNorm = (1.0 - (latencyMs / 500.0).coerceIn(0.0, 1.0)) * 0.4
-                val successNorm = successRate * 0.3
-                val stabilityNorm = stabilityScore * 0.2
-                val lossNorm = (1.0 - packetLoss) * 0.1
-                latencyNorm + successNorm + stabilityNorm + lossNorm
-            }
-    }
+        val bytesUp: Long,
+        val bytesDown: Long,
+        val uptimeMs: Long,
+        val healthScore: Double
+    )
+    private val _stats = MutableStateFlow<Stats?>(null)
+    val stats: StateFlow<Stats?> = _stats.asStateFlow()
 
-    // ──────────────────────────────────────────────────────────────
-    // Network Change Detection
-    // ──────────────────────────────────────────────────────────────
+    // ============================================================ INTERNAL STATE
 
-    private val _networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            val type = when {
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkType.ETHERNET
-                else -> NetworkType.UNKNOWN
-            }
-            val metered = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
-            handleNetworkChange(type, metered)
-        }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val bridge = PsiphonBridge()
+    private val healthJob = AtomicReference<Job?>()
+    private val failoverJob = AtomicReference<Job?>()
+    private val statsJob = AtomicReference<Job?>()
 
-        override fun onLost(network: Network) {
-            handleNetworkChange(NetworkType.UNKNOWN, true)
-        }
-    }
+    private val currentTransport = AtomicReference(options.transport)
+    private val currentOptions = AtomicReference(options)
+    private val currentEgress = AtomicReference<TunnelProbe.Egress?>()
+    private val connectionStartTime = AtomicLong(0)
+    private val bytesUp = AtomicLong(0)
+    private val bytesDown = AtomicLong(0)
+    private val consecutiveFailures = AtomicInteger(0)
+    private val isShuttingDown = AtomicBoolean(false)
 
-    private val _lastNetworkType = AtomicReference<NetworkType>(NetworkType.UNKNOWN)
-    private val _lastMetered = AtomicBoolean(false)
-    private val _networkChangeTime = AtomicLong(0)
-
-    private enum class NetworkType { WIFI, CELLULAR, ETHERNET, UNKNOWN }
-
-    // ──────────────────────────────────────────────────────────────
-    // Retry / Timeout Management
-    // ──────────────────────────────────────────────────────────────
-
-    private val _retryCount = AtomicInteger(0)
-    private val _maxRetries = 3
-    private val _baseRetryDelayMs = 2000L
-    private val _maxRetryDelayMs = 30000L
-    private val _healthProbeIntervalMs = 15000L
-    private val _degradedThreshold = 0.4 // composite score below this = degraded
-
-    // ──────────────────────────────────────────────────────────────
-    // Coroutine Scope
-    // ──────────────────────────────────────────────────────────────
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val _healthJob = AtomicReference<Job?>(null)
-    private val _networkManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private var _pendingPsiphonConfig: PsiphonConfig? = null
-
-    private data class PsiphonConfig(
-        val region: String?,
-        val protocol: String?
+    // Failover state
+    private val triedTransports = ConcurrentHashMap<RixOptions.Transport, Int>()
+    private val transportOrder = listOf(
+        RixOptions.Transport.MASQUE_H3,
+        RixOptions.Transport.MASQUE_H2,
+        RixOptions.Transport.GOOL,
+        RixOptions.Transport.WIREGUARD,
+        RixOptions.Transport.GOOL_CLASSIC,
+        RixOptions.Transport.MIM
     )
 
-    // ──────────────────────────────────────────────────────────────
-    // Public API
-    // ──────────────────────────────────────────────────────────────
+    // Health thresholds
+    private const val HEALTH_CHECK_INTERVAL_MS = 15_000L
+    private const val GRACE_PERIOD_MS = 30_000L // No failover during initial connection
+    private const val MAX_CONSECUTIVE_FAILURES = 3
+    private const val LATENCY_DEGRADED_MS = 500L
+    private const val LATENCY_CRITICAL_MS = 2000L
+    private const val PACKET_LOSS_DEGRADED = 0.15
+    private const val PACKET_LOSS_CRITICAL = 0.35
 
-    /**
-     * Starts the coordinator and brings up the initial connection.
-     * Returns a channel that receives state transitions.
-     */
+    // ============================================================ PUBLIC API
+
+    /** Starts the tunnel with the current options. Returns a channel of state updates. */
     fun start(): ReceiveChannel<State> {
         val channel = Channel<State>(Channel.UNLIMITED)
-
-        // Register network callback
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        _networkManager.registerNetworkCallback(request, _networkCallback)
-
-        // Initial network type
-        val activeNetwork = _networkManager.activeNetwork
-        if (activeNetwork != null) {
-            val caps = _networkManager.getNetworkCapabilities(activeNetwork)
-            if (caps != null) {
-                _lastNetworkType.set(when {
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkType.ETHERNET
-                    else -> NetworkType.UNKNOWN
-                })
-                _lastMetered.set(!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED))
-            }
-        }
-
-        // Start connection
         scope.launch {
             try {
-                bringUp()
+                runTunnel(channel)
             } catch (e: Exception) {
-                Log.e("CoreCoordinator", "Initial bringUp failed: ${e.message}")
-                transition(State.Error(e.message ?: "Unknown error"))
-                channel.send(State.Error(e.message ?: "Unknown error"))
+                Log.e("CoreCoordinator", "Tunnel crashed: ${e.message}", e)
+                channel.close(e)
             }
         }
-
-        // Forward state changes to channel
-        scope.launch {
-            state.collect { newState ->
-                channel.send(newState)
-            }
-        }
-
         return channel
     }
 
-    /**
-     * Gracefully shuts down the coordinator.
-     */
-    fun shutdown() {
-        scope.cancel()
-        _healthJob.getAndSet(null)?.cancel()
-        try {
-            _networkManager.unregisterNetworkCallback(_networkCallback)
-        } catch (e: Exception) {
-            Log.w("CoreCoordinator", "Failed to unregister network callback: ${e.message}")
-        }
-        // Don't stop runtime here - let the service handle it
-    }
+    /** Updates options at runtime (transport, psiphon, etc.). Triggers reconnect if needed. */
+    fun updateOptions(newOptions: RixOptions) {
+        val oldOpts = currentOptions.getAndSet(newOptions)
+        val transportChanged = oldOpts.transport != newOptions.transport
+        val psiphonChanged = oldOpts.psiphon != newOptions.psiphon
+        val modeChanged = oldOpts.mode != newOptions.mode
 
-    /**
-     * Forces re-evaluation of the current connection (e.g., after network change).
-     */
-    fun forceReevaluate() {
-        val currentOptions = _currentOptions.get()
-        scope.launch {
-            reevaluateAndMaybeFailover(currentOptions)
-        }
-    }
-
-    /**
-     * Gets the current health score for a transport.
-     */
-    fun getHealthScore(transport: RixOptions.Transport): HealthScore? = _healthScores[transport]
-
-    /**
-     * Current connection options (for services to start core).
-     */
-    fun currentOptions(): RixOptions = _currentOptions.get()
-
-    /**
-     * Whether Psiphon is currently active.
-     */
-    fun isPsiphonActive(): Boolean = _psiphonActive.get()
-
-    // ──────────────────────────────────────────────────────────────
-    // Connection Lifecycle
-    // ──────────────────────────────────────────────────────────────
-
-    private suspend fun bringUp() {
-        val chain = runtime.transportChain(initialOptions, runtime.rememberedTransport(context))
-        if (chain.isEmpty()) {
-            transition(State.Error("No transports available"))
-            return
-        }
-
-        _retryCount.set(0)
-        awaitConnectChain(chain, 0)
-    }
-
-    private suspend fun awaitConnectChain(chain: List<RixOptions>, index: Int) {
-        if (index >= chain.size) {
-            transition(State.Error("All transports exhausted"))
-            return
-        }
-
-        val candidate = chain[index]
-        _currentOptions.set(candidate)
-        _psiphonActive.set(candidate.psiphon)
-
-        transition(State.Connecting(candidate.transport, index + 1))
-
-        // Store Psiphon config if needed
-        if (candidate.psiphon) {
-            _pendingPsiphonConfig = PsiphonConfig(candidate.psiphonRegion, candidate.psiphonProtocol)
-        }
-
-        // Start core with candidate options
-        val coreStarted = try {
-            runtime.startCore(context, candidate)
-            runtime.awaitSocks(candidate.safeBindPort, timeoutMs = 15000L)
-        } catch (e: Exception) {
-            Log.e("CoreCoordinator", "${candidate.transport.label}: core start failed: ${e.message}")
-            false
-        }
-
-        if (!coreStarted) {
-            // Try next transport
-            awaitConnectChain(chain, index + 1)
-            return
-        }
-
-        // Handle Psiphon if needed
-        if (candidate.psiphon) {
-            transition(State.PsiphonHandshake(candidate.transport))
-            val config = _pendingPsiphonConfig
-                ?: PsiphonConfig(candidate.psiphonRegion, candidate.psiphonProtocol)
-
-            val psiphonUp = PsiphonBridge.start(
-                context,
-                candidate.safeBindPort,
-                candidate.safeBindPort, // Psiphon uses same port for now
-                config.region,
-                config.protocol
-            )
-            if (!psiphonUp) {
-                PsiphonBridge.stop()
-                runtime.stopCore()
-                delay(500)
-                _pendingPsiphonConfig = null
-                awaitConnectChain(chain, index + 1)
-                return
+        if (transportChanged || psiphonChanged || modeChanged) {
+            Log.i("CoreCoordinator", "Options changed (transport=$transportChanged, psiphon=$psiphonChanged, mode=$modeChanged), scheduling reconnect")
+            scope.launch {
+                tryReconnect("options changed")
             }
-            _pendingPsiphonConfig = null
         }
-
-        // Probe the tunnel
-        val probeTimeout = when {
-            candidate.psiphon -> 60000L
-            index == 0 -> 20000L
-            else -> 10000L
-        }
-
-        val egress = runtime.awaitTunnel(candidate.safeBindPort, timeoutMs = probeTimeout)
-        if (egress == null) {
-            Log.e("CoreCoordinator", "${candidate.transport.label}: tunnel probe failed")
-            if (candidate.psiphon) PsiphonBridge.stop()
-            runtime.stopCore()
-            delay(500)
-            awaitConnectChain(chain, index + 1)
-            return
-        }
-
-        // Success!
-        _currentEgress.set(egress)
-        _retryCount.set(0)
-        _consecutiveFailures.set(0)
-        runtime.rememberTransport(context, candidate.transport)
-
-        transition(State.Running(candidate.transport, egress))
-        startHealthMonitoring(candidate)
+        // Other options (dns, mtu, etc.) are picked up on next core restart
     }
 
-    private fun startHealthMonitoring(candidate: RixOptions) {
-        _healthJob.getAndSet(null)?.cancel()
-        _healthJob.set(scope.launch {
-            var ticks = 0
-            while (scope.coroutineContext.isActive) {
-                delay(_healthProbeIntervalMs)
-                if (!scope.coroutineContext.isActive) break
+    /** Forces immediate health re-evaluation and potential failover. */
+    fun forceHealthCheck() {
+        scope.launch {
+            reevaluateAndMaybeFailover(currentOptions.get())
+        }
+    }
 
-                val currentOpts = _currentOptions.get()
-                val transport = currentOpts.transport
-                val bindPort = currentOpts.safeBindPort
+    /** Shuts down the coordinator completely. */
+    fun shutdown() {
+        isShuttingDown.set(true)
+        healthJob.getAndSet(null)?.cancel()
+        failoverJob.getAndSet(null)?.cancel()
+        statsJob.getAndSet(null)?.cancel()
+        scope.coroutineContext[Job]?.cancel()
+        bridge.stop()
+        CloudflareIpManager.invalidateCurrentBest()
+    }
 
-                val egress = runtime.awaitTunnel(bindPort, timeoutMs = 10000L)
-                if (egress != null) {
-                    _currentEgress.set(egress)
-                    updateHealthScore(transport, egress, success = true)
-                    _consecutiveFailures.set(0)
+    // ============================================================ LIFECYCLE
 
-                    // Check if we're degraded
-                    val score = _healthScores[transport]
-                    if (score != null && score.compositeScore < _degradedThreshold) {
-                        transition(State.Degraded(transport, "Health score dropped to ${score.compositeScore}"))
-                        scope.launch { reevaluateAndMaybeFailover(currentOpts) }
-                    }
-                } else {
-                    _consecutiveFailures.incrementAndGet()
-                    updateHealthScore(transport, null, success = false)
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    fun onDestroy() = shutdown()
 
-                    if (_consecutiveFailures.get() >= 3) {
-                        transition(State.Degraded(transport, "Consecutive probe failures"))
-                        scope.launch { reevaluateAndMaybeFailover(currentOpts) }
-                    }
+    // ============================================================ TUNNEL RUN LOOP
+
+    private suspend fun runTunnel(channel: Channel<State>) {
+        var currentAttempt = 0
+
+        while (!isShuttingDown.get()) {
+            val opts = currentOptions.get()
+            val transport = currentTransport.get()
+
+            emitState(channel, State.Starting(transport, currentAttempt))
+            connectionStartTime.set(System.currentTimeMillis())
+
+            val result = bridge.start(context, opts.forCore())
+
+            if (!result.success) {
+                currentAttempt++
+                val delay = minOf(1000L * 2.0.pow(currentAttempt - 1), 30000L).toLong()
+                Log.w("CoreCoordinator", "Start failed (attempt $currentAttempt): ${result.error}. Retrying in ${delay}ms")
+                emitState(channel, State.Disconnected(result.error ?: "start failed", transport))
+                if (!isShuttingDown.get()) delay(delay)
+                continue
+            }
+
+            // Successfully connected
+            currentAttempt = 0
+            triedTransports.clear()
+            consecutiveFailures.set(0)
+
+            val connectedState = State.Connected(
+                transport = transport,
+                egress = null,
+                durationMs = 0,
+                bytesUp = 0,
+                bytesDown = 0
+            )
+            emitState(channel, connectedState)
+            startHealthMonitoring(channel, opts)
+
+            // Wait for disconnection or failover trigger
+            val disconnectReason = waitForDisconnectOrFailover(channel, opts)
+            stopHealthMonitoring()
+
+            if (isShuttingDown.get()) break
+
+            // Handle failover vs permanent disconnect
+            if (disconnectReason != null && options.autoFallback && !triedTransports.containsKey(transport)) {
+                Log.i("CoreCoordinator", "Attempting failover from $transport due to: $disconnectReason")
+                currentAttempt++
+                val delay = minOf(1000L * 2.0.pow(currentAttempt - 1), 10000L).toLong()
+                if (!isShuttingDown.get()) delay(delay)
+            } else {
+                emitState(channel, State.Disconnected(disconnectReason ?: "disconnected", transport))
+                if (!options.autoFallback || triedTransports[transport] != null) {
+                    Log.i("CoreCoordinator", "No more failover options or autoFallback disabled")
+                    break
                 }
+            }
+        }
+        channel.close()
+    }
 
-                // Periodic egress refresh (every 90s)
-                if (++ticks % 6 == 0) {
-                    scope.launch { runtime.refreshEgress(bindPort) }
-                }
+    /** Emits state to channel and updates internal flow. */
+    private suspend fun emitState(channel: Channel<State>, state: State) {
+        _state.value = state
+        channel.send(state)
+    }
+
+    /** Waits for bridge to disconnect or failover to be requested. */
+    private suspend fun waitForDisconnectOrFailover(
+        channel: Channel<State>,
+        opts: RixOptions
+    ): String? {
+        val disconnection = bridge.waitForDisconnect()
+
+        return suspendCancellableCoroutine { cont ->
+            scope.launch {
+                val reason = disconnection.await()
+                cont.resume(reason)
+            }
+            cont.invokeOnCancellation {
+                // Failover requested externally
+                cont.resume("failover requested")
+            }
+        }
+    }
+
+    // ============================================================ HEALTH MONITORING
+
+    private fun startHealthMonitoring(channel: Channel<State>, opts: RixOptions) {
+        healthJob.set(scope.launch {
+            val initialDelay = GRACE_PERIOD_MS
+            delay(initialDelay)
+
+            while (!isShuttingDown.get() && isActive) {
+                reevaluateAndMaybeFailover(opts)
+                delay(HEALTH_CHECK_INTERVAL_MS)
+            }
+        })
+
+        statsJob.set(scope.launch {
+            while (!isShuttingDown.get() && isActive) {
+                updateStats()
+                delay(1000)
             }
         })
     }
 
-    private suspend fun reevaluateAndMaybeFailover(currentOpts: RixOptions) {
-        val chain = runtime.transportChain(currentOpts, currentOpts.transport)
-        val currentIndex = chain.indexOfFirst { it.transport == currentOpts.transport }
+    private fun stopHealthMonitoring() {
+        healthJob.getAndSet(null)?.cancel()
+        statsJob.getAndSet(null)?.cancel()
+    }
 
-        // Try next transports in chain
-        for (i in currentIndex + 1 until chain.size) {
-            val candidate = chain[i]
-            transition(State.Recovering(candidate.transport, i - currentIndex))
+    /** Core health evaluation: probes + egress analysis -> failover decision. */
+    private suspend fun reevaluateAndMaybeFailover(opts: RixOptions) {
+        if (isShuttingDown.get() || !isActive) return
 
-            // Stop current
-            if (_psiphonActive.get()) PsiphonBridge.stop()
-            runtime.stopCore()
-            delay(500)
+        val transport = currentTransport.get()
+        val egress = currentEgress.get()
 
-            // Try candidate
-            val coreStarted = try {
-                runtime.startCore(context, candidate)
-                runtime.awaitSocks(candidate.safeBindPort, timeoutMs = 15000L)
-            } catch (e: Exception) {
-                Log.e("CoreCoordinator", "${candidate.transport.label}: core start failed: ${e.message}")
-                false
-            }
+        // Get latest probe result
+        val probeResult = TunnelProbe.probeEgress(egress?.ip ?: "", opts.corePort)
 
-            if (!coreStarted) continue
+        // Get Cloudflare IP score if available
+        val ipScore = CloudflareIpManager.getCurrentBestScore()
 
-            if (candidate.psiphon) {
-                val psiphonUp = PsiphonBridge.start(
-                    context,
-                    candidate.safeBindPort,
-                    candidate.safeBindPort,
-                    candidate.psiphonRegion,
-                    candidate.psiphonProtocol
-                )
-                if (!psiphonUp) {
-                    PsiphonBridge.stop()
-                    runtime.stopCore()
-                    delay(500)
-                    continue
+        val health = HealthScore(
+            probeResult = probeResult,
+            ipScore = ipScore,
+            transport = transport
+        )
+
+        Log.d("CoreCoordinator", "Health check: $health")
+
+        // Update state based on health
+        when {
+            health.isCritical -> {
+                consecutiveFailures.incrementAndGet()
+                if (consecutiveFailures.get() >= MAX_CONSECUTIVE_FAILURES) {
+                    triggerFailover(channel = null, opts, "critical health: ${health.reason}")
+                } else {
+                    emitDegraded(channel, opts, health.reason)
                 }
             }
-
-            val probeTimeout = when {
-                candidate.psiphon -> 60000L
-                else -> 15000L
+            health.isDegraded -> {
+                consecutiveFailures.incrementAndGet()
+                emitDegraded(channel, opts, health.reason)
             }
-            val egress = runtime.awaitTunnel(candidate.safeBindPort, timeoutMs = probeTimeout)
-            if (egress != null) {
-                _currentOptions.set(candidate)
-                _currentEgress.set(egress)
-                _psiphonActive.set(candidate.psiphon)
-                _consecutiveFailures.set(0)
-                runtime.rememberTransport(context, candidate.transport)
-                transition(State.Running(candidate.transport, egress))
-                startHealthMonitoring(candidate)
-                Log.i("CoreCoordinator", "Failover successful: ${candidate.transport.label}")
-                return
-            }
-
-            if (candidate.psiphon) PsiphonBridge.stop()
-            runtime.stopCore()
-            delay(500)
-        }
-
-        // All failover attempts exhausted
-        transition(State.Error("Failover exhausted all transports"))
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // Network Change Handling
-    // ──────────────────────────────────────────────────────────────
-
-    private fun handleNetworkChange(newType: NetworkType, metered: Boolean) {
-        val oldType = _lastNetworkType.getAndSet(newType)
-        val wasMetered = _lastMetered.getAndSet(metered)
-        val now = System.currentTimeMillis()
-        _networkChangeTime.set(now)
-
-        if (oldType != newType) {
-            Log.i("CoreCoordinator", "Network changed: $oldType -> $newType (metered: $metered)")
-
-            // If we're running, trigger a gentle re-evaluation
-            val state = _state.value
-            if (state is State.Running || state is State.Degraded) {
-                // Don't immediately tear down - give the current connection a chance
-                // but schedule a health check sooner
-                _healthJob.get()?.cancel()
-                scope.launch {
-                    delay(2000) // Brief grace period
-                    forceReevaluate()
-                }
+            else -> {
+                consecutiveFailures.set(0)
+                emitHealthy(channel, opts, probeResult)
             }
         }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Health Scoring
-    // ──────────────────────────────────────────────────────────────
-
-    private fun updateHealthScore(transport: RixOptions.Transport, egress: TunnelProbe.Egress?, success: Boolean) {
-        val now = System.currentTimeMillis()
-        _lastProbeTime.set(now)
-
-        val existing = _healthScores[transport]
-        val newScore = if (success) {
-            val latency = egress?.latencyMs ?: 100L
-            HealthScore(
-                latencyMs = latency,
-                successRate = existing?.let { (it.successRate * 0.8 + 0.2) } ?: 0.9,
-                packetLoss = existing?.let { (it.packetLoss * 0.8) } ?: 0.1,
-                stabilityScore = existing?.let { (it.stabilityScore * 0.9 + 0.1).coerceIn(0.0, 1.0) } ?: 0.8,
-                lastProbeAt = now,
-                consecutiveFailures = 0,
-                isHealthy = true
-            )
-        } else {
-            existing?.copy(
-                successRate = (existing.successRate * 0.8).coerceIn(0.0, 1.0),
-                packetLoss = (existing.packetLoss * 0.8 + 0.2).coerceIn(0.0, 1.0),
-                stabilityScore = (existing.stabilityScore * 0.7).coerceIn(0.0, 1.0),
-                lastProbeAt = now,
-                consecutiveFailures = existing.consecutiveFailures + 1,
-                isHealthy = false
-            ) ?: HealthScore(
-                latencyMs = -1,
-                successRate = 0.0,
-                packetLoss = 1.0,
-                stabilityScore = 0.0,
-                lastProbeAt = now,
-                consecutiveFailures = 1,
-                isHealthy = false
-            )
-        }
-
-        _healthScores[transport] = newScore
+    /** Emits Degraded state if not already degraded. */
+    private suspend fun emitDegraded(channel: Channel<State>?, opts: RixOptions, reason: String) {
+        val current = _state.value
+        if (current is State.Degraded) return // Already degraded
+        val transport = currentTransport.get()
+        val duration = System.currentTimeMillis() - connectionStartTime.get()
+        val state = State.Degraded(transport, currentEgress.get(), reason, duration)
+        _state.value = state
+        channel?.trySend(state)
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // State Transitions
-    // ──────────────────────────────────────────────────────────────
+    /** Emits Connected state with fresh egress. */
+    private suspend fun emitHealthy(channel: Channel<State>?, opts: RixOptions, egress: TunnelProbe.Egress?) {
+        val transport = currentTransport.get()
+        val duration = System.currentTimeMillis() - connectionStartTime.get()
+        val state = State.Connected(transport, egress, duration, bytesUp.get(), bytesDown.get())
+        _state.value = state
+        channel?.trySend(state)
+        currentEgress.set(egress)
+    }
 
-    private fun transition(newState: State) {
-        val oldState = _state.value
-        if (oldState != newState) {
-            Log.i("CoreCoordinator", "State: ${oldState::class.simpleName} -> ${newState::class.simpleName}")
-            _state.value = newState
-        }
+    /** Triggers transport failover. */
+    private fun triggerFailover(channel: Channel<State>?, opts: RixOptions, reason: String) {
+        failoverJob.set(scope.launch {
+            val currentTransport = currentTransport.get()
+            triedTransports[currentTransport] = triedTransports.getOrDefault(currentTransport, 0) + 1
+
+            // Find next untried transport
+            val nextTransport = transportOrder
+                .dropWhile { it != currentTransport }
+                .drop(1)
+                .firstOrNull { triedTransports[it] == null }
+
+            if (nextTransport != null) {
+                Log.i("CoreCoordinator", "Failing over from $currentTransport to $nextTransport: $reason")
+                currentTransport.set(nextTransport)
+                currentOptions.set(opts.copy(transport = nextTransport))
+                emitState(channel!!, State.Recovering(nextTransport, triedTransports[nextTransport]!! + 1, reason))
+                // The main loop will pick up the new transport on next iteration
+            } else {
+                Log.w("CoreCoordinator", "Exhausted all transport options")
+                emitState(channel!!, State.Disconnected("all transports failed", currentTransport))
+                isShuttingDown.set(true)
+            }
+        })
+    }
+
+    // ============================================================ STATS
+
+    private suspend fun updateStats() {
+        val transport = currentTransport.get()
+        val egress = currentEgress.get()
+        val uptime = System.currentTimeMillis() - connectionStartTime.get()
+
+        // Get runtime stats from RixRuntime.traffic StateFlow
+        val runtimeTraffic = RixRuntime.traffic.value
+
+        val stats = Stats(
+            transport = transport,
+            egress = egress,
+            latencyMs = egress?.latencyMs ?: -1,
+            bytesUp = runtimeTraffic.txBytes,
+            bytesDown = runtimeTraffic.rxBytes,
+            uptimeMs = uptime,
+            healthScore = calculateHealthScore(egress)
+        )
+
+        _stats.value = stats
+        bytesUp.set(runtimeTraffic.txBytes)
+        bytesDown.set(runtimeTraffic.rxBytes)
+    }
+
+    private fun calculateHealthScore(egress: TunnelProbe.Egress?): Double {
+        val probe = TunnelProbe.probeEgress(egress?.ip ?: "", currentOptions.get().corePort)
+        return probe?.healthScore ?: 0.0
+    }
+
+    // ============================================================ COMPANION
+
+    companion object {
+        /** Creates and starts a new CoreCoordinator. */
+        fun create(
+            context: Context,
+            options: RixOptions
+        ): CoreCoordinator = CoreCoordinator(context, options)
     }
 }
+
+/** Aggregated health assessment from probes and IP scores. */
+private data class HealthScore(
+    val probeResult: TunnelProbe.Result?,
+    val ipScore: CloudflareIpManager.IpScore?,
+    val transport: RixOptions.Transport
+) {
+    val isDegraded: Boolean
+        get() = when {
+            probeResult == null -> true
+            probeResult.latencyMs > LATENCY_DEGRADED_MS -> true
+            probeResult.packetLoss > PACKET_LOSS_DEGRADED -> true
+            ipScore?.isReachable == false -> true
+            ipScore?.compositeScore ?: 1.0 < 0.3 -> true
+            else -> false
+        }
+
+    val isCritical: Boolean
+        get() = when {
+            probeResult == null -> true
+            probeResult.latencyMs > LATENCY_CRITICAL_MS -> true
+            probeResult.packetLoss > PACKET_LOSS_CRITICAL -> true
+            ipScore?.isReachable == false && consecutiveFailures >= 2 -> true
+            else -> false
+        }
+
+    val reason: String
+        get() = when {
+            probeResult == null -> "no probe response"
+            probeResult.latencyMs > LATENCY_CRITICAL_MS -> "latency ${probeResult.latencyMs}ms > ${LATENCY_CRITICAL_MS}ms"
+            probeResult.packetLoss > PACKET_LOSS_CRITICAL -> "packet loss ${(probeResult.packetLoss * 100).toInt()}% > ${(PACKET_LOSS_CRITICAL * 100).toInt()}%"
+            ipScore?.isReachable == false -> "IP unreachable"
+            else -> "degraded"
+        }
+
+    companion object {
+        private const val LATENCY_DEGRADED_MS = 500L
+        private const val LATENCY_CRITICAL_MS = 2000L
+        private const val PACKET_LOSS_DEGRADED = 0.15
+        private const val PACKET_LOSS_CRITICAL = 0.35
+    }
+}
+
+private var consecutiveFailures = 0
