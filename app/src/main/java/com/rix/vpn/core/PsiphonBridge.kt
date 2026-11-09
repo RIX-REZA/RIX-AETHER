@@ -83,6 +83,9 @@ object PsiphonBridge {
     @Volatile
     private var running = false
 
+    /** CompletableDeferred that completes when the tunnel disconnects. */
+    private val disconnectDeferred = kotlinx.coroutines.CompletableDeferred<String>()
+
     /**
      * True once a start has failed for a reason that clearing the saved state
      * cannot fix -- the native library itself not loading. Kept so the retry
@@ -151,6 +154,7 @@ object PsiphonBridge {
         // rest of the process.
         broken = false
         lastError = null
+        disconnectDeferred = kotlinx.coroutines.CompletableDeferred<String>() // Reset for new connection
         if (startOnce(context, upstreamPort, listenPort, region, protocol)) {
             return@withContext true
         }
@@ -159,6 +163,7 @@ object PsiphonBridge {
         LogBus.i("psiphon", "start failed; clearing the saved Psiphon state and trying once more")
         stop()
         wipeState(context)
+        disconnectDeferred = kotlinx.coroutines.CompletableDeferred<String>() // Reset for retry
         startOnce(context, upstreamPort, listenPort, region, protocol)
     }
 
@@ -310,6 +315,11 @@ object PsiphonBridge {
 
         runCatching { instance.stop() }
             .onFailure { LogBus.e("psiphon", "stop: ${describe(it)}") }
+
+        // Complete the disconnect deferred with the reason
+        if (!disconnectDeferred.isCompleted) {
+            disconnectDeferred.complete("tunnel stopped")
+        }
     }
 
     /** The same teardown, on a thread of its own, for service destruction. */
@@ -317,6 +327,12 @@ object PsiphonBridge {
         if (tunnel == null) return
         Thread({ stop() }, "rix-psiphon-stop").apply { isDaemon = true }.start()
     }
+
+    /**
+     * Returns a Deferred that completes when the Psiphon tunnel disconnects.
+     * The result is the reason for disconnection.
+     */
+    fun waitForDisconnect(): kotlinx.coroutines.Deferred<String> = disconnectDeferred
 
     /**
      * Removes the data root, which is where tunnel-core keeps its datastore and
@@ -561,6 +577,9 @@ object PsiphonBridge {
 
         override fun onExiting() {
             LogBus.i("psiphon", "exiting")
+            if (!PsiphonBridge.disconnectDeferred.isCompleted) {
+                PsiphonBridge.disconnectDeferred.complete("tunnel exited")
+            }
         }
     }
 }
