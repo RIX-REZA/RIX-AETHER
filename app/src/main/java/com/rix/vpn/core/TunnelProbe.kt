@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.deadlineAfter
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -51,7 +52,7 @@ object TunnelProbe {
     suspend fun probe(port: Int, timeoutMs: Int = 6000): Egress? = withContext(Dispatchers.IO) {
         if (port <= 0 || timeoutMs <= 0) return@withContext null
         val job = coroutineContext[Job]
-        val deadline = deadlineAfter(timeoutMs.toLong())
+        val deadline = computeDeadline(timeoutMs.toLong())
         for ((host, path) in TRACE_TARGETS) {
             ensureActive()
             if (remainingMs(deadline) < 250) return@withContext null
@@ -70,7 +71,7 @@ object TunnelProbe {
         val latencyMs = (System.nanoTime() - startTime) / 1_000_000L
 
         if (egress != null) {
-            return Result(
+            return@withContext Result(
                 latencyMs = latencyMs,
                 packetLoss = 0.0,
                 success = true,
@@ -84,7 +85,7 @@ object TunnelProbe {
                 }
             )
         } else {
-            return Result(
+            return@withContext Result(
                 latencyMs = -1,
                 packetLoss = 1.0,
                 success = false,
@@ -98,7 +99,7 @@ object TunnelProbe {
         withContext(Dispatchers.IO) {
             if (port <= 0 || timeoutMs <= 0) return@withContext base
             val job = coroutineContext[Job]
-            val deadline = deadlineAfter(timeoutMs.toLong())
+            val deadline = computeDeadline(timeoutMs.toLong())
             val body = httpsGet(port, GEO_HOST, GEO_PATH, deadline, job)
                 ?: return@withContext base
             val geo = parseGeoBody(body) ?: return@withContext base
@@ -408,7 +409,7 @@ object TunnelProbe {
 
     // ------------------------------------------------------------------ utils
 
-    private fun deadlineAfter(timeoutMs: Long): Long =
+    private fun computeDeadline(timeoutMs: Long): Long =
         System.nanoTime() + timeoutMs * 1_000_000L
 
     private fun remainingMs(deadline: Long): Long =
@@ -480,7 +481,7 @@ suspend fun TunnelProbe.probeDirect(
     ip: String,
     port: Int,
     timeoutMs: Int = 5000
-): Egress? = withContext(Dispatchers.IO) {
+): TunnelProbe.Egress? = withContext(Dispatchers.IO) {
     if (port <= 0 || timeoutMs <= 0) return@withContext null
     val job = coroutineContext[Job]
     val deadline = deadlineAfter(timeoutMs.toLong())

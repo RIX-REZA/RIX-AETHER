@@ -211,9 +211,9 @@ class RixProxyService : LifecycleService() {
 
             // Initialize CoreCoordinator for ongoing health monitoring and failover
             coordinator = CoreCoordinator.create(this, chosen)
-            stateChannel = coordinator.start()
+            stateChannel = coordinator?.start()
             lifecycleScope.launch {
-                for (state in stateChannel) {
+                stateChannel?.consumeEach { state ->
                     when (state) {
                         is CoreCoordinator.State.Degraded -> {
                             LogBus.i("proxy", "Coordinator: degraded - ${state.reason}")

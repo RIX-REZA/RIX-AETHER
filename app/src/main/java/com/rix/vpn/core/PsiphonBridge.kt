@@ -84,7 +84,7 @@ object PsiphonBridge {
     private var running = false
 
     /** CompletableDeferred that completes when the tunnel disconnects. */
-    private val disconnectDeferred = kotlinx.coroutines.CompletableDeferred<String>()
+    private var disconnectDeferred = kotlinx.coroutines.CompletableDeferred<String>()
 
     /**
      * True once a start has failed for a reason that clearing the saved state

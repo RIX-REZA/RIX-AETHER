@@ -308,9 +308,9 @@ class RixVpnService : VpnService() {
 
             // Initialize CoreCoordinator for ongoing health monitoring and failover
             coordinator = CoreCoordinator.create(this, optimizedOptions)
-            stateChannel = coordinator.start()
+            stateChannel = coordinator?.start()
             scope.launch {
-                for (state in stateChannel) {
+                stateChannel?.consumeEach { state ->
                     when (state) {
                         is CoreCoordinator.State.Degraded -> {
                             LogBus.i("vpn", "Coordinator: degraded - ${state.reason}")
