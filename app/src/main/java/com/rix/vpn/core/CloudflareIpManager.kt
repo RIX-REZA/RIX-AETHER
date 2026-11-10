@@ -381,13 +381,8 @@ object CloudflareIpManager {
     private suspend fun tryProbeIp(ip: String, port: Int): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val socket = java.net.Socket()
-                socket.soTimeout = PROBE_TIMEOUT_MS.toInt()
-                socket.connect(java.net.InetSocketAddress(ip, port), PROBE_TIMEOUT_MS.toInt())
-
-                // Quick TLS handshake check
                 val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-                val sslSocket = sslSocketFactory.createSocket(socket, ip, port, true) as javax.net.ssl.SSLSocket
+                val sslSocket = sslSocketFactory.createSocket(ip, port) as javax.net.ssl.SSLSocket
                 sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
                 sslSocket.startHandshake()
                 sslSocket.close()
