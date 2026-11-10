@@ -214,17 +214,18 @@ object CloudflareIpManager {
     private suspend fun tryFallbackIps(port: Int): String? {
         Log.i("CloudflareIp", "Testing ${FALLBACK_IPS.size} fallback IPs")
         for (batch in FALLBACK_IPS.chunked(PARALLEL_PROBES)) {
-            val results = _scope?.async {
-                batch.map { ip ->
-                    evaluateIp(ip, port)
-                }.awaitAll()
-            }?.await()
-            results?.filter { it?.isReachable == true }
-                ?.maxByOrNull { it?.compositeScore ?: 0.0 }
-                ?.let { ipScore ->
-                    cacheBestIpForOperator(ipScore.ip, _operatorKey.get() ?: "unknown")
-                    return ipScore.ip
-                }
+            val deferreds = batch.map { ip ->
+                _scope?.async { evaluateIp(ip, port) }
+            }.filterNotNull()
+            val results = deferreds.awaitAll()
+            val best = results
+                .filterNotNull()
+                .filter { it.isReachable }
+                .maxByOrNull { it.compositeScore }
+            if (best != null) {
+                cacheBestIpForOperator(best.ip, _operatorKey.get() ?: "unknown")
+                return best.ip
+            }
         }
         return null
     }
@@ -312,7 +313,7 @@ object CloudflareIpManager {
         val scores = mutableListOf<IpScore>()
         val semaphore = kotlinx.coroutines.sync.Semaphore(PARALLEL_PROBES)
 
-        awaitAll(candidateIps.map { ip ->
+        val deferreds = candidateIps.map { ip ->
             _scope?.async {
                 semaphore.withPermit {
                     val result = evaluateIp(ip, port)
@@ -323,7 +324,8 @@ object CloudflareIpManager {
                     }
                 }
             }
-        })
+        }.filterNotNull()
+        deferreds.awaitAll()
 
         // Select best by composite score
         return scores
