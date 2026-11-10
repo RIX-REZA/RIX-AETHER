@@ -387,7 +387,7 @@ object CloudflareIpManager {
 
                 // Quick TLS handshake check
                 val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-                val sslSocket = sslSocketFactory.createSocket(socket, ip, port, true)
+                val sslSocket = sslSocketFactory.createSocket(socket, ip, port, true) as javax.net.ssl.SSLSocket
                 sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
                 sslSocket.startHandshake()
                 sslSocket.close()
