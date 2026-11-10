@@ -390,7 +390,12 @@ jobs:
       - name: Verify APK contents
         run: |
           set -euo pipefail
-          apk=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          if [ "${{ matrix.name }}" = "universal" ]; then
+            apk=$(find app/build/outputs/apk/debug -name '*universal*.apk' -o -name '*all*.apk' | head -1)
+          else
+            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}*.apk" | head -1)
+          fi
+          [ -n "$apk" ] || { echo "ERROR: APK not found for ${{ matrix.name }}"; exit 1; }
           echo "APK=$apk"
           unzip -l "$apk" | grep -E 'lib/.*\.so' || { echo "ERROR: no .so in APK"; exit 1; }
           for need in libaether.so libhev-socks5-tunnel.so librixjni.so; do
@@ -404,7 +409,11 @@ jobs:
 
       - name: Rename APK to Rix-aether-${{ matrix.name }}.apk
         run: |
-          apk=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          if [ "${{ matrix.name }}" = "universal" ]; then
+            apk=$(find app/build/outputs/apk/debug -name '*universal*.apk' -o -name '*all*.apk' | head -1)
+          else
+            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}*.apk" | head -1)
+          fi
           target="app/build/outputs/apk/debug/Rix-aether-${{ matrix.name }}.apk"
           mv "$apk" "$target"
           echo "APK_PATH=$target" >> "$GITHUB_ENV"
