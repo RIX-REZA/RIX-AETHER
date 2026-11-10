@@ -214,9 +214,9 @@ object CloudflareIpManager {
     private suspend fun tryFallbackIps(port: Int): String? {
         Log.i("CloudflareIp", "Testing ${FALLBACK_IPS.size} fallback IPs")
         for (batch in FALLBACK_IPS.chunked(PARALLEL_PROBES)) {
-            val deferreds = batch.map { ip ->
-                _scope?.async { evaluateIp(ip, port) }
-            }.filterNotNull()
+            val deferreds = batch.mapNotNull { ip ->
+                _scope?.async<IpScore?> { evaluateIp(ip, port) }
+            }.toTypedArray()
             val results = deferreds.awaitAll()
             val best = results
                 .filterNotNull()
@@ -244,7 +244,7 @@ object CloudflareIpManager {
             val cachedV6 = prefs?.getString("cached_ranges_v6", "")
             val cachedTime = prefs?.getLong("cached_time", 0) ?: 0
 
-            if (!forceRefresh && cachedTime > 0 && (now - cachedTime) < CACHE_DURATION_MS && cachedV4.isNotEmpty()) {
+            if (!forceRefresh && cachedTime > 0 && (now - cachedTime) < CACHE_DURATION_MS && cachedV4?.isNotEmpty() == true) {
                 val ranges = (cachedV4 + "\n" + cachedV6).split("\n").filter { it.isNotBlank() }
                 _cachedRanges.set(IpRangeCache(ranges, cachedTime))
                 return@withContext ranges
@@ -313,8 +313,8 @@ object CloudflareIpManager {
         val scores = mutableListOf<IpScore>()
         val semaphore = kotlinx.coroutines.sync.Semaphore(PARALLEL_PROBES)
 
-        val deferreds = candidateIps.map { ip ->
-            _scope?.async {
+        val deferreds = candidateIps.mapNotNull { ip ->
+            _scope?.async<IpScore?> {
                 semaphore.withPermit {
                     val result = evaluateIp(ip, port)
                     if (result != null) {
@@ -322,9 +322,10 @@ object CloudflareIpManager {
                         scores.add(scoredResult)
                         _ipScores[scoredResult.ip] = scoredResult
                     }
+                    result
                 }
             }
-        }.filterNotNull()
+        }.toTypedArray()
         deferreds.awaitAll()
 
         // Select best by composite score
