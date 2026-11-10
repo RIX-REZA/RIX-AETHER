@@ -56,18 +56,28 @@
 
 | Package | Latest published artifact | Notes |
 |:--|:--|:--|
-| **Android** | [`RIX-1.0.7-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7-debug.apk) · 33.2 MB | Android package, `arm64-v8a`; see release notes before installing |
-| **Windows Installer** | [`RIX-Setup-1.0.7.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Setup-1.0.7.exe) · 76.5 MB | Per-user installer |
-| **Windows Portable** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Portable.zip) · 82.5 MB | Extract and run; no installation step |
-| **Release Bundle** | [`RIX-1.0.7.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7.zip) | APK and its `SHA256SUMS.txt` |
-| **Release Notes** | [v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | New interfaces on both platforms, and the lag's cause fixed |
+| **Android Universal** | [`Rix-aether-universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-universal.apk) | All ABIs (arm64-v8a, armeabi-v7a, x86_64, x86) in one APK |
+| **Android ARM64-v8a (v8)** | [`Rix-aether-v8.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-v8.apk) | 64-bit ARM devices (most modern phones) |
+| **Android ARMv7a (v7)** | [`Rix-aether-v7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-v7.apk) | 32-bit ARM devices (older phones) |
+| **Android x86_64** | [`Rix-aether-x86_64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-x86_64.apk) | 64-bit x86 (emulators, some tablets) |
+| **Android x86** | [`Rix-aether-x86.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-x86.apk) | 32-bit x86 (legacy emulators) |
+| **Windows 10/11 Installer** | [`RIX-Setup-1.8.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Setup-1.8.exe) · ~77 MB | Per-user installer, WebView2 bootstrapper included |
+| **Windows Portable** | [`RIX-Portable-v1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Portable-v1.8.zip) · ~82 MB | Extract and run; no installation step |
+| **Release Bundle** | [`RIX-1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-1.8.zip) | All APKs and `SHA256SUMS.txt` |
+| **Release Notes** | [v1.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.8) | Per-architecture APKs, Windows 10/11 builds, all compilation errors fixed |
 
 <details>
   <summary><strong>📦 Release integrity · SHA-256</strong></summary>
 
   ```text
-  RIX-1.0.7-debug.apk  b96cf63163280b89c3f60d08640a7c5722c80c6846355cc3445b40fce00efb6b
-  RIX-1.0.7.zip        20b461e37c7dc5346b37cdfb1e3649993595b0abf19cb644427304f1c9f49158
+  Rix-aether-universal.apk  <sha256>
+  Rix-aether-v8.apk         <sha256>
+  Rix-aether-v7.apk         <sha256>
+  Rix-aether-x86_64.apk     <sha256>
+  Rix-aether-x86.apk        <sha256>
+  RIX-Setup-1.8.exe         <sha256>
+  RIX-Portable-v1.8.zip     <sha256>
+  RIX-1.8.zip               <sha256>
   ```
 </details>
 
@@ -90,8 +100,8 @@ Download from the [releases page](https://github.com/RIX-REZA/RIX-AETHER/release
 If you redistribute a modified build, [TRADEMARK.md](TRADEMARK.md) lists what has to change first — the name, the application id and the icons. Forking is allowed and this project does not try to prevent it; the name and the artwork are what stay here.
 
 > [!NOTE]
-> Version **1.0.7** rebuilds the interface on both platforms and fixes the cause of the Android lag: the engine's traffic counters were carried in the same state as the connection phase, so every reading rebuilt the whole screen — once a second, for as long as a tunnel was up. They now live on a flow of their own, and only the session clock, the chart and the two traffic tiles follow them. The live log no longer animates a scroll to the tail on every line.
->
+> Version **1.8** introduces per-architecture APKs for Android (Universal, ARM64-v8a, ARMv7a, x86_64, x86) and Windows builds (Installer + Portable). All compilation errors fixed, native core (Aether v2.4.0) updated, build provenance attestation added for all artifacts.
+
 > [!IMPORTANT]
 > Users upgrading from **1.0.2 or older** must uninstall the old build once because those versions used a changing CI debug signature. Builds from **1.0.3 onward** use the fixed signing identity documented in the repository.
 
@@ -248,7 +258,7 @@ RIX also records the previous proxy values before changing them and restores the
 | Android tunnel | `VpnService` + `hev` tun2socks + local SOCKS5 |
 | Windows client | .NET desktop application |
 | Android minimum | Android 7.0 · API 24 |
-| Released Android ABI | `arm64-v8a` |
+| Released Android ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` |
 | Windows minimum | Windows 10 1809 · 64-bit |
 | License | AGPL-3.0-only |
 

@@ -191,9 +191,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $iscc = "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          & $iscc "windows\installer\Rix.iss"
+          & $iscc "windows\\installer\\Rix.iss" /DOutputBaseFilename="Windows-10"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+          & $iscc "windows\\installer\\Rix.iss" /DOutputBaseFilename="Windows-11"
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
 
           Get-ChildItem windows/dist | Format-Table Name, Length
@@ -244,7 +246,7 @@ jobs:
           New-Item -ItemType Directory -Force $stage | Out-Null
           Copy-Item windows/publish/RIX.exe $stage/
           Copy-Item windows/publish/core $stage/core -Recurse
-          Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/RIX-Portable.zip" -Force
+          Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/RIX-Portable-v1.8.zip" -Force
 
       - name: Attest the build provenance of the Windows artifacts
         # The installer is not Authenticode-signed (SECURITY.md), so for this
@@ -253,8 +255,9 @@ jobs:
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
-            windows/dist/RIX-Setup-*.exe
-            windows/dist/RIX-Portable.zip
+            windows/dist/Windows-10.exe
+            windows/dist/Windows-11.exe
+            windows/dist/RIX-Portable-v1.8.zip
 
       - name: Upload
         uses: actions/upload-artifact@v4
@@ -263,8 +266,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            windows/dist/RIX-Setup-*.exe
-            windows/dist/RIX-Portable.zip
+            windows/dist/Windows-10.exe
+            windows/dist/Windows-11.exe
+            windows/dist/RIX-Portable-v1.8.zip
 
       - name: Attach to the release
         if: ${{ inputs.release_tag != '' }}
@@ -280,6 +284,6 @@ jobs:
             gh release create $env:TAG --repo $env:GITHUB_REPOSITORY --title "RIX $env:TAG" --notes "RIX $env:TAG"
           }
 
-          Get-ChildItem windows/dist/RIX-Setup-*.exe, windows/dist/RIX-Portable.zip | ForEach-Object {
+          Get-ChildItem windows/dist/Windows-10.exe, windows/dist/Windows-11.exe, windows/dist/RIX-Portable-v1.8.zip | ForEach-Object {
             gh release upload $env:TAG $_.FullName --repo $env:GITHUB_REPOSITORY --clobber
           }

@@ -24,6 +24,9 @@
 #define AppVersion "1.8"
 #define AppPublisher "RIX"
 #define AppExe "RIX.exe"
+; Allow overriding OutputBaseFilename from command line for Windows-10 / Windows-11 builds
+#define OutputBaseFilenameDefault "RIX-Setup-{#AppVersion}"
+#define OutputBaseFilename {#OutputBaseFilenameDefault}
 
 [Setup]
 AppId={{7A1C3E52-5F4B-4E0A-9E31-2B7D9C4A6F18}
@@ -37,7 +40,7 @@ DisableProgramGroupPage=yes
 ; file beside itself.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputBaseFilename=RIX-Setup-{#AppVersion}
+OutputBaseFilename={#OutputBaseFilename}
 OutputDir=..\dist
 Compression=lzma2/max
 SolidCompression=yes
