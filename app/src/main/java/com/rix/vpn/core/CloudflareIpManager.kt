@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -48,29 +49,30 @@ object CloudflareIpManager {
     private const val CF_IPV4_URL = "https://www.cloudflare.com/ips-v4"
     private const val CF_IPV6_URL = "https://www.cloudflare.com/ips-v6"
     private const val CACHE_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
-    private const val PROBE_TIMEOUT_MS = 8000L // Increased timeout for unreliable networks
-    private const val MAX_IPS_TO_TEST = 50 // Test more IPs for better selection
-    private const val MIN_SUCCESSFUL_PROBES = 3 // Minimum probes for stable score
-    private const val PARALLEL_PROBES = 10 // Concurrent probe limit
+    private const val PROBE_TIMEOUT_MS = 8000L
+    private const val MAX_IPS_TO_TEST = 50
+    private const val MIN_SUCCESSFUL_PROBES = 3
+    private const val PARALLEL_PROBES = 8
     private const val PREFS_NAME = "rix_ip_scanner_cache"
     private const val SCORE_FRESHNESS_MS = 5 * 60 * 1000L // 5 minutes
     private const val OPERATOR_CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
 
-    // Known reliable Cloudflare IPs as fallback (updated periodically)
+    // Known reliable Cloudflare IPs as fallback (covers major ranges)
     private val FALLBACK_IPS = listOf(
         "104.16.0.1", "104.17.0.1", "104.18.0.1", "104.19.0.1",
         "104.20.0.1", "104.21.0.1", "104.22.0.1", "104.23.0.1",
         "104.24.0.1", "104.25.0.1", "104.26.0.1", "104.27.0.1",
         "104.28.0.1", "104.29.0.1", "104.30.0.1", "104.31.0.1",
         "172.64.0.1", "172.65.0.1", "172.66.0.1", "172.67.0.1",
-        "172.68.0.1", "172.69.0.1", "172.70.0.1", "172.71.0.1"
+        "172.68.0.1", "172.69.0.1", "172.70.0.1", "172.71.0.1",
+        "1.1.1.1", "1.0.0.1"
     )
 
     private val _cachedRanges = AtomicReference<IpRangeCache>()
     private val _ipScores = ConcurrentHashMap<String, IpScore>()
     private val _currentBestIp = AtomicReference<String?>()
     private val _lastEvaluationTime = AtomicLong(0)
-    private val _operatorKey = AtomicReference<String?>() // Current operator identifier
+    private val _operatorKey = AtomicReference<String?>() // Current operator identifier (MCC-MNC)
     private val _prefs = AtomicReference<SharedPreferences?>()
     private var _scope: CoroutineScope? = null
 
@@ -137,372 +139,27 @@ object CloudflareIpManager {
             val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
             val operator = telephony.simOperator ?: telephony.networkOperator ?: "unknown"
             val networkType = when (telephony.networkType) {
-                TelephonyManager.NETWORK_TYPE_LTE -> "4G"
-                TelephonyManager.NETWORK_TYPE_NR -> "5G"
-                TelephonyManager.NETWORK_TYPE_HSPA,
-                TelephonyManager.NETWORK_TYPE_HSPAP,
-                TelephonyManager.NETWORK_TYPE_HSDPA,
-                TelephonyManager.NETWORK_TYPE_HSUPA -> "3G"
-                TelephonyManager.NETWORK_TYPE_EDGE,
-                TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
+                TelephonyManager.NETWORK_TYPE_LTE -> "lte"
+                TelephonyManager.NETWORK_TYPE_NR -> "5g"
+                TelephonyManager.NETWORK_TYPE_HSPAP, TelephonyManager.NETWORK_TYPE_HSPA,
+                TelephonyManager.NETWORK_TYPE_HSDPA, TelephonyManager.NETWORK_TYPE_HSUPA,
+                TelephonyManager.NETWORK_TYPE_UMTS -> "3g"
+                TelephonyManager.NETWORK_TYPE_GPRS, TelephonyManager.NETWORK_TYPE_EDGE,
+                TelephonyManager.NETWORK_TYPE_CDMA, TelephonyManager.NETWORK_TYPE_1xRTT,
+                TelephonyManager.NETWORK_TYPE_EVDO_0, TelephonyManager.NETWORK_TYPE_EVDO_A,
+                TelephonyManager.NETWORK_TYPE_EVDO_B -> "2g"
                 else -> "unknown"
             }
             val key = "${operator}_$networkType"
             _operatorKey.set(key)
+            Log.i("CloudflareIp", "Detected operator: $key")
             key
         } catch (e: Exception) {
+            Log.w("CloudflareIp", "Failed to detect operator", e)
             _operatorKey.set("unknown")
             "unknown"
         }
     }
-
-    /** Gets the current best IP for connection, fetching ranges if needed. */
-    suspend fun getBestIp(
-        context: Context,
-        options: RixOptions,
-        port: Int,
-        forceRefresh: Boolean = false
-    ): String? {
-        // Initialize if needed
-        if (_prefs.get() == null) initialize(context)
-
-        // Detect operator change
-        val currentOperator = _operatorKey.get() ?: detectAndSetOperator(context)
-
-        // Ensure ranges are loaded
-        val ranges = fetchRangesIfNeeded(context, forceRefresh)
-        if (ranges.isEmpty()) {
-            Log.e("CloudflareIp", "No Cloudflare ranges available, trying fallback IPs")
-            return tryFallbackIps(port)
-        }
-
-        // Check if we have a valid cached best IP for current operator
-        val currentBest = _currentBestIp.get()
-        if (!forceRefresh && currentBest != null && isScoreFresh(currentBest, currentOperator)) {
-            val score = _ipScores[currentBest]
-            if (score != null && score.isReachable && score.compositeScore > 0.4) {
-                Log.i("CloudflareIp", "Using cached best IP: $currentBest (score: ${score.compositeScore}, operator: $currentOperator)")
-                return currentBest
-            }
-        }
-
-        // Try operator-specific cached IPs first
-        val operatorBest = getOperatorBestIp(currentOperator)
-        if (operatorBest != null && !forceRefresh) {
-            val score = _ipScores[operatorBest]
-            if (score != null && score.isReachable && score.compositeScore > 0.4 && isScoreFresh(operatorBest, currentOperator)) {
-                Log.i("CloudflareIp", "Using operator-cached best IP: $operatorBest (operator: $currentOperator)")
-                _currentBestIp.set(operatorBest)
-                return operatorBest
-            }
-        }
-
-        // Evaluate IPs from ranges
-        val bestIp = evaluateAndSelectBestIp(context, options, port, ranges, currentOperator)
-        if (bestIp != null) {
-            _currentBestIp.set(bestIp)
-            _lastEvaluationTime.set(System.currentTimeMillis())
-            // Cache for this operator
-            cacheOperatorBestIp(currentOperator, bestIp)
-            Log.i("CloudflareIp", "Selected best IP: $bestIp (operator: $currentOperator)")
-        } else {
-            // Try fallback IPs if evaluation failed
-            Log.w("CloudflareIp", "No suitable IP found from ranges, trying fallback IPs")
-            return tryFallbackIps(port)
-        }
-        return bestIp
-    }
-
-    /** Tries known fallback IPs when range evaluation fails. */
-    private suspend fun tryFallbackIps(port: Int): String? {
-        Log.i("CloudflareIp", "Testing ${FALLBACK_IPS.size} fallback IPs")
-        val scores = mutableListOf<IpScore>()
-
-        // Test fallback IPs in parallel batches
-        for (batch in FALLBACK_IPS.chunked(PARALLEL_PROBES)) {
-            val results = _scope?.async {
-                batch.map { ip ->
-                    evaluateIp(ip, port, "fallback")
-                }.filterNotNull()
-            }?.await() ?: emptyList()
-            scores.addAll(results)
-        }
-
-        return scores
-            .filter { it.isReachable }
-            .maxByOrNull { it.compositeScore }
-            ?.ip
-    }
-
-    /** Fetches Cloudflare IP ranges from the official source. */
-    private suspend fun fetchRangesIfNeeded(context: Context, forceRefresh: Boolean): List<String> {
-        val cached = _cachedRanges.get()
-        val now = System.currentTimeMillis()
-
-        if (!forceRefresh && cached != null && (now - cached.fetchedAt) < CACHE_DURATION_MS) {
-            return cached.ranges
-        }
-
-        return withContext(Dispatchers.IO) {
-            try {
-                val ipv4Ranges = fetchUrl(CF_IPV4_URL)
-                val ipv6Ranges = fetchUrl(CF_IPV6_URL)
-                val allRanges = (ipv4Ranges + ipv6Ranges).distinct()
-                    .filter { it.isNotBlank() && it.contains("/") }
-
-                val newCache = IpRangeCache(allRanges, now)
-                _cachedRanges.set(newCache)
-                Log.i("CloudflareIp", "Fetched ${allRanges.size} Cloudflare ranges")
-                allRanges
-            } catch (e: Exception) {
-                Log.e("CloudflareIp", "Failed to fetch ranges: ${e.message}")
-                cached?.ranges ?: emptyList()
-            }
-        }
-    }
-
-    private suspend fun fetchUrl(urlString: String): List<String> = withContext(Dispatchers.IO) {
-        val url = URL(urlString)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
-        connection.requestMethod = "GET"
-        connection.addRequestProperty("User-Agent", "RIX-AETHER/1.8")
-
-        try {
-            if (connection.responseCode == 200) {
-                BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
-                    reader.readText().split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                }
-            } else {
-                emptyList()
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    /** Evaluates a sample of IPs from the Cloudflare ranges and selects the best. */
-    private suspend fun evaluateAndSelectBestIp(
-        context: Context,
-        options: RixOptions,
-        port: Int,
-        ranges: List<String>,
-        operatorKey: String
-    ): String? {
-        // Sample IPs from ranges with geographic diversity
-        val candidateIps = sampleIpsFromRanges(ranges, MAX_IPS_TO_TEST)
-        if (candidateIps.isEmpty()) return null
-
-        Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs for operator: $operatorKey")
-
-        // Test IPs in parallel batches
-        val allScores = mutableListOf<IpScore>()
-        for (batch in candidateIps.chunked(PARALLEL_PROBES)) {
-            val batchScores = _scope?.async {
-                batch.map { ip ->
-                    evaluateIp(ip, port, operatorKey)
-                }.filterNotNull()
-            }?.await() ?: emptyList()
-            allScores.addAll(batchScores)
-        }
-
-        // Also include any previously cached good IPs for this operator
-        val cachedScores = _ipScores.values.filter { it.operatorKey == operatorKey && it.isReachable && isScoreFresh(it.ip, operatorKey) }
-        allScores.addAll(cachedScores)
-
-        // Select best by composite score
-        return allScores
-            .filter { it.isReachable }
-            .maxByOrNull { it.compositeScore }
-            ?.ip
-    }
-
-    /** Samples IPs from CIDR ranges with geographic diversity. */
-    private fun sampleIpsFromRanges(ranges: List<String>, maxTotal: Int): List<String> {
-        val ips = mutableListOf<String>()
-        val perRange = max(1, maxTotal / ranges.size)
-
-        for (range in ranges) {
-            val cidr = parseCidr(range) ?: continue
-            val (startIp, endIp) = cidr
-            val rangeSize = endIp - startIp + 1
-
-            // Sample from beginning, middle, and end of each range for diversity
-            val samples = mutableListOf<Long>()
-            if (rangeSize <= perRange * 3) {
-                // Small range - take all
-                for (i in 0 until rangeSize.toInt()) samples.add(startIp + i)
-            } else {
-                // Large range - sample from 3 positions
-                val step = rangeSize / 3
-                for (pos in 0..2) {
-                    val base = startIp + pos * step
-                    for (i in 0 until perRange / 3 + 1) {
-                        if (base + i <= endIp) samples.add(base + i)
-                    }
-                }
-            }
-
-            for (ip in samples.take(perRange)) {
-                ips.add(intToIp(ip))
-            }
-            if (ips.size >= maxTotal) break
-        }
-        return ips.take(maxTotal)
-    }
-
-    /** Evaluates a single IP using real protocol-level probe. */
-    private suspend fun evaluateIp(ip: String, port: Int, operatorKey: String): IpScore? {
-        return withContext(Dispatchers.IO) {
-            var totalLatency = 0L
-            var successes = 0
-            val latencies = mutableListOf<Long>()
-            val probeCount = MIN_SUCCESSFUL_PROBES
-
-            for (i in 0 until probeCount) {
-                val start = System.nanoTime()
-                val result = TunnelProbe.probeDirect(ip, port, PROBE_TIMEOUT_MS.toInt())
-                val latencyMs = (System.nanoTime() - start) / 1_000_000L
-
-                if (result != null) {
-                    successes++
-                    totalLatency += latencyMs
-                    latencies.add(latencyMs)
-                }
-                if (i < probeCount - 1) Thread.sleep(50) // Reduced delay
-            }
-
-            if (successes == 0) {
-                IpScore(
-                    ip = ip,
-                    latencyMs = -1,
-                    successRate = 0.0,
-                    packetLoss = 1.0,
-                    stabilityScore = 0.0,
-                    probeCount = probeCount,
-                    lastProbedAt = System.currentTimeMillis(),
-                    isReachable = false,
-                    operatorKey = operatorKey
-                )
-            } else {
-                val avgLatency = totalLatency / successes
-                val successRate = successes.toDouble() / probeCount
-                val packetLoss = 1.0 - successRate
-
-                // Calculate stability (inverse of coefficient of variation)
-                val stabilityScore = if (latencies.size >= 2) {
-                    val mean = latencies.average()
-                    val variance = latencies.map { (it.toDouble() - mean).pow(2) }.average()
-                    val stdDev = sqrt(variance)
-                    if (mean > 0) (1.0 - (stdDev / mean).coerceIn(0.0, 1.0)) else 0.5
-                } else {
-                    0.5
-                }
-
-                IpScore(
-                    ip = ip,
-                    latencyMs = avgLatency,
-                    successRate = successRate,
-                    packetLoss = packetLoss,
-                    stabilityScore = stabilityScore,
-                    probeCount = probeCount,
-                    lastProbedAt = System.currentTimeMillis(),
-                    isReachable = true,
-                    operatorKey = operatorKey
-                )
-            }
-        }
-    }
-
-    private fun isScoreFresh(ip: String, operatorKey: String): Boolean {
-        val score = _ipScores[ip]
-        return score != null &&
-               score.operatorKey == operatorKey &&
-               (System.currentTimeMillis() - score.lastProbedAt) < SCORE_FRESHNESS_MS
-    }
-
-    /** Gets the best cached IP for the given operator. */
-    private fun getOperatorBestIp(operatorKey: String): String? {
-        val prefs = _prefs.get() ?: return null
-        val key = "best_ip_$operatorKey"
-        val cached = prefs.getString(key, null)
-        if (cached != null) {
-            val timestamp = prefs.getLong("${key}_time", 0)
-            if (System.currentTimeMillis() - timestamp < OPERATOR_CACHE_DURATION_MS) {
-                return cached
-            }
-        }
-        return null
-    }
-
-    /** Caches the best IP for the given operator. */
-    private fun cacheOperatorBestIp(operatorKey: String, ip: String) {
-        val prefs = _prefs.get() ?: return
-        val key = "best_ip_$operatorKey"
-        prefs.edit()
-            .putString(key, ip)
-            .putLong("${key}_time", System.currentTimeMillis())
-            .apply()
-    }
-
-    private fun parseCidr(cidr: String): Pair<Long, Long>? {
-        return try {
-            val parts = cidr.split("/")
-            if (parts.size != 2) return null
-            val ipStr = parts[0]
-            val prefix = parts[1].toInt()
-            val ip = ipToLong(ipStr)
-            val mask = if (prefix == 0) 0L else (-1L shl (32 - prefix))
-            val start = (ip and mask) + 1 // Skip network address
-            val end = ((ip and mask) or mask.inv()) - 1 // Skip broadcast
-            if (start > end) return null
-            start to end
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun ipToLong(ip: String): Long {
-        val octets = ip.split(".").map { it.toLong() }
-        return (octets[0] shl 24) + (octets[1] shl 16) + (octets[2] shl 8) + octets[3]
-    }
-
-    private fun intToIp(ip: Long): String {
-        return "${(ip shr 24) and 0xFF}.${(ip shr 16) and 0xFF}.${(ip shr 8) and 0xFF}.${ip and 0xFF}"
-    }
-
-    private fun isScoreFresh(ip: String): Boolean {
-        val score = _ipScores[ip]
-        return score != null && (System.currentTimeMillis() - score.lastProbedAt) < SCORE_FRESHNESS_MS
-    }
-
-    /** Invalidates the current best IP, forcing re-evaluation on next request. */
-    fun invalidateCurrentBest() {
-        _currentBestIp.set(null)
-        _lastEvaluationTime.set(0)
-        Log.i("CloudflareIp", "Invalidated current best IP")
-    }
-
-    /** Call when network changes (Wi-Fi <-> Mobile, carrier change). */
-    fun onNetworkChange(context: Context) {
-        detectAndSetOperator(context)
-        invalidateCurrentBest()
-        Log.i("CloudflareIp", "Network changed, invalidated IP cache")
-    }
-
-    /** Gets the current best IP score for UI display. */
-    fun getCurrentBestScore(): IpScore? {
-        val ip = _currentBestIp.get()
-        return if (ip != null) _ipScores[ip] else null
-    }
-
-    /** Gets all evaluated IP scores for debugging. */
-    fun getAllScores(): Map<String, IpScore> = _ipScores.toMap()
-
-    /** Gets the current operator key. */
-    fun getCurrentOperator(): String = _operatorKey.get() ?: "unknown"
-}
 
     /**
      * Gets the current best IP for connection, fetching ranges if needed.
@@ -516,79 +173,121 @@ object CloudflareIpManager {
     ): String? {
         // Ensure ranges are loaded
         val ranges = fetchRangesIfNeeded(context, forceRefresh)
-        if (ranges.isEmpty()) {
-            Log.e("CloudflareIp", "No Cloudflare ranges available")
-            return null
-        }
 
-        // Check if we have a valid cached best IP
+        // Check if we have a valid cached best IP for this operator
+        val currentOperator = _operatorKey.get() ?: "unknown"
         val currentBest = _currentBestIp.get()
-        if (!forceRefresh && currentBest != null && isScoreFresh(currentBest)) {
+        if (currentBest != null && !forceRefresh) {
             val score = _ipScores[currentBest]
-            if (score != null && score.isReachable && score.compositeScore > 0.5) {
-                Log.i("CloudflareIp", "Using cached best IP: $currentBest (score: ${score.compositeScore})")
+            if (score != null && score.isReachable && score.compositeScore > 0.4 && isScoreFresh(currentBest)) {
+                Log.i("CloudflareIp", "Using cached best IP: $currentBest (score: ${score.compositeScore}, operator: $currentOperator)")
                 return currentBest
             }
         }
 
-        // Evaluate IPs from ranges
-        val bestIp = evaluateAndSelectBestIp(context, options, port, ranges)
-        if (bestIp != null) {
-            _currentBestIp.set(bestIp)
-            _lastEvaluationTime.set(System.currentTimeMillis())
-            Log.i("CloudflareIp", "Selected best IP: $bestIp")
+        // Check operator-specific cache
+        val prefs = _prefs.get()
+        if (prefs != null) {
+            val operatorBest = prefs.getString("best_ip_$currentOperator", null)
+            if (operatorBest != null && !forceRefresh) {
+                val score = _ipScores[operatorBest]
+                if (score != null && score.isReachable && score.compositeScore > 0.4 && isScoreFresh(operatorBest)) {
+                    Log.i("CloudflareIp", "Using operator-cached best IP: $operatorBest (score: ${score.compositeScore})")
+                    _currentBestIp.set(operatorBest)
+                    return operatorBest
+                }
+            }
         }
-        return bestIp
+
+        // Evaluate IPs from ranges
+        val bestIp = evaluateAndSelectBestIp(context, options, port, ranges, currentOperator)
+        if (bestIp != null) {
+            cacheBestIpForOperator(bestIp, currentOperator)
+            return bestIp
+        }
+
+        // Try fallback IPs
+        return tryFallbackIps(port)
     }
 
-    /**
-     * Fetches Cloudflare IP ranges from the official source.
-     * Uses cached ranges if fresh (within 24 hours).
-     */
+    /** Tries known fallback IPs when range evaluation fails. */
+    private suspend fun tryFallbackIps(port: Int): String? {
+        Log.i("CloudflareIp", "Testing ${FALLBACK_IPS.size} fallback IPs")
+        for (batch in FALLBACK_IPS.chunked(PARALLEL_PROBES)) {
+            val results = _scope?.async {
+                batch.map { ip ->
+                    evaluateIp(ip, port)
+                }.awaitAll()
+            }?.await()
+            results?.filter { it?.isReachable == true }
+                ?.maxByOrNull { it?.compositeScore ?: 0.0 }
+                ?.let { ipScore ->
+                    cacheBestIpForOperator(ipScore.ip, _operatorKey.get() ?: "unknown")
+                    return ipScore.ip
+                }
+        }
+        return null
+    }
+
+    /** Fetches Cloudflare IP ranges from the official source. */
     private suspend fun fetchRangesIfNeeded(context: Context, forceRefresh: Boolean): List<String> {
         val cached = _cachedRanges.get()
         val now = System.currentTimeMillis()
-
         if (!forceRefresh && cached != null && (now - cached.fetchedAt) < CACHE_DURATION_MS) {
             return cached.ranges
         }
 
         return withContext(Dispatchers.IO) {
-            try {
-                val ipv4Ranges = fetchUrl(CF_IPV4_URL)
-                val ipv6Ranges = fetchUrl(CF_IPV6_URL)
-                val allRanges = (ipv4Ranges + ipv6Ranges).distinct()
-                    .filter { it.isNotBlank() && it.contains("/") }
+            val prefs = _prefs.get()
+            val cachedV4 = prefs?.getString("cached_ranges_v4", "")
+            val cachedV6 = prefs?.getString("cached_ranges_v6", "")
+            val cachedTime = prefs?.getLong("cached_time", 0) ?: 0
 
-                val newCache = IpRangeCache(allRanges, now)
-                _cachedRanges.set(newCache)
-                Log.i("CloudflareIp", "Fetched ${allRanges.size} Cloudflare ranges")
+            if (!forceRefresh && cachedTime > 0 && (now - cachedTime) < CACHE_DURATION_MS && cachedV4.isNotEmpty()) {
+                val ranges = (cachedV4 + "\n" + cachedV6).split("\n").filter { it.isNotBlank() }
+                _cachedRanges.set(IpRangeCache(ranges, cachedTime))
+                return@withContext ranges
+            }
+
+            val v4Ranges = fetchUrl(CF_IPV4_URL)
+            val v6Ranges = fetchUrl(CF_IPV6_URL)
+            val allRanges = (v4Ranges + v6Ranges).filter { it.isNotBlank() }
+
+            if (allRanges.isNotEmpty()) {
+                _cachedRanges.set(IpRangeCache(allRanges, now))
+                prefs?.edit()
+                    ?.putString("cached_ranges_v4", v4Ranges.joinToString("\n"))
+                    ?.putString("cached_ranges_v6", v6Ranges.joinToString("\n"))
+                    ?.putLong("cached_time", now)
+                    ?.apply()
+            }
+
+            if (allRanges.isEmpty() && cached != null) {
+                cached.ranges
+            } else {
                 allRanges
-            } catch (e: Exception) {
-                Log.e("CloudflareIp", "Failed to fetch ranges: ${e.message}")
-                cached?.ranges ?: emptyList()
             }
         }
     }
 
     private suspend fun fetchUrl(urlString: String): List<String> = withContext(Dispatchers.IO) {
-        val url = URL(urlString)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
-        connection.requestMethod = "GET"
-        connection.addRequestProperty("User-Agent", "RIX-AETHER/1.0.8")
-
         try {
+            val url = URL(urlString)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            connection.requestMethod = "GET"
+            connection.addRequestProperty("User-Agent", "RIX-AETHER/1.8")
             if (connection.responseCode == 200) {
                 BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
-                    reader.readText().split("\n").map { it.trim() }.filter { it.isNotBlank() }
+                    reader.readText().split("\n").map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("#") }
                 }
             } else {
                 emptyList()
             }
-        } finally {
-            connection.disconnect()
+        } catch (e: Exception) {
+            Log.w("CloudflareIp", "Failed to fetch $urlString", e)
+            emptyList()
         }
     }
 
@@ -600,23 +299,31 @@ object CloudflareIpManager {
         context: Context,
         options: RixOptions,
         port: Int,
-        ranges: List<String>
+        ranges: List<String>,
+        operatorKey: String
     ): String? {
         // Sample IPs from ranges (deterministic sampling from each range)
         val candidateIps = sampleIpsFromRanges(ranges, MAX_IPS_TO_TEST)
         if (candidateIps.isEmpty()) return null
 
-        Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs")
+        Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs for operator: $operatorKey")
 
-        // Test each IP with real protocol probe
+        // Test each IP with real protocol probe in parallel
         val scores = mutableListOf<IpScore>()
-        for (ip in candidateIps) {
-            val score = evaluateIp(ip, port)
-            if (score != null) {
-                scores.add(score)
-                _ipScores[ip] = score
+        val semaphore = kotlinx.coroutines.sync.Semaphore(PARALLEL_PROBES)
+
+        awaitAll(candidateIps.map { ip ->
+            _scope?.async {
+                semaphore.withPermit {
+                    val result = evaluateIp(ip, port)
+                    if (result != null) {
+                        val scoredResult = result.copyWith(operatorKey = operatorKey)
+                        scores.add(scoredResult)
+                        _ipScores[scoredResult.ip] = scoredResult
+                    }
+                }
             }
-        }
+        })
 
         // Select best by composite score
         return scores
@@ -625,22 +332,19 @@ object CloudflareIpManager {
             ?.ip
     }
 
-    /**
-     * Samples IPs from CIDR ranges deterministically.
-     * Takes first few IPs from each range to get geographic diversity.
-     */
+    /** Samples IPs from CIDR ranges deterministically. Takes first few IPs from each range to get geographic diversity. */
     private fun sampleIpsFromRanges(ranges: List<String>, maxTotal: Int): List<String> {
         val ips = mutableListOf<String>()
         val perRange = max(1, maxTotal / ranges.size)
-
-        for (range in ranges) {
-            val cidr = parseCidr(range) ?: continue
-            val (startIp, endIp) = cidr
-            val count = minOf(perRange, (endIp - startIp + 1).toInt())
-            for (i in 0 until count) {
-                ips.add(intToIp(startIp + i))
+        for (cidr in ranges) {
+            val range = parseCidr(cidr) ?: continue
+            var count = 0
+            var current = range.first
+            while (current <= range.second && count < perRange && ips.size < maxTotal) {
+                ips.add(intToIp(current))
+                current++
+                count++
             }
-            if (ips.size >= maxTotal) break
         }
         return ips.take(maxTotal)
     }
@@ -738,29 +442,33 @@ object CloudflareIpManager {
 
     private fun isScoreFresh(ip: String): Boolean {
         val score = _ipScores[ip]
-        return score != null && (System.currentTimeMillis() - score.lastProbedAt) < 5 * 60 * 1000L // 5 min
+        return score != null && (System.currentTimeMillis() - score.lastProbedAt) < SCORE_FRESHNESS_MS
     }
 
-    /**
-     * Invalidates the current best IP, forcing re-evaluation on next request.
-     * Call when network conditions change (e.g., Wi-Fi to mobile, disconnection).
-     */
+    /** Invalidates the current best IP, forcing re-evaluation on next request. Call when network conditions change. */
     fun invalidateCurrentBest() {
         _currentBestIp.set(null)
         _lastEvaluationTime.set(0)
         Log.i("CloudflareIp", "Invalidated current best IP")
     }
 
-    /**
-     * Gets the current best IP score for UI display.
-     */
+    /** Gets the current best IP score for UI display. */
     fun getCurrentBestScore(): IpScore? {
         val ip = _currentBestIp.get()
         return if (ip != null) _ipScores[ip] else null
     }
 
-    /**
-     * Gets all evaluated IP scores for debugging.
-     */
+    /** Gets all evaluated IP scores for debugging. */
     fun getAllScores(): Map<String, IpScore> = _ipScores.toMap()
+
+    /** Gets the current operator key. */
+    fun getCurrentOperator(): String = _operatorKey.get() ?: "unknown"
+
+    /** Caches the best IP for the given operator. */
+    private fun cacheBestIpForOperator(ip: String, operatorKey: String) {
+        _currentBestIp.set(ip)
+        _lastEvaluationTime.set(System.currentTimeMillis())
+        _prefs.get()?.edit()?.putString("best_ip_$operatorKey", ip)?.apply()
+        Log.i("CloudflareIp", "Cached best IP for operator $operatorKey: $ip")
+    }
 }

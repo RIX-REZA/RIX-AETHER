@@ -1036,4 +1036,3 @@ private fun TelegramIcon(): ImageVector {
 private fun GitHubIcon(): ImageVector {
     return ImageVector.vectorResource(id = R.drawable.ic_github)
 }
-}
