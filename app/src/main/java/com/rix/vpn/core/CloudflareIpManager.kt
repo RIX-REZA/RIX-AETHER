@@ -82,8 +82,8 @@ object CloudflareIpManager {
         val fetchedAt: Long
     )
 
-    /** Result of evaluating a single IP with protocol-level probe. */
-    private data class IpScore(
+    /** Result of evaluating a single IP with protocol-level probe. Public for CoreCoordinator access. */
+    data class IpScore(
         val ip: String,
         val latencyMs: Long,
         val successRate: Double,
@@ -253,11 +253,12 @@ object CloudflareIpManager {
         val scores = mutableListOf<IpScore>()
         val semaphore = Semaphore(PARALLEL_PROBES)
 
-        // Use coroutineScope for structured concurrency
         val deferreds = coroutineScope {
             candidateIps.mapNotNull { ip ->
                 async<IpScore?> {
-                    semaphore.withPermit {
+                    // Manual semaphore acquire/release for compatibility
+                    semaphore.acquire()
+                    try {
                         val result = evaluateIp(ip, port)
                         if (result != null) {
                             val scoredResult = result.copyWith(operatorKey = operatorKey)
@@ -265,6 +266,8 @@ object CloudflareIpManager {
                             _ipScores[scoredResult.ip] = scoredResult
                         }
                         result
+                    } finally {
+                        semaphore.release()
                     }
                 }
             }.awaitAll()
@@ -418,6 +421,17 @@ object CloudflareIpManager {
     /** Forces a refresh of the IP evaluation. */
     suspend fun forceRefresh(context: Context, port: Int = 443): String? {
         return getBestIp(context, port, forceRefresh = true)
+    }
+
+    /** Invalidates the current best IP (called on shutdown/failover). */
+    fun invalidateCurrentBest() {
+        _currentBestIp.set(null)
+    }
+
+    /** Returns the current best IP score if available. */
+    fun getCurrentBestScore(): IpScore? {
+        val ip = _currentBestIp.get()
+        return ip?.let { _ipScores[it] }
     }
 
     /** Checks if network is on a metered/unmetered connection for smart refresh decisions. */

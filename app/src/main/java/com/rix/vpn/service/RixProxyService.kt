@@ -94,7 +94,7 @@ class RixProxyService : LifecycleService() {
             val optimizedOptions = if (!options.psiphon) {
                 // Initialize IP manager on first use
                 CloudflareIpManager.initialize(this)
-                CloudflareIpManager.getBestIp(this, options, options.safeBindPort, forceRefresh = false)
+                CloudflareIpManager.getBestIp(this, options.safeBindPort, false)
                     ?.let { bestIp ->
                         LogBus.i("proxy", "Selected Cloudflare IP: $bestIp")
                         options.copy(peer = "$bestIp:443")
