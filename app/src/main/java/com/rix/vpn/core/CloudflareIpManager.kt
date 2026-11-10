@@ -281,7 +281,7 @@ object CloudflareIpManager {
             }
 
             if (successes == 0) {
-                return IpScore(
+                IpScore(
                     ip = ip,
                     latencyMs = -1,
                     successRate = 0.0,
@@ -291,32 +291,32 @@ object CloudflareIpManager {
                     lastProbedAt = System.currentTimeMillis(),
                     isReachable = false
                 )
-            }
-
-            val avgLatency = totalLatency / successes
-            val successRate = successes.toDouble() / probeCount
-            val packetLoss = 1.0 - successRate
-
-            // Calculate stability (inverse of coefficient of variation)
-            val stabilityScore = if (latencies.size >= 2) {
-                val mean = latencies.average()
-                val variance = latencies.map { (it.toDouble() - mean).pow(2) }.average()
-                val stdDev = sqrt(variance)
-                if (mean > 0) (1.0 - (stdDev / mean).coerceIn(0.0, 1.0)) else 0.5
             } else {
-                0.5
-            }
+                val avgLatency = totalLatency / successes
+                val successRate = successes.toDouble() / probeCount
+                val packetLoss = 1.0 - successRate
 
-            IpScore(
-                ip = ip,
-                latencyMs = avgLatency,
-                successRate = successRate,
-                packetLoss = packetLoss,
-                stabilityScore = stabilityScore,
-                probeCount = probeCount,
-                lastProbedAt = System.currentTimeMillis(),
-                isReachable = true
-            )
+                // Calculate stability (inverse of coefficient of variation)
+                val stabilityScore = if (latencies.size >= 2) {
+                    val mean = latencies.average()
+                    val variance = latencies.map { (it.toDouble() - mean).pow(2) }.average()
+                    val stdDev = sqrt(variance)
+                    if (mean > 0) (1.0 - (stdDev / mean).coerceIn(0.0, 1.0)) else 0.5
+                } else {
+                    0.5
+                }
+
+                IpScore(
+                    ip = ip,
+                    latencyMs = avgLatency,
+                    successRate = successRate,
+                    packetLoss = packetLoss,
+                    stabilityScore = stabilityScore,
+                    probeCount = probeCount,
+                    lastProbedAt = System.currentTimeMillis(),
+                    isReachable = true
+                )
+            }
         }
     }
 

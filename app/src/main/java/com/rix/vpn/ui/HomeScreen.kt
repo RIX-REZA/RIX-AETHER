@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,10 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -767,7 +772,8 @@ internal fun SocialIcon(
     url: String,
     contentDesc: String
 ) {
-    IconButton(onClick = { openUrl(url) }) {
+    val context = LocalContext.current
+    IconButton(onClick = { openUrl(context, url) }) {
         Icon(
             imageVector = imageVector(),
             contentDescription = contentDesc,
@@ -777,11 +783,11 @@ internal fun SocialIcon(
     }
 }
 
-private fun openUrl(url: String) {
+private fun openUrl(context: android.content.Context, url: String) {
     try {
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
         intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-        androidx.compose.ui.platform.LocalContext.current.startActivity(intent)
+        context.startActivity(intent)
     } catch (e: Exception) {
         // ignore
     }
@@ -790,37 +796,76 @@ private fun openUrl(url: String) {
 /** Custom Telegram icon for the header social links. */
 @Composable
 private fun TelegramIcon(): ImageVector {
-    return remember {
-        ImageVector.Builder(
-            name = "Telegram",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
+    val pathNodes = listOf(
+        PathNode.MoveTo(21.5f, 4.5f),
+        PathNode.LineTo(2.5f, 19.5f),
+        PathNode.LineTo(5.5f, 12.5f),
+        PathNode.LineTo(13.5f, 18f),
+        PathNode.LineTo(21.5f, 6.5f),
+        PathNode.LineTo(18.5f, 3.5f),
+        PathNode.LineTo(2.5f, 19.5f),
+        PathNode.LineTo(21.5f, 4.5f),
+        PathNode.MoveTo(15.5f, 16.5f),
+        PathNode.LineTo(9.5f, 10.5f),
+        PathNode.LineTo(2.5f, 19.5f),
+        PathNode.LineTo(8.5f, 15.5f),
+        PathNode.LineTo(15.5f, 16.5f),
+        PathNode.LineTo(15.5f, 16.5f)
+    )
+    return ImageVector.Builder(
+        name = "Telegram",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    )
+        .addPath(
+            pathData = pathNodes,
+            fill = SolidColor(RixColors.Accent)
         )
-            .addPath(
-                pathData = "M21.5 4.5L2.5 19.5L5.5 12.5L13.5 18L21.5 6.5L18.5 3.5L2.5 19.5M15.5 16.5L9.5 10.5L2.5 19.5L8.5 15.5L15.5 16.5Z",
-                fill = SolidColor(Color.Unspecified)
-            )
-            .build()
-    }
+        .build()
 }
 
 /** Custom GitHub icon for the header social links. */
 @Composable
 private fun GitHubIcon(): ImageVector {
-    return remember {
-        ImageVector.Builder(
-            name = "GitHub",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
+    val pathNodes = listOf(
+        PathNode.MoveTo(12f, 2f),
+        PathNode.LineTo(6f, 2f),
+        PathNode.LineTo(2f, 6f),
+        PathNode.LineTo(2f, 12f),
+        PathNode.LineTo(6f, 18f),
+        PathNode.LineTo(12f, 22f),
+        PathNode.LineTo(18f, 18f),
+        PathNode.LineTo(22f, 12f),
+        PathNode.LineTo(18f, 6f),
+        PathNode.LineTo(12f, 2f),
+        PathNode.MoveTo(12f, 4f),
+        PathNode.LineTo(8f, 4f),
+        PathNode.LineTo(5f, 7f),
+        PathNode.LineTo(5f, 11f),
+        PathNode.LineTo(7f, 13f),
+        PathNode.LineTo(9.5f, 17.6f),
+        PathNode.LineTo(9.5f, 20f),
+        PathNode.LineTo(12f, 18f),
+        PathNode.LineTo(14.5f, 20f),
+        PathNode.LineTo(14.5f, 17.6f),
+        PathNode.LineTo(17f, 13f),
+        PathNode.LineTo(19f, 11f),
+        PathNode.LineTo(19f, 7f),
+        PathNode.LineTo(16f, 4f),
+        PathNode.LineTo(12f, 4f)
+    )
+    return ImageVector.Builder(
+        name = "GitHub",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    )
+        .addPath(
+            pathData = pathNodes,
+            fill = SolidColor(RixColors.Accent)
         )
-            .addPath(
-                pathData = "M12 2C6.48 2 2 6.48 2 12C2 17.52 5.58 22.34 12 23.4C18.42 22.34 22 17.52 22 12C22 6.48 18.42 2 12 2ZM12 4C8.14 4 5 7.14 5 11C5 13.86 6.78 16.26 9.5 17.6L9.5 20L12 18L14.5 20L14.5 17.6C17.22 16.26 19 13.86 19 11C19 7.14 15.86 4 12 4Z",
-                fill = SolidColor(Color.Unspecified)
-            )
-            .build()
-    }
+        .build()
 }

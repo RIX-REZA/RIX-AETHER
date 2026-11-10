@@ -4,7 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.deadlineAfter
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -484,7 +483,7 @@ suspend fun TunnelProbe.probeDirect(
 ): TunnelProbe.Egress? = withContext(Dispatchers.IO) {
     if (port <= 0 || timeoutMs <= 0) return@withContext null
     val job = coroutineContext[Job]
-    val deadline = deadlineAfter(timeoutMs.toLong())
+    val deadline = System.nanoTime() + timeoutMs.toLong() * 1_000_000L
 
     // Use IP literal directly as host for TLS SNI
     val body = httpsGet(port, ip, "/cdn-cgi/trace", deadline, job) ?: return@withContext null

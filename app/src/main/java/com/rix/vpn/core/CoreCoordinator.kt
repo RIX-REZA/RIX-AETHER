@@ -6,16 +6,15 @@ import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
-import com.rix.vpn.options.RixOptions
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.max
-import kotlin.math.minOf
+import kotlin.math.min
 import kotlin.math.pow
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -57,26 +56,26 @@ class CoreCoordinator private constructor(
     /** Current tunnel state, exposed to UI. */
     sealed interface State {
         data class Idle(val reason: String = "idle") : State
-        data class Starting(val transport: RixOptions.Transport, val attempt: Int) : State
+        data class Starting(val transport: Transport, val attempt: Int) : State
         data class Connected(
-            val transport: RixOptions.Transport,
+            val transport: Transport,
             val egress: TunnelProbe.Egress?,
             val durationMs: Long,
             val bytesUp: Long,
             val bytesDown: Long
         ) : State
         data class Degraded(
-            val transport: RixOptions.Transport,
+            val transport: Transport,
             val egress: TunnelProbe.Egress?,
             val reason: String,
             val durationMs: Long
         ) : State
         data class Recovering(
-            val transport: RixOptions.Transport,
+            val transport: Transport,
             val attempt: Int,
             val reason: String
         ) : State
-        data class Disconnected(val reason: String, val lastTransport: RixOptions.Transport?) : State
+        data class Disconnected(val reason: String, val lastTransport: Transport?) : State
     }
 
     /** Live state for UI observation. */
@@ -92,7 +91,7 @@ class CoreCoordinator private constructor(
 
     /** Latest stats snapshot for UI. */
     data class Stats(
-        val transport: RixOptions.Transport,
+        val transport: Transport,
         val egress: TunnelProbe.Egress?,
         val latencyMs: Long,
         val bytesUp: Long,
@@ -105,15 +104,19 @@ class CoreCoordinator private constructor(
 
     // ============================================================ INTERNAL STATE
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val bridge = PsiphonBridge()
-    private val healthJob = AtomicReference<Job?>()
-    private val failoverJob = AtomicReference<Job?>()
-    private val statsJob = AtomicReference<Job?>()
+    private lateinit var scope: CoroutineScope
+    private val bridge: PsiphonBridge = PsiphonBridge
+    private val healthJob = AtomicReference<Job?>(null)
+    private val failoverJob = AtomicReference<Job?>(null)
+    private val statsJob = AtomicReference<Job?>(null)
+
+    init {
+        scope = MainScope()
+    }
 
     private val currentTransport = AtomicReference(options.transport)
     private val currentOptions = AtomicReference(options)
-    private val currentEgress = AtomicReference<TunnelProbe.Egress?>()
+    private val currentEgress = AtomicReference<TunnelProbe.Egress?>(null)
     private val connectionStartTime = AtomicLong(0)
     private val bytesUp = AtomicLong(0)
     private val bytesDown = AtomicLong(0)
@@ -121,14 +124,14 @@ class CoreCoordinator private constructor(
     private val isShuttingDown = AtomicBoolean(false)
 
     // Failover state
-    private val triedTransports = ConcurrentHashMap<RixOptions.Transport, Int>()
+    private val triedTransports = ConcurrentHashMap<Transport, Int>()
     private val transportOrder = listOf(
-        RixOptions.Transport.MASQUE_H3,
-        RixOptions.Transport.MASQUE_H2,
-        RixOptions.Transport.GOOL,
-        RixOptions.Transport.WIREGUARD,
-        RixOptions.Transport.GOOL_CLASSIC,
-        RixOptions.Transport.MIM
+        Transport.MASQUE_H3,
+        Transport.MASQUE_H2,
+        Transport.GOOL,
+        Transport.WIREGUARD,
+        Transport.GOOL_CLASSIC,
+        Transport.MIM
     )
 
     // ============================================================ PUBLIC API
@@ -231,7 +234,7 @@ class CoreCoordinator private constructor(
 
             if (!startSuccess) {
                 currentAttempt++
-                val delay = minOf(1000L * 2.0.pow(currentAttempt - 1), 30000L).toLong()
+                val delay = min(1000L * 2.0.pow(currentAttempt - 1), 30000.0).toLong()
                 Log.w("CoreCoordinator", "Start failed (attempt $currentAttempt): $startError. Retrying in ${delay}ms")
                 emitState(channel, State.Disconnected(startError ?: "start failed", transport))
                 if (!isShuttingDown.get()) delay(delay)
@@ -263,7 +266,7 @@ class CoreCoordinator private constructor(
             if (disconnectReason != null && options.autoFallback && !triedTransports.containsKey(transport)) {
                 Log.i("CoreCoordinator", "Attempting failover from $transport due to: $disconnectReason")
                 currentAttempt++
-                val delay = minOf(1000L * 2.0.pow(currentAttempt - 1), 10000L).toLong()
+                val delay = min(1000L * 2.0.pow(currentAttempt - 1), 10000.0).toLong()
                 if (!isShuttingDown.get()) delay(delay)
             } else {
                 emitState(channel, State.Disconnected(disconnectReason ?: "disconnected", transport))
@@ -288,17 +291,7 @@ class CoreCoordinator private constructor(
         opts: RixOptions
     ): String? {
         val disconnection = bridge.waitForDisconnect()
-
-        return suspendCancellableCoroutine { cont ->
-            scope.launch {
-                val reason = disconnection.await()
-                cont.resume(reason)
-            }
-            cont.invokeOnCancellation {
-                // Failover requested externally
-                cont.resume("failover requested")
-            }
-        }
+        return disconnection.await()
     }
 
     // ============================================================ HEALTH MONITORING
@@ -400,7 +393,7 @@ class CoreCoordinator private constructor(
     private fun triggerFailover(channel: Channel<State>?, opts: RixOptions, reason: String) {
         failoverJob.set(scope.launch {
             val currentTransportValue = currentTransport.get()
-            triedTransports[currentTransportValue] = triedTransports.getOrDefault(currentTransportValue, 0) + 1
+            triedTransports.put(currentTransportValue, triedTransports.getOrDefault(currentTransportValue, 0) + 1)
 
             // Find next untried transport
             val nextTransport = transportOrder
@@ -469,7 +462,7 @@ class CoreCoordinator private constructor(
 private data class HealthScore(
     val probeResult: TunnelProbe.Result?,
     val ipScore: CloudflareIpManager.IpScore?,
-    val transport: RixOptions.Transport,
+    val transport: Transport,
     val consecutiveFailures: Int
 ) {
     val isDegraded: Boolean

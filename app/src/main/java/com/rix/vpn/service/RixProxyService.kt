@@ -20,12 +20,14 @@ import com.rix.vpn.core.RixRuntime
 import com.rix.vpn.core.TunnelProbe
 import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.CoreCoordinator
+import com.rix.vpn.core.Transport
 import com.rix.vpn.data.LogBus
 import com.rix.vpn.data.l10n
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
