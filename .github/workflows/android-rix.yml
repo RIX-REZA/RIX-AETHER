@@ -142,62 +142,43 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select ABIs
-        id: sel
-        env:
-          REQUESTED: ${{ github.event.inputs.abis != '' && github.event.inputs.abis || 'arm64-v8a,armeabi-v7a,x86_64,x86' }}
-        run: |
-          if echo ",${REQUESTED}," | grep -q ",${{ matrix.abi }},"; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Rust
-        if: steps.sel.outputs.enabled == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust }}
 
       - name: Install Go (BoringSSL build)
-        if: steps.sel.outputs.enabled == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
       - name: Install CMake, Ninja and Perl
-        if: steps.sel.outputs.enabled == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ninja-build cmake perl
 
       - name: Install Android NDK
-        if: steps.sel.outputs.enabled == 'true'
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26d
 
       - name: Install cargo-ndk
-        if: steps.sel.outputs.enabled == 'true'
         run: cargo install cargo-ndk --locked
 
       - name: Fetch Aether
-        if: steps.sel.outputs.enabled == 'true'
         run: |
           git clone --depth 1 --branch "${AETHER_REF}" "${AETHER_REPO}" aether-src
           echo "aether $(git -C aether-src rev-parse --short HEAD)"
           test -f aether-src/quiche/quiche/Cargo.toml
 
       - name: Cache Rust artifacts
-        if: steps.sel.outputs.enabled == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "aether-src/aether -> target"
           key: ${{ matrix.abi }}
 
       - name: Build libaether.so
-        if: steps.sel.outputs.enabled == 'true'
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
@@ -221,7 +202,6 @@ jobs:
           cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
 
       - name: Fetch hev-socks5-tunnel
-        if: steps.sel.outputs.enabled == 'true'
         run: |
           curl -sSL -o hev.tar.xz \
             "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_TAG}/hev-socks5-tunnel-${HEV_TAG}.tar.xz"
@@ -229,7 +209,6 @@ jobs:
           mv "hev-socks5-tunnel-${HEV_TAG}" hev-src
 
       - name: Build libhev-socks5-tunnel.so
-        if: steps.sel.outputs.enabled == 'true'
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
@@ -250,7 +229,6 @@ jobs:
           cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
 
       - name: Upload native libraries
-        if: steps.sel.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rix-native-${{ matrix.abi }}
