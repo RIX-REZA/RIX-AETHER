@@ -387,7 +387,7 @@ object CloudflareIpManager {
 
                 // Quick TLS handshake check
                 val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-                val sslSocket = sslSocketFactory.createSocket(socket, ip, port, true) as javax.net.ssl.SSLSocket
+                val sslSocket = sslSocketFactory.createSocket(socket, ip, port, true)
                 sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
                 sslSocket.startHandshake()
                 sslSocket.close()
@@ -412,7 +412,7 @@ object CloudflareIpManager {
         val ip = prefs?.getString("best_ip_$operatorKey", "")
         val time = prefs?.getLong("best_ip_time_$operatorKey", 0) ?: 0
         val now = System.currentTimeMillis()
-        if (ip.isNotBlank() && (now - time) < OPERATOR_CACHE_DURATION_MS) {
+        if (ip?.isNotBlank() == true && (now - time) < OPERATOR_CACHE_DURATION_MS) {
             return ip
         }
         return null
