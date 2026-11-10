@@ -193,10 +193,14 @@ jobs:
           $ErrorActionPreference = "Stop"
           $iscc = "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          & $iscc "windows\\installer\\Rix.iss" /DOutputBaseFilename="Windows-10"
+          & $iscc "windows\\installer\\Rix.iss"
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
-          & $iscc "windows\\installer\\Rix.iss" /DOutputBaseFilename="Windows-11"
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+
+          # Create Windows-10.exe and Windows-11.exe from the built installer
+          $built = Get-ChildItem windows/dist/RIX-Setup-*.exe | Select-Object -First 1
+          if (-not $built) { throw "No installer was produced" }
+          Copy-Item $built.FullName "windows/dist/Windows-10.exe" -Force
+          Copy-Item $built.FullName "windows/dist/Windows-11.exe" -Force
 
           Get-ChildItem windows/dist | Format-Table Name, Length
 
