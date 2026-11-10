@@ -119,12 +119,13 @@ object CloudflareIpManager {
     /**
      * Gets the best IP for the current network/operator.
      * Returns a cached IP if fresh, otherwise evaluates and caches new best IP.
+     * ALWAYS returns a fallback IP (never null) to ensure connectivity.
      */
     suspend fun getBestIp(
         context: Context,
         port: Int = 443,
         forceRefresh: Boolean = false
-    ): String? {
+    ): String {
         val operatorKey = detectOperatorKey(context) ?: "unknown"
         _operatorKey.set(operatorKey)
 
@@ -141,8 +142,9 @@ object CloudflareIpManager {
             return operatorCached
         }
 
-        // Evaluate new IPs
-        return evaluateAndSelectBestIp(context, port, operatorKey, forceRefresh)
+        // Evaluate new IPs - if all evaluation fails, return hardcoded fallback
+        val evaluated = evaluateAndSelectBestIp(context, port, operatorKey, forceRefresh)
+        return evaluated ?: "1.1.1.1"
     }
 
     /** Detects the current SIM operator (MCC-MNC) for operator-aware caching. */
@@ -380,16 +382,37 @@ object CloudflareIpManager {
     /** Attempts a single TCP+TLS probe to the IP. */
     private suspend fun tryProbeIp(ip: String, port: Int): Boolean {
         return withContext(Dispatchers.IO) {
-            try {
-                val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-                val sslSocket = sslSocketFactory.createSocket(ip, port) as javax.net.ssl.SSLSocket
-                sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
-                sslSocket.startHandshake()
-                sslSocket.close()
-                true
-            } catch (e: Exception) {
-                false
-            }
+            // First try quick TCP connect (fails fast if IP is unreachable)
+            if (!tcpProbe(ip, port)) return@withContext false
+            // Then try TLS handshake (validates the IP actually speaks HTTPS)
+            tlsProbe(ip, port)
+        }
+    }
+
+    /** Quick TCP connect probe - fails fast if host is unreachable. */
+    private fun tcpProbe(ip: String, port: Int): Boolean {
+        return try {
+            val socket = java.net.Socket()
+            socket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
+            socket.connect(java.net.InetSocketAddress(ip, port), PROBE_TIMEOUT_MS.toInt())
+            socket.close()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** Full TLS handshake probe - validates the IP serves valid HTTPS. */
+    private fun tlsProbe(ip: String, port: Int): Boolean {
+        return try {
+            val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
+            val sslSocket = sslSocketFactory.createSocket(ip, port) as javax.net.ssl.SSLSocket
+            sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
+            sslSocket.startHandshake()
+            sslSocket.close()
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
