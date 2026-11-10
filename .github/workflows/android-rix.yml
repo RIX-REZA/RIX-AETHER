@@ -145,7 +145,7 @@ jobs:
       - name: Select ABIs
         id: sel
         env:
-          REQUESTED: ${{ github.event.inputs.abis || 'arm64-v8a,armeabi-v7a,x86_64,x86' }}
+          REQUESTED: ${{ github.event.inputs.abis != '' && github.event.inputs.abis || 'arm64-v8a,armeabi-v7a,x86_64,x86' }}
         run: |
           if echo ",${REQUESTED}," | grep -q ",${{ matrix.abi }},"; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
