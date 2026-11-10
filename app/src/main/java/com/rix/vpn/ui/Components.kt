@@ -82,7 +82,7 @@ fun RixSurface(content: @Composable () -> Unit) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(palette.accent.copy(alpha = palette.wellAccent), Color.Transparent),
+                    colors = listOf(palette.violet.copy(alpha = palette.wellViolet), Color.Transparent),
                     center = Offset(size.width * 0.16f, size.height * 0.10f),
                     radius = size.minDimension * 0.75f
                 ),
@@ -91,7 +91,7 @@ fun RixSurface(content: @Composable () -> Unit) {
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(palette.accent.copy(alpha = palette.wellAccent * 0.6f), Color.Transparent),
+                    colors = listOf(palette.teal.copy(alpha = palette.wellTeal), Color.Transparent),
                     center = Offset(size.width * 0.92f, size.height * 0.88f),
                     radius = size.minDimension * 0.65f
                 ),
@@ -173,7 +173,7 @@ fun SegmentedRow(
         options.forEachIndexed { index, label ->
             val active = index == selectedIndex
             val bg by animateColorAsState(
-                targetValue = if (active) RixColors.Accent.copy(alpha = 0.22f) else Color.Transparent,
+                targetValue = if (active) RixColors.Violet.copy(alpha = 0.22f) else Color.Transparent,
                 animationSpec = tween(220),
                 label = "seg-bg"
             )
@@ -228,7 +228,7 @@ fun SettingSwitch(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = RixColors.Background,
-                checkedTrackColor = RixColors.Accent,
+                checkedTrackColor = RixColors.Violet,
                 uncheckedThumbColor = RixColors.TextMuted,
                 uncheckedTrackColor = RixColors.SurfaceHigh,
                 uncheckedBorderColor = RixColors.Stroke
@@ -272,12 +272,12 @@ fun RixChip(
     modifier: Modifier = Modifier
 ) {
     val bg by animateColorAsState(
-        targetValue = if (selected) RixColors.Accent.copy(alpha = 0.20f) else RixColors.Surface,
+        targetValue = if (selected) RixColors.Violet.copy(alpha = 0.20f) else RixColors.Surface,
         animationSpec = tween(180),
         label = "chip-bg"
     )
     val border by animateColorAsState(
-        targetValue = if (selected) RixColors.Accent.copy(alpha = 0.65f) else RixColors.Stroke,
+        targetValue = if (selected) RixColors.Violet.copy(alpha = 0.65f) else RixColors.Stroke,
         animationSpec = tween(180),
         label = "chip-border"
     )
@@ -298,7 +298,8 @@ fun RixChip(
     }
 }
 
-/** The connect orb.
+/**
+ * The connect orb.
  *
  * Three expanding rings tied to one infinite transition: they stay in phase so
  * the pulse reads as a single heartbeat instead of noise.
@@ -330,15 +331,15 @@ fun PowerOrb(
     val animating = active || cancellable || stopping
 
     val accent = when {
-        active -> RixColors.Accent
+        active -> RixColors.Teal
         failed -> RixColors.Danger
         cancellable || stopping -> RixColors.Warning
-        else -> RixColors.Accent
+        else -> RixColors.Violet
     }
     val deep = when {
-        active -> RixColors.AccentDeep
-        failed -> RixColors.DangerDeep
-        else -> RixColors.AccentDeep
+        active -> RixColors.TealDeep
+        failed -> RixColors.Danger
+        else -> RixColors.VioletDeep
     }
 
     // Created only while there is something to animate: an infinite transition
@@ -502,7 +503,7 @@ fun SelectCard(
     subtitle: String,
     selected: Boolean,
     onClick: () -> Unit,
-    accent: Color = RixColors.Accent,
+    accent: Color = RixColors.Violet,
     badge: String? = null,
     modifier: Modifier = Modifier
 ) {
@@ -578,7 +579,7 @@ fun SelectCard(
 }
 
 /**
- * The app's profile mark: a teal gradient ring around the RIX bolt.
+ * The app's profile mark: a gradient ring around the RIX bolt.
  *
  * Drawn in Compose rather than shipped as a bitmap so it stays sharp at any
  * size, follows the palette when the skin changes, and costs no APK weight.
@@ -587,22 +588,22 @@ fun SelectCard(
  */
 @Composable
 fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
-    val accent = RixColors.Accent
-    val accentDeep = RixColors.AccentDeep
+    val violet = RixColors.Violet
+    val teal = RixColors.Teal
     val disc = RixColors.BackgroundLift
 
     Canvas(modifier = modifier.size(sizeDp.dp)) {
         val d = size.minDimension
         val mid = Offset(size.width / 2f, size.height / 2f)
 
-        // Sweep ring: teal accent gradient.
-        drawCircle(brush = Brush.sweepGradient(listOf(accent, accentDeep, accent)), radius = d / 2f)
+        // Sweep ring: violet on one side, teal on the other.
+        drawCircle(brush = Brush.sweepGradient(listOf(violet, teal, violet)), radius = d / 2f)
         drawCircle(color = disc, radius = d / 2f - d * 0.06f)
 
         // Soft inner glow so the mark does not look like a flat sticker.
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(accent.copy(alpha = 0.38f), Color.Transparent),
+                colors = listOf(violet.copy(alpha = 0.38f), Color.Transparent),
                 center = mid,
                 radius = d * 0.42f
             ),
@@ -619,7 +620,7 @@ fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
             lineTo(mid.x + d * 0.010f, mid.y - d * 0.040f)
             close()
         }
-        drawPath(bolt, brush = Brush.linearGradient(listOf(accentDeep, accent)))
+        drawPath(bolt, brush = Brush.linearGradient(listOf(teal, violet)))
     }
 }
 
@@ -641,7 +642,7 @@ fun IpTile(
     modifier: Modifier = Modifier
 ) {
     val s = LocalStrings.current
-    val accent = if (ip.isNotBlank()) RixColors.Accent else RixColors.TextMuted
+    val accent = if (ip.isNotBlank()) RixColors.Teal else RixColors.TextMuted
 
     // Where the address is registered, then whose network it is on. The trace
     // only knows the edge that answered, so the city, the country and the ISP
@@ -721,7 +722,7 @@ fun ExpandableCard(
     subtitle: String? = null,
     icon: ImageVector? = null,
     initiallyExpanded: Boolean = false,
-    accent: Color = RixColors.Accent,
+    accent: Color = RixColors.Violet,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -829,7 +830,7 @@ fun ThemeIconButton(dark: Boolean, onClick: () -> Unit) {
                 } else {
                     s.s("تاریک کردن", "Switch to dark")
                 },
-                tint = if (isDark) RixColors.Accent else RixColors.Warning,
+                tint = if (isDark) RixColors.Violet else RixColors.Warning,
                 modifier = Modifier.size(18.dp)
             )
         }

@@ -9,24 +9,26 @@
    drawn that the host did not report. */
 
 :root {
-  --bg: #0B0D10;
-  --bg-soft: #101319;
-  --raise: #14181F;
+  --bg: #08090f;
+  --bg-soft: #0f111a;
+  --raise: #141724;
   --surface: rgba(255, 255, 255, .04);
   --surface-2: rgba(255, 255, 255, .07);
   --line: rgba(255, 255, 255, .08);
   --line-strong: rgba(255, 255, 255, .17);
-  --text: #ECEEF6;
-  --muted: #8D93A8;
-  --faint: #5D6376;
-  --accent: #00D4AA;
-  --accent-deep: #00B896;
-  --accent-soft: rgba(0, 212, 170, .12);
-  --accent-line: rgba(0, 212, 170, .42);
-  --ok: #34D399;
+  --text: #eceef6;
+  --muted: #8d93a8;
+  --faint: #5d6376;
+  --accent: #7c5cff;
+  --accent-2: #b39cff;
+  --accent-soft: rgba(124, 92, 255, .15);
+  --accent-line: rgba(124, 92, 255, .42);
+  --cyan: #22d3ee;
+  --cyan-soft: rgba(34, 211, 238, .15);
+  --ok: #34d399;
   --ok-soft: rgba(52, 211, 153, .14);
-  --warn: #FBBF24;
-  --err: #F87171;
+  --warn: #fbbf24;
+  --err: #f87171;
   --err-soft: rgba(248, 113, 113, .14);
   --shadow: 0 22px 60px rgba(0, 0, 0, .5);
   --radius: 14px;
@@ -35,24 +37,26 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #EFF1F6;
-  --bg-soft: #FFFFFF;
-  --raise: #FFFFFF;
-  --surface: rgba(11, 13, 16, .025);
-  --surface-2: rgba(11, 13, 16, .055);
-  --line: rgba(11, 13, 16, .1);
-  --line-strong: rgba(11, 13, 16, .2);
-  --text: #12141F;
-  --muted: #666D84;
-  --faint: #98A0B5;
-  --accent: #00B896;
-  --accent-deep: #00A084;
-  --accent-soft: rgba(0, 184, 150, .1);
-  --accent-line: rgba(0, 184, 150, .35);
-  --ok: #0F9D63;
+  --bg: #eef0f7;
+  --bg-soft: #ffffff;
+  --raise: #ffffff;
+  --surface: rgba(16, 18, 32, .025);
+  --surface-2: rgba(16, 18, 32, .055);
+  --line: rgba(16, 18, 32, .1);
+  --line-strong: rgba(16, 18, 32, .2);
+  --text: #12141f;
+  --muted: #666d84;
+  --faint: #98a0b5;
+  --accent: #6438ff;
+  --accent-2: #7d5cff;
+  --accent-soft: rgba(100, 56, 255, .1);
+  --accent-line: rgba(100, 56, 255, .35);
+  --cyan: #0693ad;
+  --cyan-soft: rgba(6, 147, 173, .1);
+  --ok: #0f9d63;
   --ok-soft: rgba(15, 157, 99, .12);
-  --warn: #B7791F;
-  --err: #D64545;
+  --warn: #b7791f;
+  --err: #d64545;
   --err-soft: rgba(214, 69, 69, .1);
   --shadow: 0 18px 44px rgba(20, 22, 40, .14);
 }
@@ -84,7 +88,7 @@ body::before {
   pointer-events: none;
   background:
     radial-gradient(760px 460px at 88% -16%, var(--accent-soft), transparent 68%),
-    radial-gradient(620px 420px at -6% 108%, var(--accent-soft), transparent 70%);
+    radial-gradient(620px 420px at -6% 108%, var(--cyan-soft), transparent 70%);
   opacity: .9;
 }
 
@@ -134,7 +138,7 @@ button {
   width: 17px;
   height: 17px;
   border-radius: 5px;
-  background: linear-gradient(140deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(140deg, var(--accent), var(--cyan));
   box-shadow: 0 0 20px var(--accent-soft);
 }
 
@@ -246,7 +250,7 @@ button {
   bottom: 2px;
   height: 2px;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
 }
 
 /* --------------------------------------------------------------------- shell */
@@ -322,8 +326,8 @@ main {
   transition: background .3s;
 }
 
-.hero-main.on::before { background: linear-gradient(180deg, var(--ok), var(--accent)); }
-.hero-main.busy::before { background: linear-gradient(180deg, var(--accent), var(--accent-deep)); }
+.hero-main.on::before { background: linear-gradient(180deg, var(--ok), var(--cyan)); }
+.hero-main.busy::before { background: linear-gradient(180deg, var(--accent), var(--cyan)); }
 .hero-main.err::before { background: var(--err); }
 
 .hero-top {
@@ -394,7 +398,7 @@ main {
   inset-block: 0;
   width: 0;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
   transition: width .4s ease;
 }
 
@@ -421,7 +425,7 @@ main {
   font-size: 14px;
   font-weight: 650;
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 10px 26px var(--accent-soft);
   transition: transform .15s, box-shadow .2s, filter .15s;
 }
@@ -477,8 +481,8 @@ main {
   margin-inline-end: -3px;
 }
 
-.chart-key i.d { background: var(--accent); }
-.chart-key i.u { background: var(--accent-deep); }
+.chart-key i.d { background: var(--cyan); }
+.chart-key i.u { background: var(--accent); }
 
 .chart {
   width: 100%;

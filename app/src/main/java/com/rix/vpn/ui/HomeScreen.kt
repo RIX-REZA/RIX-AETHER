@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,22 +44,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.graphics.vector.PathNode
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rix.vpn.R
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
@@ -145,17 +136,6 @@ fun HomeScreen(
                     )
                 }
                 ThemeIconButton(dark = dark, onClick = onToggleTheme)
-                Spacer(Modifier.width(8.dp))
-                SocialIcon(
-                    imageVector = { TelegramIcon() },
-                    url = "https://t.me/RIXPANEL",
-                    contentDesc = "Telegram"
-                )
-                SocialIcon(
-                    imageVector = { GitHubIcon() },
-                    url = "https://github.com/RIX-REZA/RIX-AETHER",
-                    contentDesc = "GitHub"
-                )
                 Spacer(Modifier.width(10.dp))
                 StatusBadge(state)
             }
@@ -261,7 +241,7 @@ fun HomeScreen(
                 LiveStatTile(
                     label = s.s("دریافت", "Down"),
                     bytes = { it.rxBytes },
-                    accent = RixColors.Accent,
+                    accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowDownward,
                     modifier = Modifier.weight(1f)
                 )
@@ -278,7 +258,7 @@ fun HomeScreen(
                 LiveStatTile(
                     label = s.s("ارسال", "Up"),
                     bytes = { it.txBytes },
-                    accent = RixColors.AccentDeep,
+                    accent = RixColors.Violet,
                     icon = Icons.Rounded.ArrowUpward,
                     modifier = Modifier.weight(1f)
                 )
@@ -559,12 +539,12 @@ private fun stages(
  */
 @Composable
 private fun phaseAccent(phase: RixRuntime.Phase): Color = when (phase) {
-    RixRuntime.Phase.RUNNING -> RixColors.Accent
+    RixRuntime.Phase.RUNNING -> RixColors.Teal
     RixRuntime.Phase.ERROR -> RixColors.Danger
     RixRuntime.Phase.STARTING,
     RixRuntime.Phase.CONNECTING,
     RixRuntime.Phase.STOPPING -> RixColors.Warning
-    RixRuntime.Phase.IDLE -> RixColors.Accent
+    RixRuntime.Phase.IDLE -> RixColors.Violet
 }
 
 /**
@@ -603,7 +583,7 @@ private fun HeroPanel(
 private fun StatusBadge(state: RixRuntime.State) {
     val s = LocalStrings.current
     val (label, color) = when (state.phase) {
-        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Accent
+        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
         RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
         RixRuntime.Phase.STARTING -> s.s("آمادهسازی", "Preparing") to RixColors.Warning
         RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
@@ -766,43 +746,4 @@ private fun formatBytes(bytes: Long): String {
         index++
     }
     return String.format(java.util.Locale.US, "%.2f %s", value, units[index])
-}
-
-@Composable
-internal fun SocialIcon(
-    imageVector: @Composable () -> ImageVector,
-    url: String,
-    contentDesc: String
-) {
-    val context = LocalContext.current
-    IconButton(onClick = { openUrl(context, url) }) {
-        Icon(
-            imageVector = imageVector(),
-            contentDescription = contentDesc,
-            tint = RixColors.TextMuted,
-            modifier = Modifier.size(24.dp)
-        )
-    }
-}
-
-private fun openUrl(context: android.content.Context, url: String) {
-    try {
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        // ignore
-    }
-}
-
-/** Custom Telegram icon for the header social links. */
-@Composable
-private fun TelegramIcon(): ImageVector {
-    return ImageVector.vectorResource(id = R.drawable.ic_telegram)
-}
-
-/** Custom GitHub icon for the header social links. */
-@Composable
-private fun GitHubIcon(): ImageVector {
-    return ImageVector.vectorResource(id = R.drawable.ic_github)
 }

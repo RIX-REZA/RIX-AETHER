@@ -21,8 +21,8 @@ android {
         applicationId = "com.rix.vpn"
         minSdk = 24
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.8"
+        versionCode = 8
+        versionName = "1.0.7"
 
         ndk {
             // Driven by -PrixAbis so the ABI list here can never drift from the
@@ -105,16 +105,6 @@ android {
 
     lint {
         abortOnError = false
-    }
-
-    // Per-ABI splits for separate APKs per architecture
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-            isUniversalApk = true
-        }
     }
 }
 

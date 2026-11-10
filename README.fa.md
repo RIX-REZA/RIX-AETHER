@@ -56,28 +56,18 @@
 
 | بسته | فایل آخرین انتشار ثبت‌شده | توضیحات |
 |:--|:--|:--|
-| **اندروید Universal** | [`Rix-aether-universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-universal.apk) | تمام معماری‌ها (arm64-v8a, armeabi-v7a, x86_64, x86) در یک APK |
-| **اندروید ARM64-v8a (v8)** | [`Rix-aether-v8.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-v8.apk) | دستگاه‌های ۶۴ بیتی ARM (اکثر گوشی‌های مدرن) |
-| **اندروید ARMv7a (v7)** | [`Rix-aether-v7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-v7.apk) | دستگاه‌های ۳۲ بیتی ARM (گوشی‌های قدیمی) |
-| **اندروید x86_64** | [`Rix-aether-x86_64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-x86_64.apk) | ۶۴ بیتی x86 (امولاتورها، برخی تبلت‌ها) |
-| **اندروید x86** | [`Rix-aether-x86.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/Rix-aether-x86.apk) | ۳۲ بیتی x86 (امولاتورهای قدیمی) |
-| **نصاب ویندوز ۱۰/۱۱** | [`RIX-Setup-1.8.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Setup-1.8.exe) · ~۷۷ مگابایت | نصب برای کاربر فعلی، WebView2 bootstrapper شامل |
-| **نسخه پرتابل ویندوز** | [`RIX-Portable-v1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Portable-v1.8.zip) · ~۸۲ مگابایت | استخراج و اجرا؛ بدون نصب |
-| **بسته کامل انتشار** | [`RIX-1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-1.8.zip) | تمام APKها و `SHA256SUMS.txt` |
-|| **یادداشت انتشار** | [v1.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.8) | APKهای هر معماری، ساخت‌های ویندوز ۱۰/۱۱، **اسکنر IP با شناسایی اپراتور، بررسی موازی و IPهای dự phòng**، **آیکون‌های بهبود‌یافته GitHub/تلگرام**، رفع همه خطاهای کامپایل |
+| **اندروید** | [`RIX-1.0.7-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7-debug.apk) · ۳۳.۲ مگابایت | فایل APK، معماری `arm64-v8a`؛ پیش از نصب یادداشت انتشار را بخوانید |
+| **نصاب ویندوز** | [`RIX-Setup-1.0.7.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Setup-1.0.7.exe) · ۷۶.۵ مگابایت | نصب برای کاربر فعلی ویندوز |
+| **نسخه پرتابل ویندوز** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Portable.zip) · ۸۲.۵ مگابایت | استخراج و اجرا؛ بدون نصب |
+| **بسته کامل انتشار** | [`RIX-1.0.7.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7.zip) | فایل APK همراه با `SHA256SUMS.txt` |
+| **یادداشت انتشار** | [نسخه v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | رابط تازه روی هر دو نسخه، و رفع علت لگ اندروید |
 
 <details>
   <summary><strong>📦 یکپارچگی فایل انتشار · SHA-256</strong></summary>
 
   ```text
-  Rix-aether-universal.apk  <sha256>
-  Rix-aether-v8.apk         <sha256>
-  Rix-aether-v7.apk         <sha256>
-  Rix-aether-x86_64.apk     <sha256>
-  Rix-aether-x86.apk        <sha256>
-  RIX-Setup-1.8.exe         <sha256>
-  RIX-Portable-v1.8.zip     <sha256>
-  RIX-1.8.zip               <sha256>
+  RIX-1.0.7-debug.apk  b96cf63163280b89c3f60d08640a7c5722c80c6846355cc3445b40fce00efb6b
+  RIX-1.0.7.zip        20b461e37c7dc5346b37cdfb1e3649993595b0abf19cb644427304f1c9f49158
   ```
 </details>
 
@@ -100,8 +90,8 @@
 اگر نسخهٔ تغییرداده‌ای را بازتوزیع می‌کنی، [TRADEMARK.md](TRADEMARK.md) فهرست می‌کند چه چیزهایی باید عوض شود: نام، شناسهٔ برنامه و آیکون‌ها. فورک آزاد است و این پروژه جلوی آن را نمی‌گیرد؛ آنچه اینجا می‌ماند نام و آیکون‌هاست.
 
 > [!NOTE]
-> نسخه **۱.۸** APKهای هر معماری برای اندروید (Universal، ARM64-v8a، ARMv7a، x86_64، x86) و ساخت‌های ویندوز (نصاب + پرتابل) را معرفی می‌کند. **اسکنر IP با شناسایی اپراتور (MCC-MNC)، بررسی موازی TLS، کش ماندگار برای هر اپراتور و محدوده‌های IP dự phòng جایگزین IP واحد سخت‌کدشده برای پروتکل‌های غیر‌سایفون شده. آیکون‌های GitHub و تلگرام به‌صورت برداری بازطراحی شده‌اند. همه خطاهای کامپایل برطرف شده، هسته بومی به Aether v2.4.0 گره خورده، و attestation اصالت ساخت برای تمام فایل‌ها اضافه شده است.**
-
+> نسخه **۱.۰.۷** رابط کاربری هر دو نسخه را از نو می‌سازد و علت لگ اندروید را برمی‌دارد: شمارنده‌های ترافیک در همان حالتی بودند که فاز اتصال در آن قرار داشت، پس هر خواندن — هر ثانیه، تا وقتی تونل بالا بود — کل صفحه را از نو می‌ساخت. حالا روی یک جریان جدا هستند و فقط ساعت جلسه، نمودار و دو کاشی ترافیک با آن‌ها به‌روز می‌شوند. گزارش زنده هم دیگر با هر خط، پیمایش انیمیشنی به انتها ندارد.
+>
 > [!IMPORTANT]
 > کاربرانی که از نسخه **۱.۰.۲ یا قدیمی‌تر** ارتقا می‌دهند، باید نسخه قدیمی را یک‌بار حذف کنند؛ زیرا آن نسخه‌ها با امضای موقت و متغیر CI ساخته شده بودند. از نسخه ۱.۰.۳ به بعد از هویت امضای ثابت استفاده می‌شود که جزئیاتش در مخزن آمده است.
 
@@ -258,7 +248,7 @@ RIX پیش از تغییر پروکسی، مقادیر قبلی را ذخیره 
 | تونل اندروید | `VpnService` + موتور `hev` tun2socks + SOCKS5 محلی |
 | کلاینت ویندوز | برنامه دسکتاپ .NET |
 | حداقل اندروید | Android 7.0 · API 24 |
-| معماری‌های APK انتشار | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` |
+| معماری APK انتشار | `arm64-v8a` |
 | حداقل ویندوز | Windows 10 1809 · ۶۴ بیتی |
 | مجوز | AGPL-3.0-only |
 

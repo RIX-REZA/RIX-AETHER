@@ -770,8 +770,8 @@ function drawChart() {
   ctx.clearRect(0, 0, width, height);
 
   const style = getComputedStyle(document.documentElement);
-  const up = style.getPropertyValue('--accent').trim() || '#00D4AA';
-  const down = style.getPropertyValue('--accent-deep').trim() || '#00B896';
+  const up = style.getPropertyValue('--accent').trim() || '#7c5cff';
+  const down = style.getPropertyValue('--cyan').trim() || '#22d3ee';
   const line = style.getPropertyValue('--line').trim() || 'rgba(255,255,255,.08)';
 
   // Three rules, so an empty chart still reads as a chart.

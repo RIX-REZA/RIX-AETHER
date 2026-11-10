@@ -33,7 +33,6 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -47,19 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.graphics.vector.PathNode
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rix.vpn.R
 import com.rix.vpn.core.IpFamily
 import com.rix.vpn.core.LogLevel
 import com.rix.vpn.core.PerfProfile
@@ -157,17 +150,6 @@ fun OptionsScreen(
                         splitApps = draft.splitApps
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                SocialIcon(
-                    imageVector = { TelegramIcon() },
-                    url = "https://t.me/RIXPANEL",
-                    contentDesc = "Telegram"
-                )
-                SocialIcon(
-                    imageVector = { GitHubIcon() },
-                    url = "https://github.com/RIX-REZA/RIX-AETHER",
-                    contentDesc = "GitHub"
-                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -222,7 +204,7 @@ fun OptionsScreen(
                 subtitle = "${draft.transport.label(s)} • ${draft.scanMode.label(s)}",
                 icon = Icons.Rounded.Route,
                 initiallyExpanded = true,
-                accent = RixColors.Accent
+                accent = RixColors.Violet
             ) {
                 SectionTitle(s.s("پروتکل", "Protocol"))
                 ChipFlow {
@@ -398,7 +380,7 @@ fun OptionsScreen(
                 title = s.s("شبکه", "Network"),
                 subtitle = "${s.s("پورت", "port")} ${draft.bindPort} • MTU ${draft.mtu} • ${draft.ipFamily.label(s)}",
                 icon = Icons.Rounded.Wifi,
-                accent = RixColors.Accent
+                accent = RixColors.Teal
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
@@ -490,7 +472,7 @@ fun OptionsScreen(
                         Icon(
                             Icons.Rounded.Apps,
                             contentDescription = null,
-                            tint = RixColors.Accent,
+                            tint = RixColors.Violet,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(10.dp))
@@ -522,7 +504,7 @@ fun OptionsScreen(
                     "reconnect ${draft.reconnectSecs}s • ${draft.perf.label(s)}"
                 ),
                 icon = Icons.Rounded.Speed,
-                accent = RixColors.Accent
+                accent = RixColors.Teal
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumberField(
@@ -801,7 +783,7 @@ private fun presets(): List<Preset> = listOf(
         labelFa = "سریع",
         labelEn = "Fast",
         icon = Icons.Rounded.RocketLaunch,
-        accent = RixColors.Accent,
+        accent = RixColors.Teal,
         configure = { o ->
             o.copy(
                 transport = Transport.MASQUE_H3,
@@ -824,7 +806,7 @@ private fun presets(): List<Preset> = listOf(
         labelFa = "ضد DPI",
         labelEn = "Anti-DPI",
         icon = Icons.Rounded.VerifiedUser,
-        accent = RixColors.Accent,
+        accent = RixColors.Violet,
         configure = { o ->
             o.copy(
                 transport = Transport.MIM,
@@ -954,12 +936,12 @@ private fun ChipFlow(content: @Composable () -> Unit) {
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = RixColors.Accent,
+    focusedBorderColor = RixColors.Violet,
     unfocusedBorderColor = RixColors.Stroke,
     focusedContainerColor = RixColors.Surface,
     unfocusedContainerColor = RixColors.Surface,
-    cursorColor = RixColors.Accent,
-    focusedLabelColor = RixColors.Accent,
+    cursorColor = RixColors.Violet,
+    focusedLabelColor = RixColors.Violet,
     unfocusedLabelColor = RixColors.TextMuted,
     focusedTextColor = RixColors.Text,
     unfocusedTextColor = RixColors.Text
@@ -1023,16 +1005,4 @@ private fun NumberField(
         ),
         colors = fieldColors()
     )
-}
-
-/** Custom Telegram icon for the header social links. */
-@Composable
-private fun TelegramIcon(): ImageVector {
-    return ImageVector.vectorResource(id = R.drawable.ic_telegram)
-}
-
-/** Custom GitHub icon for the header social links. */
-@Composable
-private fun GitHubIcon(): ImageVector {
-    return ImageVector.vectorResource(id = R.drawable.ic_github)
 }
