@@ -64,7 +64,7 @@
 | **Windows 10/11 Installer** | [`RIX-Setup-1.8.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Setup-1.8.exe) · ~77 MB | Per-user installer, WebView2 bootstrapper included |
 | **Windows Portable** | [`RIX-Portable-v1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-Portable-v1.8.zip) · ~82 MB | Extract and run; no installation step |
 | **Release Bundle** | [`RIX-1.8.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.8/RIX-1.8.zip) | All APKs and `SHA256SUMS.txt` |
-| **Release Notes** | [v1.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.8) | Per-architecture APKs, Windows 10/11 builds, all compilation errors fixed |
+| **Release Notes** | [v1.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.8) | Per-architecture APKs, Windows 10/11 builds, **operator-aware IP scanner with parallel probing & fallback IPs**, **improved GitHub/Telegram icons**, all compilation errors fixed, build provenance attestation for all artifacts |
 
 <details>
   <summary><strong>📦 Release integrity · SHA-256</strong></summary>
@@ -100,7 +100,7 @@ Download from the [releases page](https://github.com/RIX-REZA/RIX-AETHER/release
 If you redistribute a modified build, [TRADEMARK.md](TRADEMARK.md) lists what has to change first — the name, the application id and the icons. Forking is allowed and this project does not try to prevent it; the name and the artwork are what stay here.
 
 > [!NOTE]
-> Version **1.8** introduces per-architecture APKs for Android (Universal, ARM64-v8a, ARMv7a, x86_64, x86) and Windows builds (Installer + Portable). All compilation errors fixed, native core (Aether v2.4.0) updated, build provenance attestation added for all artifacts.
+> Version **1.8** introduces per-architecture APKs for Android (Universal, ARM64-v8a, ARMv7a, x86_64, x86) and Windows builds (Installer + Portable). **Operator-aware IP scanner with parallel TLS probing, persistent operator caching (MCC-MNC keyed), and fallback IP ranges replaces single hardcoded IP for non-Psiphon protocols. GitHub/Telegram icons redesigned as vector drawables. All compilation errors fixed, native core pinned to Aether v2.4.0, build provenance attestation added for all artifacts.**
 
 > [!IMPORTANT]
 > Users upgrading from **1.0.2 or older** must uninstall the old build once because those versions used a changing CI debug signature. Builds from **1.0.3 onward** use the fixed signing identity documented in the repository.

@@ -56,10 +56,12 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rix.vpn.R
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
@@ -796,76 +798,11 @@ private fun openUrl(context: android.content.Context, url: String) {
 /** Custom Telegram icon for the header social links. */
 @Composable
 private fun TelegramIcon(): ImageVector {
-    val pathNodes = listOf(
-        PathNode.MoveTo(21.5f, 4.5f),
-        PathNode.LineTo(2.5f, 19.5f),
-        PathNode.LineTo(5.5f, 12.5f),
-        PathNode.LineTo(13.5f, 18f),
-        PathNode.LineTo(21.5f, 6.5f),
-        PathNode.LineTo(18.5f, 3.5f),
-        PathNode.LineTo(2.5f, 19.5f),
-        PathNode.LineTo(21.5f, 4.5f),
-        PathNode.MoveTo(15.5f, 16.5f),
-        PathNode.LineTo(9.5f, 10.5f),
-        PathNode.LineTo(2.5f, 19.5f),
-        PathNode.LineTo(8.5f, 15.5f),
-        PathNode.LineTo(15.5f, 16.5f),
-        PathNode.LineTo(15.5f, 16.5f)
-    )
-    return ImageVector.Builder(
-        name = "Telegram",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    )
-        .addPath(
-            pathData = pathNodes,
-            fill = SolidColor(RixColors.Accent)
-        )
-        .build()
+    return ImageVector.vectorResource(id = R.drawable.ic_telegram)
 }
 
 /** Custom GitHub icon for the header social links. */
 @Composable
 private fun GitHubIcon(): ImageVector {
-    val pathNodes = listOf(
-        PathNode.MoveTo(12f, 2f),
-        PathNode.LineTo(6f, 2f),
-        PathNode.LineTo(2f, 6f),
-        PathNode.LineTo(2f, 12f),
-        PathNode.LineTo(6f, 18f),
-        PathNode.LineTo(12f, 22f),
-        PathNode.LineTo(18f, 18f),
-        PathNode.LineTo(22f, 12f),
-        PathNode.LineTo(18f, 6f),
-        PathNode.LineTo(12f, 2f),
-        PathNode.MoveTo(12f, 4f),
-        PathNode.LineTo(8f, 4f),
-        PathNode.LineTo(5f, 7f),
-        PathNode.LineTo(5f, 11f),
-        PathNode.LineTo(7f, 13f),
-        PathNode.LineTo(9.5f, 17.6f),
-        PathNode.LineTo(9.5f, 20f),
-        PathNode.LineTo(12f, 18f),
-        PathNode.LineTo(14.5f, 20f),
-        PathNode.LineTo(14.5f, 17.6f),
-        PathNode.LineTo(17f, 13f),
-        PathNode.LineTo(19f, 11f),
-        PathNode.LineTo(19f, 7f),
-        PathNode.LineTo(16f, 4f),
-        PathNode.LineTo(12f, 4f)
-    )
-    return ImageVector.Builder(
-        name = "GitHub",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    )
-        .addPath(
-            pathData = pathNodes,
-            fill = SolidColor(RixColors.Accent)
-        )
-        .build()
+    return ImageVector.vectorResource(id = R.drawable.ic_github)
 }

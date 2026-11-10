@@ -90,8 +90,11 @@ class RixProxyService : LifecycleService() {
 
             // Smart Cloudflare IP selection for direct WARP connections (no Psiphon)
             // Fetches official ranges from cloudflare.com and evaluates IPs with real TLS probes
+            // Includes operator-aware caching, parallel probing, and fallback IPs
             val optimizedOptions = if (!options.psiphon) {
-                CloudflareIpManager.getBestIp(this, options, options.safeBindPort)
+                // Initialize IP manager on first use
+                CloudflareIpManager.initialize(this)
+                CloudflareIpManager.getBestIp(this, options, options.safeBindPort, forceRefresh = false)
                     ?.let { bestIp ->
                         LogBus.i("proxy", "Selected Cloudflare IP: $bestIp")
                         options.copy(peer = "$bestIp:443")

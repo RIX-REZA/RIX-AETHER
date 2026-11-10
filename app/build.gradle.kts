@@ -106,6 +106,16 @@ android {
     lint {
         abortOnError = false
     }
+
+    // Per-ABI splits for separate APKs per architecture
+    splits {
+        abi {
+            enable = true
+            reset()
+            include "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
+            universalApk = true
+        }
+    }
 }
 
 dependencies {
