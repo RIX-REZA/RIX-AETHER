@@ -393,7 +393,8 @@ jobs:
           if [ "${{ matrix.name }}" = "universal" ]; then
             apk=$(find app/build/outputs/apk/debug -name '*universal*.apk' -o -name '*all*.apk' | head -1)
           else
-            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}*.apk" | head -1)
+            # Match exactly the ABI in the APK name (e.g., app-x86-debug.apk, not app-x86_64-debug.apk)
+            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}-debug.apk" | head -1)
           fi
           [ -n "$apk" ] || { echo "ERROR: APK not found for ${{ matrix.name }}"; exit 1; }
           echo "APK=$apk"
@@ -412,7 +413,8 @@ jobs:
           if [ "${{ matrix.name }}" = "universal" ]; then
             apk=$(find app/build/outputs/apk/debug -name '*universal*.apk' -o -name '*all*.apk' | head -1)
           else
-            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}*.apk" | head -1)
+            # Match exactly the ABI in the APK name (e.g., app-x86-debug.apk, not app-x86_64-debug.apk)
+            apk=$(find app/build/outputs/apk/debug -name "*${{ matrix.abi }}-debug.apk" | head -1)
           fi
           target="app/build/outputs/apk/debug/Rix-aether-${{ matrix.name }}.apk"
           mv "$apk" "$target"
