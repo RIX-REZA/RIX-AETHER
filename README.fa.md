@@ -56,41 +56,45 @@
 
 | بسته | فایل آخرین انتشار ثبت‌شده | توضیحات |
 |:--|:--|:--|
-| **اندروید** | [`RIX-1.0.7-debug.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7-debug.apk) · ۳۳.۲ مگابایت | فایل APK، معماری `arm64-v8a`؛ پیش از نصب یادداشت انتشار را بخوانید |
-| **نصاب ویندوز** | [`RIX-Setup-1.0.7.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Setup-1.0.7.exe) · ۷۶.۵ مگابایت | نصب برای کاربر فعلی ویندوز |
-| **نسخه پرتابل ویندوز** | [`RIX-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-Portable.zip) · ۸۲.۵ مگابایت | استخراج و اجرا؛ بدون نصب |
-| **بسته کامل انتشار** | [`RIX-1.0.7.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-1.0.7.zip) | فایل APK همراه با `SHA256SUMS.txt` |
-| **یادداشت انتشار** | [نسخه v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | رابط تازه روی هر دو نسخه، و رفع علت لگ اندروید |
+| **اندروید · ARMv7** | [`RIX-AETHER-Android-ARMv7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-ARMv7.apk) · ۲۵.۸ MiB | دستگاه‌های ۳۲ بیتی ARM، معماری `armeabi-v7a` |
+| **اندروید · ARM64** | [`RIX-AETHER-Android-ARM64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-ARM64.apk) · ۲۶.۲ MiB | دستگاه‌های ۶۴ بیتی ARM، معماری `arm64-v8a` |
+| **اندروید · Universal** | [`RIX-AETHER-Android-Universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-Universal.apk) · ۴۱.۲ MiB | هر دو معماری ARM را دارد؛ اگر مطمئن نیستید این را بردارید |
+| **ویندوز ۱۰ · پرتابل** | [`RIX-AETHER-Windows-10-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-10-Portable.zip) · ۸۴.۲ MiB | استخراج و اجرا؛ داده‌ها در پوشهٔ `data\` کنار `RIX.exe` می‌مانند |
+| **ویندوز ۱۱ · پرتابل** | [`RIX-AETHER-Windows-11-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-11-Portable.zip) · ۸۴.۲ MiB | همان برنامهٔ پرتابل؛ حداقل سیستم‌عامل را ویندوز ۱۱ اعلام می‌کند |
+| **ویندوز ۱۰ · دسکتاپ** | [`RIX-AETHER-Windows-10-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-10-Desktop-Setup.exe) · ۷۶.۵ MiB | نصاب برای کاربر فعلی، ویندوز ۱۰ نسخه ۱۸۰۹ (build 17763) یا جدیدتر |
+| **ویندوز ۱۱ · دسکتاپ** | [`RIX-AETHER-Windows-11-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-11-Desktop-Setup.exe) · ۷۶.۵ MiB | نصاب برای کاربر فعلی، ویندوز ۱۱ (build 22000) یا جدیدتر |
+| **هش‌ها** | [`SHA256SUMS.txt`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/SHA256SUMS.txt) | همهٔ فایل‌های بالا را پوشش می‌دهد؛ هر فایل یک فایل کنار `.sha256` هم دارد |
+| **یادداشت انتشار** | [نسخه v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | ساخت چندسکویی نسخه ۱.۰.۷ |
 
 <details>
   <summary><strong>📦 یکپارچگی فایل انتشار · SHA-256</strong></summary>
 
   ```text
-  RIX-1.0.7-debug.apk  b96cf63163280b89c3f60d08640a7c5722c80c6846355cc3445b40fce00efb6b
-  RIX-1.0.7.zip        20b461e37c7dc5346b37cdfb1e3649993595b0abf19cb644427304f1c9f49158
+  da3143218eb27d5da7f71f136f063115579d48ebd531e2155a42c9e8c86a5d04  RIX-AETHER-Android-ARM64.apk
+  589554c0cad3fce659c48a7bcf1221e53d072a01db253fa3724396b1b6ccf1b5  RIX-AETHER-Android-ARMv7.apk
+  ceed2f6996df7118e859f7e3f287c0d46f884b064241ff2d5518749541e5358d  RIX-AETHER-Android-Universal.apk
+  94c6f2cd714e5162e6324fa70e0bf9891fb59650040b3f9ec397775c6af59cb0  RIX-AETHER-Windows-10-Desktop-Setup.exe
+  5bc766dc06c97bc3fa59bd00684bc60514be05f0dcbc28eb467471bcce2c5128  RIX-AETHER-Windows-10-Portable.zip
+  aeeae5b6f372ac1b1215a3494398a910e972e6399ef13f2001e1eea1c20590fb  RIX-AETHER-Windows-11-Desktop-Setup.exe
+  5bc766dc06c97bc3fa59bd00684bc60514be05f0dcbc28eb467471bcce2c5128  RIX-AETHER-Windows-11-Portable.zip
   ```
 </details>
 
 ### 🧾 آیا این نسخه رسمی است؟
 
-فقط از [صفحهٔ انتشارها](https://github.com/RIX-REZA/RIX-AETHER/releases) دانلود کن. هر منبع دیگری ساختِ شخص دیگری است، با هر امضایی که داشته باشد. سه بررسی، از ضعیف به قوی:
+فقط از [صفحهٔ انتشارها](https://github.com/RIX-REZA/RIX-AETHER/releases) دانلود کن. هر منبع دیگری ساختِ شخص دیگری است، با هر امضایی که داشته باشد. برای فایل‌های چندسکویی فعلی دو بررسی در دسترس است:
 
-۱. **هش.** بستهٔ `RIX-1.0.7.zip` فایل `SHA256SUMS.txt` را همراه دارد؛ آن را با فایل دانلود‌شده مقایسه کن (`sha256sum -c SHA256SUMS.txt`). این فقط دانلود ناقص یا جابه‌جاشده را می‌گیرد و بس — هر کسی می‌تواند برای فایل خودش هش بگذارد.
-۲. **امضای اندروید.** دستور `apksigner verify --print-certs RIX-1.0.7-debug.apk` مقدار `CN=RIX VPN` و اثر انگشت SHA-256 گواهی `dc351af6…` را چاپ می‌کند. این ثابت می‌کند فایل با کلید *دیگری* امضا نشده؛ ولی ثابت نمی‌کند ساختِ ماست: آن کلید از زمانی که در همین مخزن کامیت شد عمومی است، پس یک فایل جعلی هم می‌تواند همان اثر انگشت را نشان دهد. توضیح کامل در [SECURITY.md](SECURITY.md) است و راه بیرون رفتن از این وضع، همان چرخش کلید.
-۳. **اصالت ساخت — بررسی‌ای که یک کپی از آن رد می‌شود.** ساخت‌های رسمی توسط همان ورکفلوی که تولیدشان کرده attestation دارند:
+۱. **هش.** فایل `SHA256SUMS.txt` هر هفت فایل منتشرشده را پوشش می‌دهد و هر فایل یک فایل کنار `<filename>.sha256` هم دارد. آن را با فایل دانلود‌شده مقایسه کن (`sha256sum -c SHA256SUMS.txt`). این فقط دانلود ناقص یا جابه‌جاشده را می‌گیرد و بس — هر کسی می‌تواند برای فایل خودش هش بگذارد.
+۲. **امضای اندروید.** دستور `apksigner verify --print-certs RIX-AETHER-Android-Universal.apk` مقدار `CN=RIX VPN` و اثر انگشت SHA-256 گواهی `dc351af6…` را چاپ می‌کند. این ثابت می‌کند فایل با کلید *دیگری* امضا نشده؛ ولی ثابت نمی‌کند ساختِ ماست: آن کلید از زمانی که در همین مخزن کامیت شد عمومی است، پس یک فایل جعلی هم می‌تواند همان اثر انگشت را نشان دهد. توضیح کامل در [SECURITY.md](SECURITY.md) است و راه بیرون رفتن از این وضع، همان چرخش کلید.
 
-   ```bash
-   gh attestation verify RIX-1.0.7-debug.apk --repo RIX-REZA/RIX-AETHER
-   ```
-
-   پیام «Verification succeeded» یعنی گیت‌هاب بیانیه‌ای امضا کرده که هش آن فایل را به یک اجرای `android-rix.yml` در همین مخزن گره می‌زند. این بیانیه به مخزنی داده می‌شود که ساخت در آن اجرا شده، پس فایلی که در فورک شخص دیگری ساخته شده می‌تواند آن‌جا بیانیه داشته باشد، ولی همین بررسی را پاس نمی‌کند — و دقیقاً همین پرسش ماست.
-
-   فایل APK نسخهٔ ۱.۰.۷ هم پوشش داده شده است: بیانیهٔ آن به کامیت `8b1ae01` اشاره می‌کند و در ۲۰۲۶-۱۱-۰۲ راستی‌آزمایی شد. بررسی `RIX-Setup-1.0.7.exe` همچنان شکست می‌خورد، چون آن فایل پیش از افزوده‌شدن attestation به `windows-rix.yml` منتشر شده بود و بیانیه‌ای ندارد؛ ساخت‌های ویندوز از این پس بیانیه می‌گیرند، نه به شکل عقب‌گرد.
+فایل‌های چندسکویی توسط اجرای `43251153950` از ورکفلوی `multi-platform-release.yml` در کامیت `653cb50` ساخته شده‌اند (کتابخانه‌های Native و APKهای امضاشدهٔ اندروید روی لینوکس، فایل اجرایی و نصاب‌های ویندوز روی رانر x64 ویندوز). این فایل‌ها **attestation ساخت گیت‌هاب ندارند**، پس `gh attestation verify` برای این مجموعه در دسترس نیست. attestation قبلی `RIX-1.0.7-debug.apk` از `android-rix.yml` شامل هیچ‌کدام از فایل‌های این انتشار نمی‌شود.
 
 اگر نسخهٔ تغییرداده‌ای را بازتوزیع می‌کنی، [TRADEMARK.md](TRADEMARK.md) فهرست می‌کند چه چیزهایی باید عوض شود: نام، شناسهٔ برنامه و آیکون‌ها. فورک آزاد است و این پروژه جلوی آن را نمی‌گیرد؛ آنچه اینجا می‌ماند نام و آیکون‌هاست.
 
 > [!NOTE]
 > نسخه **۱.۰.۷** رابط کاربری هر دو نسخه را از نو می‌سازد و علت لگ اندروید را برمی‌دارد: شمارنده‌های ترافیک در همان حالتی بودند که فاز اتصال در آن قرار داشت، پس هر خواندن — هر ثانیه، تا وقتی تونل بالا بود — کل صفحه را از نو می‌ساخت. حالا روی یک جریان جدا هستند و فقط ساعت جلسه، نمودار و دو کاشی ترافیک با آن‌ها به‌روز می‌شوند. گزارش زنده هم دیگر با هر خط، پیمایش انیمیشنی به انتها ندارد.
+>
+> انتشار چندسکویی همچنین APKهای جداگانهٔ ARMv7، ARM64 و Universal و نسخه‌های پرتابل و دسکتاپ ویندوز ۱۰ و ۱۱ را منتشر می‌کند. ویندوز فقط x64 است: هستهٔ Aether ویندوز در این نسخه x86_64 است، بنابراین بستهٔ ARM64 ویندوز منتشر نمی‌شود.
 >
 > [!IMPORTANT]
 > کاربرانی که از نسخه **۱.۰.۲ یا قدیمی‌تر** ارتقا می‌دهند، باید نسخه قدیمی را یک‌بار حذف کنند؛ زیرا آن نسخه‌ها با امضای موقت و متغیر CI ساخته شده بودند. از نسخه ۱.۰.۳ به بعد از هویت امضای ثابت استفاده می‌شود که جزئیاتش در مخزن آمده است.
@@ -228,10 +232,10 @@ WARP / MASQUE ─────────► اینترنت
 |:--|:--|
 | رابط کاربری | پنجرهٔ بدون قاب که صفحهٔ WebView2 جاسازی‌شده آن را می‌کشد، با گوشه‌های گرد در سیستم‌عامل‌هایی که این را پشتیبانی می‌کنند؛ همان نوار مراحل، نمودار و خوانش‌های گوشی |
 | زبان و پوسته | فارسی و انگلیسی، روشن و تاریک |
-| نصاب | نصب برای کاربر فعلی؛ بدون درایور و بدون درخواست دسترسی مدیر در مسیر عادی نصب |
-| پرتابل | استخراج ZIP و اجرای `RIX.exe` |
-| حداقل سیستم‌عامل | Windows 10 نسخه 1809 یا جدیدتر، نسخه ۶۴ بیتی |
-| WebView2 | در صورت نبودن، نصاب آن را فراهم می‌کند |
+| نصاب | دو نصاب برای کاربر فعلی: ویندوز ۱۰ نسخه ۱۸۰۹+ و ویندوز ۱۱ نسخه ۲۲۰۰۰+؛ بدون درایور و بدون درخواست دسترسی مدیر در مسیر عادی نصب |
+| پرتابل | استخراج ZIP و اجرای `RIX.exe`؛ با وجود `portable.marker`، تنظیمات و داده‌ها در پوشهٔ `data\` کنار فایل اجرایی می‌مانند |
+| حداقل سیستم‌عامل | ویندوز ۱۰ نسخه ۱۸۰۹ (build 17763) برای بستهٔ ویندوز ۱۰؛ ویندوز ۱۱ (build 22000) برای بستهٔ ویندوز ۱۱؛ فقط x64 |
+| WebView2 | نصاب و بستهٔ پرتابل، بوت‌استرپر مایکروسافت را برای سیستم‌هایی که آن را ندارند همراه دارند |
 | Psiphon | زنجیره ارتباطی آزمایشی (BETA) |
 
 > [!WARNING]
@@ -248,8 +252,8 @@ RIX پیش از تغییر پروکسی، مقادیر قبلی را ذخیره 
 | تونل اندروید | `VpnService` + موتور `hev` tun2socks + SOCKS5 محلی |
 | کلاینت ویندوز | برنامه دسکتاپ .NET |
 | حداقل اندروید | Android 7.0 · API 24 |
-| معماری APK انتشار | `arm64-v8a` |
-| حداقل ویندوز | Windows 10 1809 · ۶۴ بیتی |
+| معماری‌های APK انتشار | `armeabi-v7a` · `arm64-v8a` · Universal (هر دو) |
+| حداقل ویندوز | ویندوز ۱۰ نسخه ۱۸۰۹ (build 17763) یا ویندوز ۱۱ (build 22000) · x64 |
 | مجوز | AGPL-3.0-only |
 
 ## 🛠️ کارگاه ساخت
@@ -257,27 +261,28 @@ RIX پیش از تغییر پروکسی، مقادیر قبلی را ذخیره 
 هسته Native اندروید در CI ساخته می‌شود؛ چون وابستگی‌هایی مانند BoringSSL، quiche و boringtun باید با Android NDK به‌صورت Cross-Compile کامپایل شوند.
 
 ```bash
-# ساخت پیش‌فرض اندروید (arm64-v8a)
-gh workflow run android-rix.yml
+# ساخت و اعتبارسنجی انتشار چندسکویی بدون انتشار عمومی
+gh workflow run multi-platform-release.yml -f release_tag=v1.0.7 -f publish=false
 
-# درخواست معماری‌های بیشتر
-gh workflow run android-rix.yml -f abis=arm64-v8a,armeabi-v7a,x86_64
+# برای کار فقط روی اندروید، ورکفلوی موجود هنوز فهرست ABI دلخواه را می‌سازد
+gh workflow run android-rix.yml -f abis=arm64-v8a,armeabi-v7a
 ```
 
 اگر کتابخانه‌های Native از قبل در مسیر محلی موجود باشند:
 
 ```bash
-gradle :app:assembleDebug -PrixAbis=arm64-v8a
+gradle :app:assembleRelease -PrixAbis=armeabi-v7a,arm64-v8a
 ```
 
 مراحل اصلی ساخت ویندوز:
 
 ```powershell
 dotnet publish windows/src/Rix.Windows.csproj -c Release -o windows/publish
-ISCC.exe windows\installer\Rix.iss
+ISCC.exe /DOutputBaseFilename=RIX-AETHER-Windows-10-Desktop-Setup /DMinWindows=10.0.17763 windows\installer\Rix.iss
+ISCC.exe /DOutputBaseFilename=RIX-AETHER-Windows-11-Desktop-Setup /DMinWindows=10.0.22000 windows\installer\Rix.iss
 ```
 
-برای جزئیات کامل، [ورک‌فلو اندروید](.github/workflows/android-rix.yml) و [ورک‌فلو ویندوز](.github/workflows/windows-rix.yml) را ببینید.
+برای جزئیات کامل، [ورکفلوی انتشار چندسکویی](.github/workflows/multi-platform-release.yml)، [ورکفلوی اندروید](.github/workflows/android-rix.yml) و [ورکفلوی ویندوز](.github/workflows/windows-rix.yml) را ببینید.
 
 ## 🧯 پشتیبانی مأموریت
 
@@ -308,7 +313,7 @@ VPN ناگزیر ترافیک را به نقطه پایانی بالادستی �
 
 ```text
 RIX-AETHER/
-├── .github/workflows/       CI اندروید و ویندوز
+├── .github/workflows/       انتشار چندسکویی + CI اندروید و ویندوز
 ├── app/src/main/cpp/        پل JNI و فایل‌های ساخت Native
 ├── app/src/main/java/       برنامه Kotlin، هسته، سرویس‌ها و رابط کاربری
 ├── docs/                    تصاویر و نمودارهای README
