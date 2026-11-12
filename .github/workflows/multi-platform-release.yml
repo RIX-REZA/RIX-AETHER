@@ -542,7 +542,7 @@ jobs:
 
           gh release edit "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "RIX-AETHER Multi-Platform Release" \
+            --title "RIX-AETHER Multi-Platform Release" \
             --notes-file docs/release-notes-1.0.7.md \
             --latest
 
