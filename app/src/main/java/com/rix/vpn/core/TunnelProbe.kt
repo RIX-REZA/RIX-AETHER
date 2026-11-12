@@ -43,7 +43,24 @@ object TunnelProbe {
         val warp: String? = null,
         val country: String? = null,
         val city: String? = null,
-        val isp: String? = null
+        val isp: String? = null,
+        /** Round-trip time of the most recent successful probe, -1 when unknown. */
+        val latencyMs: Long = -1
+    )
+
+    /**
+     * Health metrics from one probe, for the coordinator's scoring.
+     *
+     * [packetLoss] is a fraction in 0.0..1.0 and is only ever 0.0 or 1.0 today:
+     * the probe makes a single request, so it either completed or it did not.
+     * Reporting a fabricated intermediate value would make the health score
+     * look measured when it was not.
+     */
+    data class Result(
+        val latencyMs: Long,
+        val packetLoss: Double,
+        val success: Boolean,
+        val healthScore: Double
     )
 
     /**
@@ -143,6 +160,49 @@ object TunnelProbe {
         }
         null
     }
+
+    /**
+     * Measures the tunnel and turns the outcome into health metrics.
+     *
+     * The measurement is the same end-to-end request as [probe]; the only thing
+     * added here is the clock around it. [ip] is accepted for call-site
+     * compatibility with the coordinator (it passes the last egress address) but
+     * is not used as the request target: an egress address is often not a name
+     * the Cloudflare edge will serve TLS for, and connecting to it directly
+     * would report a certificate failure as a dead tunnel. Probing by name
+     * through the same SOCKS endpoint measures the path that user traffic takes.
+     *
+     * Returns null only when the caller has no port to probe, matching the
+     * coordinator's convention that "no measurement" is not a result.
+     */
+    suspend fun probeEgress(ip: String, port: Int, timeoutMs: Int = 5_000): Result? =
+        withContext(Dispatchers.IO) {
+            if (port <= 0 || timeoutMs <= 0) return@withContext null
+            val started = System.nanoTime()
+            val egress = probe(port, timeoutMs)
+            val latencyMs = (System.nanoTime() - started) / 1_000_000L
+            if (egress == null) {
+                return@withContext Result(
+                    latencyMs = -1,
+                    packetLoss = 1.0,
+                    success = false,
+                    healthScore = 0.0
+                )
+            }
+            Result(
+                latencyMs = latencyMs,
+                packetLoss = 0.0,
+                success = true,
+                healthScore = when {
+                    latencyMs < 100 -> 1.0
+                    latencyMs < 300 -> 0.8
+                    latencyMs < 500 -> 0.6
+                    latencyMs < 1000 -> 0.4
+                    latencyMs < 2000 -> 0.2
+                    else -> 0.1
+                }
+            )
+        }
 
     /**
      * Adds the geography a country/city lookup knows, without ever replacing the

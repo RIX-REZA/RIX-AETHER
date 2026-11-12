@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Base64
 import ca.psiphon.PsiphonTunnel
 import com.rix.vpn.data.LogBus
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -84,6 +86,15 @@ object PsiphonBridge {
     private var running = false
 
     /**
+     * Completes when the tunnel goes away, carrying the reason.
+     *
+     * Replaced on every start so a waiter from a previous session cannot be
+     * completed by the next one's teardown; [stop] and the library's own
+     * `onExiting` both complete it, whichever observes the end first.
+     */
+    private var disconnectDeferred = CompletableDeferred<String>()
+
+    /**
      * True once a start has failed for a reason that clearing the saved state
      * cannot fix -- the native library itself not loading. Kept so the retry
      * does not run pointlessly.
@@ -151,6 +162,7 @@ object PsiphonBridge {
         // rest of the process.
         broken = false
         lastError = null
+        disconnectDeferred = CompletableDeferred()
         if (startOnce(context, upstreamPort, listenPort, region, protocol)) {
             return@withContext true
         }
@@ -159,6 +171,7 @@ object PsiphonBridge {
         LogBus.i("psiphon", "start failed; clearing the saved Psiphon state and trying once more")
         stop()
         wipeState(context)
+        disconnectDeferred = CompletableDeferred()
         startOnce(context, upstreamPort, listenPort, region, protocol)
     }
 
@@ -310,7 +323,20 @@ object PsiphonBridge {
 
         runCatching { instance.stop() }
             .onFailure { LogBus.e("psiphon", "stop: ${describe(it)}") }
+
+        if (!disconnectDeferred.isCompleted) {
+            disconnectDeferred.complete("tunnel stopped")
+        }
     }
+
+    /**
+     * Completes when Psiphon goes away, with the reason it gave.
+     *
+     * The caller uses this to end the connected state instead of polling: a
+     * library that exits on its own (server-side teardown, a protocol refusal)
+     * is otherwise invisible until the next probe notices.
+     */
+    fun waitForDisconnect(): Deferred<String> = disconnectDeferred
 
     /** The same teardown, on a thread of its own, for service destruction. */
     fun stopAsync() {
@@ -561,6 +587,9 @@ object PsiphonBridge {
 
         override fun onExiting() {
             LogBus.i("psiphon", "exiting")
+            if (!PsiphonBridge.disconnectDeferred.isCompleted) {
+                PsiphonBridge.disconnectDeferred.complete("tunnel exited")
+            }
         }
     }
 }
