@@ -1,0 +1,9 @@
+This file makes RIX run in portable mode.
+
+When portable.marker sits beside RIX.exe, RIX stores its settings, logs,
+WebView profile and Psiphon identity in the data\ folder next to the
+executable instead of %APPDATA%\RIX. Move or delete the whole folder as one
+unit; nothing is installed and no uninstaller is needed.
+
+Remove this file only if you want this copy to share the installed app's
+settings in %APPDATA%\RIX.

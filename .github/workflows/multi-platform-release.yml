@@ -1,0 +1,564 @@
+name: RIX-AETHER Multi-Platform Release
+
+# Builds the complete 1.0.7 release matrix:
+#   Android  armeabi-v7a, arm64-v8a, universal (both ABIs)
+#   Windows  portable 10/11, desktop installers 10/11
+#
+# The release job updates the existing v1.0.7 release in place: it removes that
+# release's old assets, uploads the new ones, and leaves every tag and every
+# other release untouched. It can only be started by hand so a push never
+# replaces a published release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to update"
+        required: true
+        default: "v1.0.7"
+      publish:
+        description: "Upload to GitHub Releases (false = build-only validation)"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  VERSION: "1.0.7"
+  # Aether: pinned tag and commit. Both must agree, so a moved tag is a build
+  # failure rather than a silently different tunnel core.
+  AETHER_TAG: "v2.4.0"
+  AETHER_COMMIT: "02978101f41b9aeb5362c449a7587ec067481a57"
+  # hev-socks5-tunnel: pinned source release, built with the Android NDK.
+  HEV_TAG: "2.19.3"
+  HEV_SHA256: "8aaa33b344cab03a5cfc3675b9aaae55c6ee6088d78678ad1fbb44855b5ba570"
+  NDK_VERSION: "26.1.10909125"
+  # Aether Windows core: release asset and its published SHA-256.
+  AETHER_WIN_ZIP: "aether-windows-x86_64.zip"
+  AETHER_WIN_SHA256: "21b1444628d37121e873878e2eddd7932215418af1a2a12470caee5809026f1a"
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Android: fast Kotlin gate before any expensive native compilation.
+  # ------------------------------------------------------------------
+  android-check:
+    name: Android compile + unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+
+      - name: Refuse committed signing material
+        run: |
+          set -euo pipefail
+          found=$(git ls-files -- '*.p12' '*.jks' '*.keystore' 'keystore/**' || true)
+          if [ -n "$found" ]; then
+            echo "::error::Signing material is tracked in git:"
+            echo "$found"
+            exit 1
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin -PrixAbis=arm64-v8a --no-daemon --stacktrace
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest -PrixAbis=arm64-v8a --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-unit-tests
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # Android: build the three native libraries for each requested ABI.
+  # ------------------------------------------------------------------
+  android-native:
+    name: native (${{ matrix.abi }})
+    needs: android-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            rust: aarch64-linux-android
+          - abi: armeabi-v7a
+            rust: armv7-linux-androideabi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+          # bindgen formats its generated bindings with rustfmt. Without it the
+          # generated file is truncated and boring-sys fails with a misleading
+          # "unresolved import" error.
+          components: rustfmt
+
+      - name: Install Go (BoringSSL build)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build cmake perl
+
+      - name: Install Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Fetch Aether at the pinned commit
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${AETHER_TAG}" https://github.com/CluvexStudio/Aether.git aether-src
+          actual=$(git -C aether-src rev-parse HEAD)
+          echo "aether commit $actual"
+          test "$actual" = "${AETHER_COMMIT}"
+          test -f aether-src/quiche/quiche/Cargo.toml
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "aether-src/aether -> target"
+          key: ${{ matrix.abi }}
+
+      - name: Build libaether.so
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_PROFILE_RELEASE_LTO: thin
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+        run: |
+          set -euo pipefail
+          under=$(echo "${{ matrix.rust }}" | tr '-' '_')
+          export "BORING_BSSL_RUST_CPPLIB_${under}=static:-bundle=c++"
+          cd aether-src/aether
+          cargo ndk -t ${{ matrix.abi }} --platform 29 build --release --lib
+          so="target/${{ matrix.rust }}/release/libaether.so"
+          ls -lh "$so"
+          file "$so"
+          readelf -d "$so" | grep NEEDED || true
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}"
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Fetch and verify hev-socks5-tunnel
+        run: |
+          set -euo pipefail
+          curl -sSL -o hev.tar.xz \
+            "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_TAG}/hev-socks5-tunnel-${HEV_TAG}.tar.xz"
+          echo "${HEV_SHA256}  hev.tar.xz" | sha256sum -c -
+          tar -xJf hev.tar.xz
+          mv "hev-socks5-tunnel-${HEV_TAG}" hev-src
+
+      - name: Build libhev-socks5-tunnel.so
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cd hev-src
+          "$ANDROID_NDK_HOME/ndk-build" \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=Android.mk \
+            NDK_APPLICATION_MK=Application.mk \
+            APP_ABI=${{ matrix.abi }} \
+            APP_PLATFORM=android-29 \
+            -j"$(nproc)"
+          so="libs/${{ matrix.abi }}/libhev-socks5-tunnel.so"
+          ls -lh "$so"
+          file "$so"
+          cp "$so" "$GITHUB_WORKSPACE/app/src/main/jniLibs/${{ matrix.abi }}/"
+
+      - name: Upload native libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-native-${{ matrix.abi }}
+          path: app/src/main/jniLibs/${{ matrix.abi }}/*.so
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Android: three signed APKs from the two native ABI sets.
+  # ------------------------------------------------------------------
+  android-apk:
+    name: Build signed APKs
+    needs: android-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMGR" ] || SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          [ -x "$SDKMGR" ] || SDKMGR=$(command -v sdkmanager)
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" \
+                    "cmake;3.22.1" "ndk;${NDK_VERSION}" >/dev/null
+
+      - name: Collect native libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rix-native-*
+          path: _native
+
+      - name: Place libraries into jniLibs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dir in _native/rix-native-*; do
+            abi="${dir##*rix-native-}"
+            mkdir -p "app/src/main/jniLibs/${abi}"
+            cp "${dir}"/*.so "app/src/main/jniLibs/${abi}/"
+            echo "collected ${abi}: $(ls "${dir}" | tr '\n' ' ')"
+          done
+          test -f app/src/main/jniLibs/arm64-v8a/libaether.so
+          test -f app/src/main/jniLibs/armeabi-v7a/libaether.so
+
+      - name: Restore the project signing key
+        env:
+          RIX_KEYSTORE_B64: ${{ secrets.RIX_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RIX_KEYSTORE_B64:-}" ]; then
+            echo "::error::secrets.RIX_KEYSTORE_B64 is not set; a release APK must be signed with the project key."
+            exit 1
+          fi
+          mkdir -p keystore
+          printf '%s' "$RIX_KEYSTORE_B64" | base64 -d > keystore/rix.p12
+          chmod 600 keystore/rix.p12
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build the three APKs
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {
+            local abis="$1" out="$2"
+            gradle clean :app:assembleRelease -PrixAbis="$abis" --no-daemon --stacktrace
+            cp app/build/outputs/apk/release/app-release.apk "dist/$out"
+          }
+          build "armeabi-v7a" "RIX-AETHER-Android-ARMv7.apk"
+          build "arm64-v8a" "RIX-AETHER-Android-ARM64.apk"
+          build "armeabi-v7a,arm64-v8a" "RIX-AETHER-Android-Universal.apk"
+
+      - name: Verify ABI contents and signatures
+        run: |
+          set -euo pipefail
+          apksigner=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
+          check() {
+            local apk="$1" expected="$2"
+            echo "== $apk (expected: $expected) =="
+            local actual
+            actual=$(unzip -l "$apk" | awk '/lib\/.*\.so$/ {split($4,p,"/"); print p[2]}' | sort -u | paste -sd, -)
+            test "$actual" = "$expected" || { echo "ABI mismatch: $actual"; exit 1; }
+            for need in libaether.so libhev-socks5-tunnel.so librixjni.so; do
+              unzip -l "$apk" | grep -q "$need" || { echo "missing $need"; exit 1; }
+            done
+            "$apksigner" verify --print-certs "$apk" | head -4
+          }
+          check dist/RIX-AETHER-Android-ARMv7.apk "armeabi-v7a"
+          check dist/RIX-AETHER-Android-ARM64.apk "arm64-v8a"
+          check dist/RIX-AETHER-Android-Universal.apk "arm64-v8a,armeabi-v7a"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-android
+          path: dist/*.apk
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Windows: real Windows runner, x64 self-contained build and installers.
+  # ------------------------------------------------------------------
+  windows:
+    name: Windows x64 (portable + desktop)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build RIX.exe
+        run: >
+          dotnet publish windows/src/Rix.Windows.csproj
+          -c Release
+          -o windows/publish
+          --nologo
+          -p:DebugType=None
+          -p:DebugSymbols=false
+
+      - name: Fetch the WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = "windows/publish/MicrosoftEdgeWebview2Setup.exe"
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $out
+          $sig = Get-AuthenticodeSignature $out
+          if ($sig.Status -ne "Valid") { throw "WebView2 bootstrapper is not validly signed: $($sig.Status)" }
+          if ($sig.SignerCertificate.Subject -notmatch "Microsoft") { throw "unexpected signer: $($sig.SignerCertificate.Subject)" }
+
+      - name: Fetch and verify the Aether core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/CluvexStudio/Aether/releases/download/$env:AETHER_TAG/$env:AETHER_WIN_ZIP"
+          Invoke-WebRequest -Uri $url -OutFile aether.zip
+          $actual = (Get-FileHash aether.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "aether zip sha256: $actual"
+          if ($actual -ne $env:AETHER_WIN_SHA256) { throw "core archive hash mismatch: $actual" }
+          Expand-Archive aether.zip -DestinationPath core-tmp -Force
+          New-Item -ItemType Directory -Force windows/publish/core/pt | Out-Null
+          Copy-Item core-tmp/aether.exe windows/publish/core/ -Force
+          Copy-Item core-tmp/pt/* windows/publish/core/pt/ -Force -Recurse
+          Copy-Item core-tmp/LICENSES windows/publish/core/LICENSES -Recurse -Force
+          $hash = (Get-FileHash "windows/publish/core/aether.exe" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "windows/publish/core/aether.sha256" -Value $hash -NoNewline
+          Write-Host "core/aether.sha256 -> $hash"
+
+      - name: Validate the published app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = "windows/publish/RIX.exe"
+          if (-not (Test-Path $exe)) { throw "RIX.exe was not produced" }
+          foreach ($file in @(
+            "windows/publish/core/aether.exe",
+            "windows/publish/core/aether.sha256",
+            "windows/publish/core/pt/psiphon-tunnel-core.exe",
+            "windows/publish/core/pt/lyrebird.exe",
+            "windows/publish/MicrosoftEdgeWebview2Setup.exe")) {
+            if (-not (Test-Path $file)) { throw "$file is missing" }
+          }
+          $p = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList "--selfcheck" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path "windows/publish/selfcheck.txt") { Get-Content "windows/publish/selfcheck.txt" | Write-Host }
+            throw "selfcheck failed with exit code $($p.ExitCode)"
+          }
+          Write-Host "RIX.exe selfcheck: ok"
+
+          # PE machine field: 0x8664 = x64, 0xAA64 = ARM64. The core and the app
+          # must both be x64; a wrong-architecture builder would still produce a
+          # file, so check the header rather than trusting the publish RID.
+          function Get-PEMachine([string]$Path) {
+            $fs = [IO.File]::OpenRead((Resolve-Path $Path))
+            try {
+              $br = New-Object IO.BinaryReader($fs)
+              $fs.Position = 0x3C
+              $pe = $br.ReadInt32()
+              $fs.Position = $pe + 4
+              return $br.ReadUInt16()
+            } finally { $fs.Dispose() }
+          }
+          foreach ($f in @($exe, "windows/publish/core/aether.exe")) {
+            $m = Get-PEMachine $f
+            if ($m -ne 0x8664) { throw "$f is not x64 (machine 0x$($m.ToString('X4')))" }
+            Write-Host "$f PE machine: x64"
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build both desktop installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+
+          # Same AppId, different minimum OS: the Windows 11 build is the same
+          # application, but it refuses to install on a system older than 22000.
+          & $iscc "/DOutputBaseFilename=RIX-AETHER-Windows-10-Desktop-Setup" "/DMinWindows=10.0.17763" "windows/installer/Rix.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Windows 10 installer failed: $LASTEXITCODE" }
+          & $iscc "/DOutputBaseFilename=RIX-AETHER-Windows-11-Desktop-Setup" "/DMinWindows=10.0.22000" "windows/installer/Rix.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Windows 11 installer failed: $LASTEXITCODE" }
+
+          Get-ChildItem windows/dist | Format-Table Name, Length
+
+      - name: Build both portable archives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($edition in @("10", "11")) {
+            $name = "RIX-AETHER-Windows-$edition-Portable"
+            $stage = "windows/dist/$name"
+            New-Item -ItemType Directory -Force $stage | Out-Null
+            Copy-Item windows/publish/RIX.exe $stage/
+            Copy-Item windows/publish/core $stage/core -Recurse
+            Copy-Item windows/publish/MicrosoftEdgeWebview2Setup.exe $stage/
+            Copy-Item windows/portable.marker $stage/portable.marker
+            Copy-Item windows/PORTABLE-README.txt $stage/README-PORTABLE.txt
+            Copy-Item LICENSE $stage/LICENSE.txt
+            Copy-Item NOTICE $stage/NOTICE.txt
+            Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/$name.zip" -Force
+          }
+
+      - name: Verify portable extraction and launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($edition in @("10", "11")) {
+            $zip = "windows/dist/RIX-AETHER-Windows-$edition-Portable.zip"
+            if (-not (Test-Path $zip)) { throw "$zip is missing" }
+            $out = "windows/dist/extract-$edition"
+            Expand-Archive $zip -DestinationPath $out -Force
+            foreach ($f in @("RIX.exe", "core/aether.exe", "core/aether.sha256", "portable.marker", "README-PORTABLE.txt")) {
+              if (-not (Test-Path (Join-Path $out $f))) { throw "$zip does not contain $f" }
+            }
+            $p = Start-Process -FilePath (Resolve-Path (Join-Path $out "RIX.exe")) -ArgumentList "--selfcheck" -WorkingDirectory (Resolve-Path $out) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "portable $edition selfcheck failed: $($p.ExitCode)" }
+            if (-not (Test-Path (Join-Path $out "portable.marker"))) { throw "portable marker was removed" }
+            Write-Host "portable $edition: extracted and selfcheck passed"
+          }
+
+      - name: Collect Windows artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "windows/dist/RIX-AETHER-Windows-10-Desktop-Setup.exe" dist/
+          Copy-Item "windows/dist/RIX-AETHER-Windows-11-Desktop-Setup.exe" dist/
+          Copy-Item "windows/dist/RIX-AETHER-Windows-10-Portable.zip" dist/
+          Copy-Item "windows/dist/RIX-AETHER-Windows-11-Portable.zip" dist/
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rix-windows
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Release: replace v1.0.7's assets. Tags and other releases are untouched.
+  # ------------------------------------------------------------------
+  release:
+    name: Publish to ${{ inputs.release_tag }}
+    needs: [android-apk, windows]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: Assemble release files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp _artifacts/rix-android/*.apk release/
+          cp _artifacts/rix-windows/*.exe release/
+          cp _artifacts/rix-windows/*.zip release/
+          ls -lh release
+
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          for f in *; do
+            [ "$f" = "SHA256SUMS.txt" ] && continue
+            sha256sum "$f" > "$f.sha256"
+          done
+          cat SHA256SUMS.txt
+
+      - name: Update the existing release without touching tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          # Verify the tag exists. This workflow never creates or moves a tag.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+          # Remove this release's old assets, one by one. Other releases and
+          # every tag remain exactly where they are.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | while IFS= read -r name; do
+              [ -z "$name" ] && continue
+              echo "removing old asset: $name"
+              gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPOSITORY" --yes
+            done
+
+          gh release edit "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "RIX-AETHER Multi-Platform Release" \
+            --notes-file docs/release-notes-1.0.7.md \
+            --latest
+
+          gh release upload "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Report release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets

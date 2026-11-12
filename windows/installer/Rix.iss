@@ -25,6 +25,18 @@
 #define AppPublisher "RIX"
 #define AppExe "RIX.exe"
 
+; The release pipeline compiles this one script twice: once for Windows 10
+; (1809+) and once for Windows 11 (22000+). Both installers share the same
+; AppId, so the newer one upgrades the older one in place. The defaults below
+; keep a plain `ISCC Rix.iss` producing exactly the single installer it did
+; before, which is what windows-rix.yml still expects.
+#ifndef OutputBaseFilename
+#define OutputBaseFilename "RIX-Setup-" + AppVersion
+#endif
+#ifndef MinWindows
+#define MinWindows "10.0.17763"
+#endif
+
 [Setup]
 AppId={{7A1C3E52-5F4B-4E0A-9E31-2B7D9C4A6F18}
 AppName={#AppName}
@@ -37,7 +49,7 @@ DisableProgramGroupPage=yes
 ; file beside itself.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputBaseFilename=RIX-Setup-{#AppVersion}
+OutputBaseFilename={#OutputBaseFilename}
 OutputDir=..\dist
 Compression=lzma2/max
 SolidCompression=yes
@@ -46,7 +58,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
-MinVersion=10.0.17763
+MinVersion={#MinWindows}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no

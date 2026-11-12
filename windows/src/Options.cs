@@ -274,8 +274,25 @@ public sealed class AppState
 {
     public RixOptions Options { get; set; } = new();
 
-    public static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RIX");
+    /// <summary>
+    /// True when this copy is meant to run without installing anything.
+    ///
+    /// The portable archive carries a <c>portable.marker</c> file beside
+    /// RIX.exe; in that mode settings, logs and the Psiphon identity live in
+    /// <c>data\</c> next to the executable, so the whole folder can be moved
+    /// or deleted as one unit. An installed copy has no marker and keeps using
+    /// %APPDATA%\RIX exactly as before, which is what makes upgrades preserve
+    /// the existing settings. The environment variable is an explicit override
+    /// for launchers that cannot add a file (for example a read-only share).
+    /// </summary>
+    public static bool IsPortable =>
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.marker")) ||
+        string.Equals(Environment.GetEnvironmentVariable("RIX_PORTABLE"), "1",
+            StringComparison.OrdinalIgnoreCase);
+
+    public static string Dir => IsPortable
+        ? Path.Combine(AppContext.BaseDirectory, "data")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RIX");
 
     public static string FilePath => Path.Combine(Dir, "rix.settings.json");
 
