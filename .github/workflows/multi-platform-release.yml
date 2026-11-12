@@ -538,24 +538,29 @@ jobs:
           # Verify the tag exists. This workflow never creates or moves a tag.
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
 
-          # Remove this release's old assets, one by one. Other releases and
-          # every tag remain exactly where they are.
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
-            --jq '.assets[].name' | while IFS= read -r name; do
-              [ -z "$name" ] && continue
-              echo "removing old asset: $name"
-              gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPOSITORY" --yes
-            done
-
           gh release edit "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --name "RIX-AETHER Multi-Platform Release" \
             --notes-file docs/release-notes-1.0.7.md \
             --latest
 
+          # Upload the new files before removing anything, so a failed upload
+          # cannot leave the release empty. --clobber replaces a same-named
+          # asset from an interrupted earlier run.
           gh release upload "$TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+
+          # Remove only this release's stale assets, i.e. those not part of the
+          # new set. Other releases and every tag remain exactly where they are.
+          ( cd release && ls -1 ) | sort > /tmp/new-assets.txt
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | sort > /tmp/current-assets.txt
+          comm -23 /tmp/current-assets.txt /tmp/new-assets.txt | while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            echo "removing stale asset: $name"
+            gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPOSITORY" --yes
+          done
 
       - name: Report release
         env:
