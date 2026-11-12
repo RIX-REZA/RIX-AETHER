@@ -30,7 +30,9 @@ env:
   # Aether: pinned tag and commit. Both must agree, so a moved tag is a build
   # failure rather than a silently different tunnel core.
   AETHER_TAG: "v2.4.0"
-  AETHER_COMMIT: "02978101f41b9aeb5362c449a7587ec067481a57"
+  # The commit the annotated tag v2.4.0 peels to. The tag object itself is
+  # 0297810..., which git rev-parse HEAD never returns after a checkout.
+  AETHER_COMMIT: "d58f9d568083129ce2c767c85054021eb3ee6a38"
   # hev-socks5-tunnel: pinned source release, built with the Android NDK.
   HEV_TAG: "2.19.3"
   HEV_SHA256: "8aaa33b344cab03a5cfc3675b9aaae55c6ee6088d78678ad1fbb44855b5ba570"
@@ -471,7 +473,7 @@ jobs:
             $p = Start-Process -FilePath (Resolve-Path (Join-Path $out "RIX.exe")) -ArgumentList "--selfcheck" -WorkingDirectory (Resolve-Path $out) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "portable $edition selfcheck failed: $($p.ExitCode)" }
             if (-not (Test-Path (Join-Path $out "portable.marker"))) { throw "portable marker was removed" }
-            Write-Host "portable $edition: extracted and selfcheck passed"
+            Write-Host "portable ${edition}: extracted and selfcheck passed"
           }
 
       - name: Collect Windows artifacts
