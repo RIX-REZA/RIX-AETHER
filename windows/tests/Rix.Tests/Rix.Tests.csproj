@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <!-- The supervisor's SessionConnectionPath is the only part that needs the
+         Windows session; the state machine itself is platform-neutral. -->
+    <DefineConstants>$(DefineConstants);RIX_CORE_TEST</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Link the modules under test rather than referencing the WinForms
+         executable: these rules must be testable without Windows. -->
+    <Compile Include="..\..\src\Core\ProxyRestore.cs" Link="ProxyRestore.cs" />
+    <Compile Include="..\..\src\Core\IpScanner.cs" Link="IpScanner.cs" />
+    <Compile Include="..\..\src\Core\RixCore.cs" Link="RixCore.cs" />
+  </ItemGroup>
+
+</Project>

@@ -88,6 +88,26 @@ public sealed record RixOptions
     public string RouteBlock { get; set; } = "";
     public string ExtraArgs { get; set; } = "";
 
+    // ---- tunnel mode and the edge scanner
+    /// <summary>"proxy" (WinINET) or "tunnel" (Wintun). Full Tunnel is gated on
+    /// the helper and Wintun being present; elevation is requested when the
+    /// mode starts. See FullTunnel.</summary>
+    public string TunnelMode { get; set; } = "proxy";
+    public bool KillSwitch { get; set; }
+    public string SplitTunnel { get; set; } = "";
+
+    /// <summary>Scan Cloudflare's ranges in the background and feed the best
+    /// address to the core as its peer.</summary>
+    public bool ScanEnabled { get; set; } = true;
+    public bool ScanUseBestPeer { get; set; } = true;
+    public int ScanIntervalMinutes { get; set; } = 30;
+    public int ScanConcurrency { get; set; } = 24;
+    public int ScanTimeoutMs { get; set; } = 1800;
+    public string ScanPorts { get; set; } = "443,2053,2083,2087,2096,8443";
+    public bool ScanIpv6 { get; set; }
+    public bool ScanSpeedSample { get; set; } = true;
+    public bool ScanOnLaunch { get; set; } = true;
+
     // ---- psiphon, BETA
     public bool Psiphon { get; set; }
     public string PsiphonRegion { get; set; } = "";
@@ -102,6 +122,32 @@ public sealed record RixOptions
     /// <summary>Where the SOCKS5 endpoint apps can be pointed at lives.</summary>
     [JsonIgnore]
     public int SocksPort => Psiphon ? PsiphonSocksPort : BindPort;
+
+    /// <summary>The scanner's view of the same settings.</summary>
+    public IpScanOptions ToScanOptions() => new()
+    {
+        Concurrency = Math.Clamp(ScanConcurrency, 1, 128),
+        TimeoutMs = Math.Clamp(ScanTimeoutMs, 250, 10000),
+        Samples = 2,
+        Ports = ScanPortList,
+        IncludeIpv6 = ScanIpv6,
+        MeasureSpeed = ScanSpeedSample,
+    };
+
+    [JsonIgnore]
+    public int[] ScanPortList
+    {
+        get
+        {
+            var parsed = (ScanPorts ?? "")
+                .Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => int.TryParse(p.Trim(), out var n) ? n : 0)
+                .Where(n => n > 0 && n <= 65535)
+                .Distinct()
+                .ToArray();
+            return parsed.Length > 0 ? parsed : new[] { 443 };
+        }
+    }
 
     /// <summary>Where the HTTP CONNECT endpoint the system proxy uses lives.</summary>
     [JsonIgnore]

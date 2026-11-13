@@ -15,6 +15,12 @@
     <span class="tb-state" id="tbState">آماده</span>
   </div>
   <div class="tb-actions">
+    <button class="icon-btn social" id="tgBtn" title="Rix Channel — Telegram" aria-label="Telegram">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.6 4.3 2.9 11.5c-1 .4-1 1.9.1 2.2l4.6 1.4 1.7 5.4c.3.9 1.4 1.2 2 .5l2.5-2.4 4.6 3.4c.8.6 1.9.2 2.2-.8l3.2-15.2c.2-1-.7-1.9-1.7-1.5zM9.3 14.8l9-6.5-7.3 7.4-.4 3.1-1.3-4z"/></svg>
+    </button>
+    <button class="icon-btn social" id="ghBtn" title="Rix GitHub" aria-label="GitHub">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.6 2 12.2c0 4.5 2.9 8.3 6.8 9.7.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.3 9.3 0 0 1 4.9 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.7c0 .3.2.6.7.5A10.1 10.1 0 0 0 22 12.2C22 6.6 17.5 2 12 2z"/></svg>
+    </button>
     <button class="icon-btn" id="langBtn" title="زبان / Language">EN</button>
     <button class="icon-btn" id="themeBtn" title="پوسته / Theme">◐</button>
     <span class="sep"></span>
@@ -48,9 +54,15 @@
 
           <div class="track"><span class="track-fill" id="trackFill"></span></div>
 
+          <div class="mode-switch" id="modeSwitch" role="tablist">
+            <button data-mode="proxy" role="tab">پروکسی سیستم</button>
+            <button data-mode="tunnel" role="tab">تانل کامل</button>
+          </div>
+
           <div class="hero-actions">
             <button class="primary" id="connectBtn">اتصال</button>
             <button class="ghost" id="probeBtn">بررسی</button>
+            <button class="ghost" id="proxyOffBtn">خاموش کردن پروکسی سیستم</button>
           </div>
         </div>
 
@@ -91,6 +103,37 @@
           <b class="tile-v small" id="vRoute">—</b>
           <span class="tile-m" id="mRoute"></span>
         </div>
+        <div class="tile" id="tileBest">
+          <span class="tile-k" id="kBest">آی‌پی بهینه</span>
+          <b class="tile-v small" id="vBest">—</b>
+          <span class="tile-m" id="mBest"></span>
+        </div>
+        <div class="tile" id="tileLatency">
+          <span class="tile-k" id="kLatency">تأخیر</span>
+          <b class="tile-v" id="vLatency">—</b>
+          <span class="tile-m" id="mLatency"></span>
+        </div>
+        <div class="tile" id="tileCore">
+          <span class="tile-k" id="kCoreState">Rix Core</span>
+          <b class="tile-v small" id="vCoreState">—</b>
+          <span class="tile-m" id="mCoreState"></span>
+        </div>
+      </div>
+
+      <div class="scan-card">
+        <div class="scan-head">
+          <b id="scanTitle">اسکنر لبه کلودفلر</b>
+          <span class="scan-info" id="scanInfo"></span>
+          <span class="hero-spacer"></span>
+          <button class="ghost small" id="scanNowBtn">اسکن</button>
+        </div>
+        <div class="scan-track"><span class="scan-fill" id="scanFill"></span></div>
+        <div class="scan-foot">
+          <span id="scanCurrent"></span>
+          <span class="hero-spacer"></span>
+          <span id="scanBest"></span>
+        </div>
+        <div class="scan-list" id="scanList"></div>
       </div>
 
       <!-- Four stages, and each one lights only on evidence: the core lights
@@ -108,6 +151,8 @@
         <span class="stage-arrow" id="stExitArrow">→</span>
         <span class="stage" id="stExit"><i></i><b id="stExitName">خروج</b></span>
       </div>
+
+      <div class="fulltunnel-note hidden" id="tunnelNote"></div>
 
       <div class="alert hidden" id="alert">
         <span class="alert-ico">!</span>

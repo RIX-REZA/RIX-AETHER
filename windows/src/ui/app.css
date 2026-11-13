@@ -19,10 +19,10 @@
   --text: #eceef6;
   --muted: #8d93a8;
   --faint: #5d6376;
-  --accent: #7c5cff;
-  --accent-2: #b39cff;
-  --accent-soft: rgba(124, 92, 255, .15);
-  --accent-line: rgba(124, 92, 255, .42);
+  --accent: #14b8a6;
+  --accent-2: #5eead4;
+  --accent-soft: rgba(20, 184, 166, .15);
+  --accent-line: rgba(20, 184, 166, .42);
   --cyan: #22d3ee;
   --cyan-soft: rgba(34, 211, 238, .15);
   --ok: #34d399;
@@ -47,10 +47,10 @@
   --text: #12141f;
   --muted: #666d84;
   --faint: #98a0b5;
-  --accent: #6438ff;
-  --accent-2: #7d5cff;
-  --accent-soft: rgba(100, 56, 255, .1);
-  --accent-line: rgba(100, 56, 255, .35);
+  --accent: #0d9488;
+  --accent-2: #14b8a6;
+  --accent-soft: rgba(13, 148, 136, .1);
+  --accent-line: rgba(13, 148, 136, .35);
   --cyan: #0693ad;
   --cyan-soft: rgba(6, 147, 173, .1);
   --ok: #0f9d63;
@@ -59,6 +59,30 @@
   --err: #d64545;
   --err-soft: rgba(214, 69, 69, .1);
   --shadow: 0 18px 44px rgba(20, 22, 40, .14);
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("fonts/Vazirmatn-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("fonts/Vazirmatn-Medium.woff2") format("woff2");
+  font-weight: 500 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("fonts/Vazirmatn-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 * { box-sizing: border-box; }
@@ -72,7 +96,7 @@ html, body {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Tahoma, "Iranian Sans", "Noto Sans Arabic", sans-serif;
+  font-family: "Vazirmatn", "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
   font-size: 14px;
   line-height: 1.6;
   user-select: none;
@@ -982,3 +1006,136 @@ html[dir="rtl"] .switch.on::after { transform: translateX(-18px); }
 .toast.bad { border-color: rgba(248, 113, 113, .5); color: var(--err); }
 
 .hidden { display: none !important; }
+
+/* ------------------------------------------------------- social + mode switch */
+
+.icon-btn.social svg { width: 16px; height: 16px; }
+.icon-btn.social:hover { color: var(--accent); }
+
+.mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  align-self: flex-start;
+}
+
+.mode-switch button {
+  padding: 5px 13px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  transition: background .16s, color .16s;
+}
+
+.mode-switch button:hover { color: var(--text); }
+
+.mode-switch button.on {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.mode-switch button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.ghost.small { padding: 4px 10px; font-size: 11px; }
+.ghost:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ------------------------------------------------------------- edge scanner */
+
+.scan-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: fade-in .35s ease;
+}
+
+.scan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.scan-head b { font-weight: 600; }
+
+.scan-info {
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-track {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.scan-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  transition: width .3s ease;
+}
+
+.scan-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 16px;
+}
+
+.scan-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.scan-chip {
+  font-size: 10.5px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-chip.best {
+  color: var(--accent-2);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.fulltunnel-note {
+  font-size: 11.5px;
+  color: var(--muted);
+  border-inline-start: 2px solid var(--accent-line);
+  padding: 2px 10px;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.tile.on { border-color: var(--accent-line); }
+.tile.bad { border-color: rgba(248, 113, 113, .35); }
+.tile-v.ok { color: var(--ok); }
+.tile-v.warn { color: var(--warn); }
+.tile-v.err { color: var(--err); }

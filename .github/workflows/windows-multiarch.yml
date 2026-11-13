@@ -1,0 +1,237 @@
+name: RIX Windows Multi-Architecture
+
+# Builds the Rix desktop app for x86, x64 and ARM64, plus the elevated tunnel
+# helper, a portable ZIP and an Inno Setup installer for each. The Aether core
+# is built from the pinned source for the same target, because the published
+# Windows core is x86_64 only and an app must never ship with a core it cannot
+# run.
+#
+# This workflow is for the private staging repository. It creates or updates a
+# release there; it does not touch the public repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Staging release tag to create or update"
+        required: true
+        default: "rix-1.0.7"
+      publish:
+        description: "Upload the built packages to this repository's release"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  VERSION: "1.0.7"
+  AETHER_TAG: "v2.4.0"
+  AETHER_COMMIT: "d58f9d568083129ce2c767c85054021eb3ee6a38"
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  test:
+    name: Unit tests (scanner, core, proxy)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run the Rix unit tests
+        run: dotnet test windows/tests/Rix.Tests/Rix.Tests.csproj -c Release --nologo
+
+  build:
+    name: ${{ matrix.arch }} (portable + installer)
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            arch: x64
+            target: x86_64-pc-windows-msvc
+            pe: 0x8664
+          - rid: win-x86
+            arch: x86
+            target: i686-pc-windows-msvc
+            pe: 0x014c
+          - rid: win-arm64
+            arch: ARM64
+            target: aarch64-pc-windows-msvc
+            pe: 0xAA64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install the Rust target
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+
+      - name: Build the Aether core from the pinned commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git clone --filter=blob:none https://github.com/CluvexStudio/Aether.git aether-src
+          git -C aether-src fetch --depth 1 origin $env:AETHER_COMMIT
+          git -C aether-src checkout --detach $env:AETHER_COMMIT
+          $head = (git -C aether-src rev-parse HEAD).Trim()
+          if ($head -ne $env:AETHER_COMMIT) { throw "Aether checkout is $head, expected $env:AETHER_COMMIT" }
+          cargo build --release --target ${{ matrix.target }} --manifest-path aether-src/aether/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "Aether build failed for ${{ matrix.rid }}" }
+          New-Item -ItemType Directory -Force core-${{ matrix.rid }} | Out-Null
+          Copy-Item "aether-src/target/${{ matrix.target }}/release/aether.exe" "core-${{ matrix.rid }}/aether.exe"
+          $hash = (Get-FileHash "core-${{ matrix.rid }}/aether.exe" -Algorithm SHA256).Hash.ToLower()
+          Set-Content "core-${{ matrix.rid }}/aether.sha256" $hash -NoNewline
+          Write-Host "core sha256: $hash"
+
+      - name: Add the Psiphon client (x64 only)
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # The upstream Psiphon binaries are x64. They are only added to the
+          # x64 package; the other architectures run the same core without the
+          # optional BETA Psiphon chain, and the UI reports that honestly.
+          $url = "https://github.com/CluvexStudio/Aether/releases/download/$env:AETHER_TAG/aether-windows-x86_64.zip"
+          Invoke-WebRequest -Uri $url -OutFile aether-win.zip
+          Expand-Archive aether-win.zip -DestinationPath aether-win -Force
+          Copy-Item aether-win/pt "core-${{ matrix.rid }}/pt" -Recurse -Force
+          Copy-Item aether-win/LICENSES "core-${{ matrix.rid }}/LICENSES" -Recurse -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Add the Full Tunnel helper (x64 only)
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # The Full Tunnel mode needs a SOCKS5-to-Wintun helper. hev ships a
+          # win64 build and no x86/ARM64 one, so this mode is offered on x64 and
+          # honestly reported unavailable on the other architectures.
+          $hevSha = "a9209ad121a3f636f814b0bb899b6464d3ec201eabbb3a82f2aa486e32879ba7"
+          Invoke-WebRequest -Uri "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel-win64.zip" -OutFile hev.zip
+          $actual = (Get-FileHash hev.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $hevSha) { throw "hev archive is $actual, expected $hevSha" }
+          Expand-Archive hev.zip -DestinationPath hev -Force
+          Copy-Item "hev/hev-socks5-tunnel/hev-socks5-tunnel.exe" "core-${{ matrix.rid }}/hev-socks5-tunnel.exe"
+          Copy-Item "hev/hev-socks5-tunnel/wintun.dll" "core-${{ matrix.rid }}/wintun.dll"
+          Copy-Item "hev/hev-socks5-tunnel/msys-2.0.dll" "core-${{ matrix.rid }}/msys-2.0.dll"
+          Get-ChildItem "core-${{ matrix.rid }}" | Format-Table Name, Length
+
+      - name: Build the app, helper, portable ZIP and installer
+        shell: pwsh
+        run: |
+          ./windows/scripts/build.ps1 `
+            -Runtime ${{ matrix.rid }} `
+            -Version $env:VERSION `
+            -Edition 10 `
+            -CoreDir "core-${{ matrix.rid }}" `
+            -Installer
+
+      - name: Verify the PE architecture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Get-PEMachine([string]$Path) {
+            $fs = [IO.File]::OpenRead((Resolve-Path $Path))
+            try {
+              $br = New-Object IO.BinaryReader($fs)
+              $fs.Position = 0x3C
+              $pe = $br.ReadInt32()
+              $fs.Position = $pe + 4
+              return $br.ReadUInt16()
+            } finally { $fs.Dispose() }
+          }
+          $expected = [Convert]::ToInt32("${{ matrix.pe }}", 16)
+          foreach ($file in @(
+            "windows/publish/${{ matrix.rid }}/RIX.exe",
+            "windows/publish/${{ matrix.rid }}/core/RIX-Tunnel.exe",
+            "windows/publish/${{ matrix.rid }}/core/aether.exe")) {
+            $machine = Get-PEMachine $file
+            if ($machine -ne $expected) {
+              throw "$file is 0x$($machine.ToString('X4')), expected ${{ matrix.pe }}"
+            }
+            Write-Host "$file : ${{ matrix.arch }}"
+          }
+
+      - name: Self-check the published app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = "windows/publish/${{ matrix.rid }}"
+          $p = Start-Process -FilePath (Resolve-Path "$dir/RIX.exe") -ArgumentList "--selfcheck" -WorkingDirectory (Resolve-Path $dir) -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path "$dir/selfcheck.txt") { Get-Content "$dir/selfcheck.txt" | Write-Host }
+            throw "selfcheck failed for ${{ matrix.rid }}: $($p.ExitCode)"
+          }
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Get-ChildItem windows/dist -Filter "*${{ matrix.rid }}*" | Copy-Item -Destination dist/
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rix-windows-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish to ${{ inputs.release_tag }}
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: Assemble and checksum
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find _artifacts -maxdepth 2 -type f -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
+
+      - name: Create or update the staging release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.release_tag }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" release/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "RIX $tag — Windows x86/x64/ARM64" \
+              --notes "Staging build of Rix for Windows. Untested for public release until promoted."
+          fi

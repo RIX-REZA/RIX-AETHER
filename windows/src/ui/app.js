@@ -44,6 +44,15 @@ const T = {
     steps: 'مراحل', waiting: 'در انتظار',
     rate: 'نرخ', noAnswer: 'پاسخی نیامد / no answer',
     extra: 'اضافه', value: 'مقدار',
+    best: 'آی‌پی بهینه', latency: 'تأخیر', coreState: 'Rix Core',
+    mode: 'حالت', tunnel: 'تانل کامل', systemProxy: 'پروکسی سیستم',
+    proxyOffBtn: 'خاموش کردن پروکسی سیستم', scan: 'اسکن', scanning: 'در حال اسکن',
+    scanTitle: 'اسکنر لبه کلودفلر', scanIdle: 'اسکن نشده', scanDone: 'اسکن انجام شد',
+    noBest: 'هنوز نتیجه‌ای نیست', unavailable: 'در دسترس نیست',
+    disconnected: 'قطع', connected: 'متصل', degraded: 'کیفیت پایین',
+    reconnecting: 'اتصال دوباره', connecting2: 'در حال اتصال',
+    fqUnavailable: 'تانل کامل در این ساخت در دسترس نیست',
+    telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -69,6 +78,15 @@ const T = {
     steps: 'Stages', waiting: 'waiting',
     rate: 'Rate', noAnswer: 'no answer',
     extra: 'Extra', value: 'Value',
+    best: 'Best IP', latency: 'Latency', coreState: 'Rix Core',
+    mode: 'Mode', tunnel: 'Full Tunnel', systemProxy: 'System proxy',
+    proxyOffBtn: 'Turn off system proxy', scan: 'Scan', scanning: 'Scanning',
+    scanTitle: 'Cloudflare edge scanner', scanIdle: 'Not scanned', scanDone: 'Scan finished',
+    noBest: 'No result yet', unavailable: 'unavailable',
+    disconnected: 'Disconnected', connected: 'Connected', degraded: 'Degraded',
+    reconnecting: 'Reconnecting', connecting2: 'Connecting',
+    fqUnavailable: 'Full Tunnel is not available in this build',
+    telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
   }
 };
 
@@ -209,6 +227,39 @@ const GROUPS = [
       { k: 'fragment', t: 'switch', name: { fa: 'تکه‌تکه کردن بسته‌ها', en: 'Fragment packets' } },
       { k: 'exitLoc', t: 'text', name: { fa: 'کشور خروجی', en: 'Exit country' }, ph: '!IR,AZ,RU  یا  DE,SE' },
       { k: 'peer', t: 'text', name: { fa: 'پیر ثابت', en: 'Fixed peer' }, ph: 'ip:port' },
+      {
+        k: 'tunnelMode', t: 'chips', name: { fa: 'حالت عبور', en: 'Carriage' },
+        opts: [
+          { v: 'proxy', fa: 'پروکسی سیستم', en: 'System proxy' },
+          { v: 'tunnel', fa: 'تانل کامل (آزمایشی)', en: 'Full Tunnel (experimental)' },
+        ],
+      },
+      { k: 'killSwitch', t: 'switch', name: { fa: 'کیل سوییچ', en: 'Kill switch' } },
+      { k: 'splitTunnel', t: 'text', name: { fa: 'استثنای تانل', en: 'Split tunnel' }, ph: '10.0.0.0/8, 192.168.1.5' },
+    ],
+  },
+  {
+    id: 'scanner',
+    icon: ICON.globe,
+    title: { fa: 'اسکنر لبه', en: 'Edge scanner' },
+    sub: { fa: 'رنج‌های کلودفلر و انتخاب بهترین آی‌پی', en: 'Cloudflare ranges and best-address selection' },
+    fields: [
+      { k: 'scanEnabled', t: 'switch', name: { fa: 'اسکن دوره‌ای', en: 'Periodic scan' } },
+      { k: 'scanUseBestPeer', t: 'switch', name: { fa: 'استفاده از بهترین آی‌پی به‌عنوان peer', en: 'Use best IP as peer' } },
+      { k: 'scanIntervalMinutes', t: 'number', name: { fa: 'فاصله اسکن (دقیقه)', en: 'Scan interval (minutes)' } },
+      { k: 'scanPorts', t: 'text', name: { fa: 'پورت‌ها', en: 'Ports' }, ph: '443,2053,2083,2087,2096,8443' },
+      { k: 'scanConcurrency', t: 'number', name: { fa: 'هم‌زمانی', en: 'Concurrency' } },
+      { k: 'scanTimeoutMs', t: 'number', name: { fa: 'مهلت هر تلاش (میلی‌ثانیه)', en: 'Timeout per attempt (ms)' } },
+      { k: 'scanIpv6', t: 'switch', name: { fa: 'شامل IPv6', en: 'Include IPv6' } },
+      { k: 'scanSpeedSample', t: 'switch', name: { fa: 'نمونه سرعت', en: 'Throughput sample' } },
+      { k: 'scanOnLaunch', t: 'switch', name: { fa: 'اسکن هنگام اجرا', en: 'Scan on launch' } },
+      {
+        k: 'scannerNote', t: 'note',
+        text: {
+          fa: 'اسکنر رنج‌های رسمی ips-v4 و ips-v6 را می‌گیرد و در data\\ نگه می‌دارد. هر آدرس با TCP و TLS روی پورت‌های بالا و به‌صورت مستقیم آزمایش می‌شود؛ از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان --peer به هسته داده می‌شود.',
+          en: 'The scanner fetches the official ips-v4 and ips-v6 lists and caches them under data\\. Each address is tested directly with TCP and TLS on the ports above; nothing goes through the tunnel. The winner is passed to the core as --peer on the next connect.',
+        },
+      },
     ],
   },
   {
@@ -476,6 +527,9 @@ function transportLabel(value) {
 
 let options = {};
 let snap = { phase: 'idle', message: '', up: 0, down: 0, uptime: 0 };
+let scan = { running: false, fraction: 0, done: 0, total: 0, current: '', best: null, ranked: [], scannedAt: '', source: '' };
+let rix = { state: 'disconnected', detail: '' };
+let tunnel = { mode: 'proxy', available: false, why: '', on: false };
 let saveTimer = null;
 
 /** When the check button was last pressed, 0 when no check is in flight. */
@@ -488,6 +542,11 @@ function defaults() {
     upstreamProxy: '', reconnectSecs: 2, quickReconnect: true, keepalive: 5,
     fragment: false, fragmentSize: '', fragmentDelay: '', scanMode: 'DEFAULT',
     perf: '', logLevel: 'INFO', ech: '', routeDirect: '', routeBlock: '', extraArgs: '',
+    tunnelMode: 'proxy', killSwitch: false, splitTunnel: '',
+    scanEnabled: true, scanUseBestPeer: true, scanIntervalMinutes: 30,
+    scanConcurrency: 24, scanTimeoutMs: 1800,
+    scanPorts: '443,2053,2083,2087,2096,8443', scanIpv6: false,
+    scanSpeedSample: true, scanOnLaunch: true,
     psiphon: false, psiphonRegion: '', psiphonMode: 'auto',
     theme: 'dark', lang: 'fa', startWithWindows: false, minimizeToTray: true,
   };
@@ -548,6 +607,12 @@ function renderStatic() {
   el('stListenerName').textContent = t('listener');
   el('stTunnelName').textContent = t('tunnel');
   el('stExitName').textContent = t('exitStage');
+  el('kBest').textContent = t('best');
+  el('kLatency').textContent = t('latency');
+  el('kCoreState').textContent = t('coreState');
+  el('scanTitle').textContent = t('scanTitle');
+  el('scanNowBtn').textContent = t('scan');
+  el('proxyOffBtn').textContent = t('proxyOffBtn');
 }
 
 function bytes(value) {
@@ -573,7 +638,16 @@ const PHASE_TEXT = {
 };
 
 function renderHome() {
-  const phase = snap.phase || 'idle';
+  // The supervisor starts before the core does, so the session snapshot is
+  // still "idle" while Rix Core is already connecting. The screen follows the
+  // supervisor for those transitions and the session for the rest; neither
+  // one is allowed to claim a state the other has left.
+  let phase = snap.phase || 'idle';
+  const coreState = snap.rixState || rix.state || 'disconnected';
+  if (phase === 'idle' || phase === 'error') {
+    if (coreState === 'connecting' || coreState === 'reconnecting') phase = 'connecting';
+    else if (coreState === 'connected' || coreState === 'degraded') phase = 'running';
+  }
   const busy = phase === 'starting' || phase === 'connecting' || phase === 'stopping';
   const running = phase === 'running';
   const failed = phase === 'error';
@@ -588,7 +662,8 @@ function renderHome() {
   dot.classList.toggle('on', running);
   dot.classList.toggle('err', failed);
 
-  el('phaseText').textContent = snap.message || t(PHASE_TEXT[phase] || 'ready');
+  el('phaseText').textContent = (busy && snap.rixDetail ? snap.rixDetail : '')
+    || snap.message || t(PHASE_TEXT[phase] || 'ready');
   el('tbState').className = 'tb-state' + (running ? ' ok' : failed ? ' bad' : '');
   el('tbState').textContent = running
     ? (snap.egress && snap.egress.ip ? snap.egress.ip : t('running'))
@@ -652,8 +727,97 @@ function renderHome() {
     el('mRoute').textContent = '';
   }
 
+  // ---- the speed of the path the scanner recommends, and what Rix Core is
+  // doing. The two are separate facts: an address can be excellent and the
+  // supervisor still be reconnecting, and the screen must not merge them.
+  const best = scan.best || snap.scannedBest || null;
+  el('vBest').textContent = best ? best.endpoint : t('noBest');
+  el('mBest').textContent = best
+    ? [best.port ? ':' + best.port : '', best.success != null ? Math.round(best.success * 100) + '%' : '',
+       best.score != null ? 'score ' + Number(best.score).toFixed(2) : ''].filter(Boolean).join(' · ')
+    : (scan.running ? t('scanning') : '');
+
+  const latencyValue = scan.best && scan.best.latency != null ? scan.best.latency : null;
+  el('vLatency').textContent = latencyValue != null ? Math.round(latencyValue) + ' ms' : '—';
+  el('mLatency').textContent = scan.best && scan.best.jitter != null ? 'jitter ' + Math.round(scan.best.jitter) + ' ms' : '';
+
+  const coreLabels = {
+    connecting: 'connecting2', connected: 'connected', degraded: 'degraded',
+    reconnecting: 'reconnecting', disconnected: 'disconnected',
+  };
+  const coreNode = el('vCoreState');
+  coreNode.textContent = t(coreLabels[coreState] || 'disconnected');
+  coreNode.className = 'tile-v small ' + (coreState === 'connected' ? 'ok'
+    : coreState === 'degraded' ? 'warn' : coreState === 'disconnected' ? '' : 'warn');
+  el('mCoreState').textContent = snap.rixDetail || rix.detail || '';
+  el('tileCore').classList.toggle('on', coreState === 'connected');
+  el('tileCore').classList.toggle('bad', coreState === 'degraded');
+
+  // ---- mode switch and the independent proxy-off action
+  const mode = options.tunnelMode === 'tunnel' ? 'tunnel' : 'proxy';
+  document.querySelectorAll('#modeSwitch button').forEach((button) => {
+    button.classList.toggle('on', button.dataset.mode === mode);
+    button.disabled = button.dataset.mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available);
+    button.title = button.dataset.mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available)
+      ? ((snap.tunnelWhy || tunnel.why) || t('fqUnavailable')) : '';
+  });
+
+  const proxyOff = el('proxyOffBtn');
+  proxyOff.disabled = !(snap.proxyOn || snap.fullTunnelOn);
+
+  const note = el('tunnelNote');
+  if (mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available)) {
+    note.classList.remove('hidden');
+    note.textContent = (snap.tunnelWhy || tunnel.why) || t('fqUnavailable');
+  } else if (mode === 'tunnel') {
+    note.classList.remove('hidden');
+    note.textContent = lang === 'fa'
+      ? 'تانل کامل آزمایشی است: به RIX-Tunnel.exe، Wintun و تأیید UAC نیاز دارد. مسیرها و DNS هنگام قطع بازگردانده می‌شوند.'
+      : 'Full Tunnel is experimental: it needs RIX-Tunnel.exe, Wintun and a UAC confirmation. Routes and DNS are restored on disconnect.';
+  } else {
+    note.classList.add('hidden');
+  }
+
   renderStrip(phase);
   renderAlert(phase);
+  renderScan();
+}
+
+/** The scanner panel: progress, the address being tested, and the shortlist. */
+function renderScan() {
+  const running = !!scan.running;
+  const fraction = Number.isFinite(scan.fraction) ? scan.fraction : 0;
+  el('scanFill').style.width = running
+    ? Math.max(2, Math.min(100, fraction * 100)) + '%'
+    : (scan.best ? '100%' : '0');
+
+  const info = el('scanInfo');
+  if (running) {
+    info.textContent = scan.total
+      ? `${t('scanning')} ${scan.done}/${scan.total}`
+      : t('scanning');
+  } else if (scan.best) {
+    info.textContent = `${t('scanDone')}${scan.source ? ' · ' + scan.source : ''}`;
+  } else {
+    info.textContent = t('scanIdle');
+  }
+
+  el('scanNowBtn').textContent = running ? '…' : t('scan');
+  el('scanNowBtn').disabled = running;
+
+  el('scanCurrent').textContent = running && scan.current
+    ? 'TCP/TLS · ' + scan.current
+    : (scan.scannedAt ? scan.scannedAt.replace('Z', '').replace('T', ' ') : '');
+  el('scanBest').textContent = scan.best
+    ? `${t('best')}: ${scan.best.endpoint} · ${Math.round(scan.best.latency)} ms`
+    : '';
+
+  const list = el('scanList');
+  const ranked = Array.isArray(scan.ranked) ? scan.ranked : [];
+  list.innerHTML = ranked.slice(0, 6).map((entry, index) =>
+    `<span class="scan-chip${index === 0 ? ' best' : ''}" title="${esc(entry.address || '')}">` +
+    `${esc((entry.address || '') + ':' + (entry.port || ''))} · ${Math.round(entry.latency || 0)}ms</span>`
+  ).join('');
 }
 
 /**
@@ -770,7 +934,7 @@ function drawChart() {
   ctx.clearRect(0, 0, width, height);
 
   const style = getComputedStyle(document.documentElement);
-  const up = style.getPropertyValue('--accent').trim() || '#7c5cff';
+  const up = style.getPropertyValue('--accent').trim() || '#14b8a6';
   const down = style.getPropertyValue('--cyan').trim() || '#22d3ee';
   const line = style.getPropertyValue('--line').trim() || 'rgba(255,255,255,.08)';
 
@@ -840,11 +1004,19 @@ function onMessage(event) {
       state.corePath = message.core;
       state.hasPsiphon = message.psiphon;
       state.proxy = message.proxy;
+      tunnel.available = !!message.tunnelAvailable;
+      tunnel.why = message.tunnelWhy || '';
+      if (message.scan) scan = Object.assign(scan, message.scan);
       applyLangTheme();
       break;
 
     case 'state':
       snap = message;
+      if (message.rixState) rix = { state: message.rixState, detail: message.rixDetail || '' };
+      tunnel.mode = message.tunnelMode || tunnel.mode;
+      tunnel.available = !!message.tunnelAvailable;
+      tunnel.why = message.tunnelWhy || '';
+      tunnel.on = !!message.fullTunnelOn;
       // A counter tick also arrives as a state message, about once a second,
       // so the check button waits out a short grace before believing that this
       // one is its answer.
@@ -855,6 +1027,13 @@ function onMessage(event) {
       // Sampled first, so the rate in the caption is the rate the chart is
       // drawing rather than the reading before it.
       sample();
+      renderHome();
+      break;
+
+    case 'scan':
+      scan = Object.assign(scan, message);
+      if (typeof message.fraction === 'number') scan.fraction = message.fraction;
+      renderScan();
       renderHome();
       break;
 
@@ -938,9 +1117,11 @@ function wire() {
   // second press while connecting is a cancel, which is what a user means by
   // pressing it again.
   el('connectBtn').onclick = () => {
-    if (snap.phase === 'running') {
-      send({ type: 'disconnect' });
-    } else if (snap.phase === 'connecting' || snap.phase === 'starting') {
+    const coreState = snap.rixState || rix.state || 'disconnected';
+    const coreBusy = coreState === 'connecting' || coreState === 'reconnecting';
+    const coreUp = coreState === 'connected' || coreState === 'degraded';
+    if (snap.phase === 'running' || snap.phase === 'connecting' ||
+        snap.phase === 'starting' || coreBusy || coreUp) {
       send({ type: 'disconnect' });
     } else if (snap.phase === 'stopping') {
       return;
@@ -963,6 +1144,32 @@ function wire() {
         el('probeBtn').textContent = t('check');
       }
     }, 12_000);
+  };
+
+  el('tgBtn').title = t('telegram');
+  el('ghBtn').title = t('github');
+  el('tgBtn').onclick = () => send({ type: 'openUrl', url: 'https://t.me/rixpanel' });
+  el('ghBtn').onclick = () => send({ type: 'openUrl', url: 'https://github.com/RIX-REZA/RIX-AETHER' });
+
+  document.querySelectorAll('#modeSwitch button').forEach((button) => {
+    button.onclick = () => {
+      if (button.disabled) return;
+      options.tunnelMode = button.dataset.mode;
+      persistNow();
+      send({ type: 'mode', mode: button.dataset.mode });
+      renderHome();
+    };
+  });
+
+  el('proxyOffBtn').onclick = () => {
+    send({ type: 'proxyOff' });
+    toast(t('proxyOffBtn'));
+  };
+
+  el('scanNowBtn').onclick = () => {
+    scan.running = true;
+    renderScan();
+    send({ type: 'scanNow' });
   };
 
   el('langBtn').onclick = () => {

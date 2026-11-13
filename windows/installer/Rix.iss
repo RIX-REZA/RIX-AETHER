@@ -36,6 +36,19 @@
 #ifndef MinWindows
 #define MinWindows "10.0.17763"
 #endif
+; Per-architecture builds pass the matching identifiers. The defaults keep the
+; historical x64 installer byte-for-byte compatible with windows-rix.yml.
+#ifndef AllowedArch
+#define AllowedArch "x64compatible"
+#endif
+#ifndef Install64BitMode
+#define Install64BitMode "x64compatible"
+#endif
+; build.ps1 publishes per architecture into windows\publish\<rid>. The default
+; keeps the older single-architecture workflow, which publishes to windows\publish.
+#ifndef PublishDir
+#define PublishDir "..\publish"
+#endif
 
 [Setup]
 AppId={{7A1C3E52-5F4B-4E0A-9E31-2B7D9C4A6F18}
@@ -54,8 +67,8 @@ OutputDir=..\dist
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#AllowedArch}
+ArchitecturesInstallIn64BitMode={#Install64BitMode}
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 MinVersion={#MinWindows}
@@ -76,22 +89,30 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 Name: "startup"; Description: "اجرا با ویندوز / Start with Windows"; Flags: unchecked
 
 [Files]
-Source: "..\publish\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 ; The core, and the Psiphon client it spawns for the BETA chain. The
 ; `pt` folder name is not decoration: the core looks for the binary there.
-Source: "..\publish\core\aether.exe"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "{#PublishDir}\core\aether.exe"; DestDir: "{app}\core"; Flags: ignoreversion
 ; The integrity sidecar the launcher checks before it will run the core. It is
 ; generated in CI from the exact verified aether.exe (CoreIntegrity), so the
 ; installer always ships the verified binary and a corrupted or replaced core
 ; is diagnosed instead of launched.
-Source: "..\publish\core\aether.sha256"; DestDir: "{app}\core"; Flags: ignoreversion
-Source: "..\publish\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
-Source: "..\publish\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
-Source: "..\publish\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
+Source: "{#PublishDir}\core\aether.sha256"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "{#PublishDir}\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
+Source: "{#PublishDir}\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
+Source: "{#PublishDir}\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
+; Full Tunnel is optional by design: when the build carries the helper and
+; Wintun, they are installed and the mode becomes selectable. When it does not,
+; the app reports the mode unavailable instead of silently installing a broken
+; adapter path.
+Source: "{#PublishDir}\core\RIX-Tunnel.exe"; DestDir: "{app}\core"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\core\hev-socks5-tunnel.exe"; DestDir: "{app}\core"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\core\wintun.dll"; DestDir: "{app}\core"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\core\msys-2.0.dll"; DestDir: "{app}\core"; Flags: ignoreversion skipifsourcedoesntexist
 ; Carried, not fetched: see the header. Setup clears {tmp} on its own, so it
 ; needs no flag here -- and deleteafterinstall would be wrong, because it can
 ; run before [Run] has had the chance to use the file it deletes.
-Source: "..\publish\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"
+Source: "{#PublishDir}\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

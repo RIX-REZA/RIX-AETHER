@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -23,15 +24,40 @@ public sealed class MainForm : Form
     private readonly RixSession _session = new();
     private readonly NotifyIcon _tray = new();
     private readonly AppState _state;
+    private readonly IpScannerService _scanner = new();
+    private readonly CoreSupervisor _core;
 
     private ToolStripMenuItem _trayToggle;
+    private ToolStripMenuItem _trayProxyOff;
     private bool _webReady;
     private bool _allowClose;
     private Snapshot _last = new();
+    private Process _tunnel;
+    private string _tunnelStopFile;
+    private volatile bool _fullTunnelOn;
 
     public MainForm(AppState state)
     {
         _state = state;
+
+        _core = new CoreSupervisor(
+            CreatePathAsync,
+            new CoreSupervisorOptions(),
+            new BackoffPolicy(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(45)))
+        {
+            BestAddress = () => _scanner.Best,
+        };
+        _core.PathReady = async _ =>
+        {
+            if (_state.Options.TunnelMode == "tunnel") await StartFullTunnelAsync();
+        };
+        _core.Changed += OnCoreChanged;
+        _core.Log += line => Send(new JsonObject { ["type"] = "log", ["line"] = "core: " + line });
+
+        _scanner.Progress += OnScanProgress;
+        _scanner.Completed += cache => SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
+        _scanner.BestChanged += OnBestChanged;
+        _scanner.Log += line => Send(new JsonObject { ["type"] = "log", ["line"] = line });
 
         Text = "RIX";
         FormBorderStyle = FormBorderStyle.None;
@@ -172,6 +198,10 @@ public sealed class MainForm : Form
                         {
                             _state.Options = parsed;
                             _state.Save();
+                            _scanner.Options = parsed.ToScanOptions();
+                            _scanner.IntervalMinutes = Math.Clamp(parsed.ScanIntervalMinutes, 5, 1440);
+                            if (!parsed.ScanEnabled) _scanner.Stop();
+                            else if (parsed.ScanOnLaunch) _scanner.Start();
                             Send(new JsonObject { ["type"] = "saved" });
                         }
                     }
@@ -187,7 +217,42 @@ public sealed class MainForm : Form
                 break;
 
             case "disconnect":
-                _ = _session.DisconnectAsync();
+                _ = DisconnectAsync();
+                break;
+
+            case "proxyOff":
+                StopFullTunnel();
+                _session.DisableSystemProxy();
+                Send(new JsonObject { ["type"] = "toast", ["text"] = "پروکسی سیستم خاموش شد / system proxy off" });
+                SendState(_session.Current);
+                break;
+
+            case "mode":
+                var mode = message["mode"]?.GetValue<string>() ?? "proxy";
+                if (mode != "proxy" && mode != "tunnel") break;
+                if (_state.Options.TunnelMode != mode)
+                {
+                    var wasRunning = _session.Current.Phase == Phase.Running;
+                    _state.Options.TunnelMode = mode;
+                    _state.Save();
+                    if (wasRunning)
+                    {
+                        // Applying the mode means rebuilding the carriage, so
+                        // the connection is restarted deliberately and said so.
+                        Send(new JsonObject { ["type"] = "toast", ["text"] = "حالت عوض شد؛ اتصال دوباره برقرار می‌شود / mode changed, reconnecting" });
+                        _ = DisconnectAsync().ContinueWith(_ => _core.Start());
+                    }
+                }
+                SendState(_session.Current);
+                break;
+
+            case "scanNow":
+                _ = ScanNowAsync();
+                break;
+
+            case "stopTunnel":
+                StopFullTunnel();
+                SendState(_session.Current);
                 break;
 
             case "state":
@@ -204,6 +269,23 @@ public sealed class MainForm : Form
                 _state.Options.StartWithWindows = on;
                 _state.Save();
                 Send(new JsonObject { ["type"] = "autostart", ["on"] = AutoStartEnabled() });
+                break;
+
+            case "openUrl":
+                var url = message["url"]?.GetValue<string>() ?? "";
+                // Only the two project links; a WebView message must not become
+                // a way to launch an arbitrary URL.
+                if (url == "https://t.me/rixpanel" ||
+                    url == "https://github.com/RIX-REZA/RIX-AETHER")
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                    }
+                    catch
+                    {
+                    }
+                }
                 break;
 
             case "openFolder":
@@ -248,12 +330,189 @@ public sealed class MainForm : Form
     /// <summary>For `--connect`, when Windows started the app for the user.</summary>
     public Task AutoConnectAsync() => ConnectAsync();
 
+    private Task<IConnectionPath> CreatePathAsync(CancellationToken token)
+    {
+        // Full Tunnel still uses the same Aether session; only the machine's
+        // carriage differs (Wintun instead of WinINET), so the path is built
+        // with or without the system proxy.
+        var full = _state.Options.TunnelMode == "tunnel";
+        return Task.FromResult<IConnectionPath>(
+            new SessionConnectionPath(_session, PeerOptions, useSystemProxy: !full));
+    }
+
+    /// <summary>
+    /// The options handed to the core, with the scanner's winner substituted
+    /// for the peer when the user has not pinned one.
+    /// </summary>
+    private RixOptions PeerOptions()
+    {
+        var options = _state.Options;
+        if (!options.ScanEnabled || !options.ScanUseBestPeer) return options;
+        if (!string.IsNullOrWhiteSpace(options.Peer)) return options;
+
+        var best = _scanner.Best;
+        return best == null ? options : options with { Peer = best.Endpoint };
+    }
+
     private async Task ConnectAsync()
     {
-        await _session.ConnectAsync(_state.Options, useSystemProxy: true);
+        _core.Start();
         _state.Save();
         SendState(_session.Current);
         UpdateTray();
+        await Task.CompletedTask;
+    }
+
+    // ------------------------------------------------------------- full tunnel
+
+    /// <summary>
+    /// Starts RIX-Tunnel.exe elevated. The helper owns the adapter, the routes
+    /// and the optional firewall rule; the UI process stays unelevated.
+    /// </summary>
+    private async Task<bool> StartFullTunnelAsync()
+    {
+        if (_fullTunnelOn) return true;
+
+        var available = FullTunnelAvailability.Check();
+        if (!available.Available)
+        {
+            Send(new JsonObject { ["type"] = "toast", ["text"] = available.Reason });
+            Send(new JsonObject { ["type"] = "log", ["line"] = "tunnel: " + available.Reason });
+            return false;
+        }
+
+        StopFullTunnel();
+
+        try
+        {
+            var exe = Path.Combine(AppContext.BaseDirectory, "core", "RIX-Tunnel.exe");
+            if (!File.Exists(exe)) exe = Path.Combine(AppContext.BaseDirectory, "RIX-Tunnel.exe");
+            if (!File.Exists(exe))
+            {
+                Send(new JsonObject { ["type"] = "toast", ["text"] = "RIX-Tunnel.exe پیدا نشد / tunnel helper is missing" });
+                return false;
+            }
+
+            var stopFile = Path.Combine(AppState.Dir, "tunnel.stop");
+            try { File.Delete(stopFile); } catch { }
+            var stateFile = Path.Combine(AppState.Dir, "tunnel.state");
+            try { File.Delete(stateFile); } catch { }
+
+            var socks = _session.Current.Port > 0 ? _session.Current.Port : _state.Options.SocksPort;
+            var split = _state.Options.SplitTunnel ?? "";
+            var arguments =
+                "--data \"" + AppState.Dir + "\" " +
+                "--socks " + socks + " " +
+                "--adapter RIX " +
+                "--stop-file \"" + stopFile + "\"" +
+                (_state.Options.KillSwitch ? " --kill" : "") +
+                (string.IsNullOrWhiteSpace(split) ? "" : " --split \"" + split + "\"");
+
+            _tunnelStopFile = stopFile;
+            _tunnel = Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = arguments,
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = AppContext.BaseDirectory,
+            });
+            if (_tunnel == null) return false;
+
+            // Wait for the helper to say READY, but never forever: a helper
+            // stuck on a missing DLL would otherwise hold the connect button.
+            for (var i = 0; i < 60; i++)
+            {
+                await Task.Delay(250);
+                if (_tunnel.HasExited) break;
+                try
+                {
+                    if (File.Exists(stateFile) && File.ReadAllText(stateFile).StartsWith("ready"))
+                    {
+                        _fullTunnelOn = true;
+                        Send(new JsonObject { ["type"] = "log", ["line"] = "tunnel: full tunnel ready" });
+                        SendState(_session.Current);
+                        return true;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            var reason = _tunnel.HasExited
+                ? "RIX-Tunnel exited with code " + _tunnel.ExitCode
+                : "RIX-Tunnel did not become ready";
+            Send(new JsonObject { ["type"] = "log", ["line"] = "tunnel: " + reason });
+            StopFullTunnel();
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // UAC was declined. Nothing was changed on the machine.
+            Send(new JsonObject { ["type"] = "toast", ["text"] = "درخواست دسترسی مدیر رد شد / UAC was declined" });
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Send(new JsonObject { ["type"] = "log", ["line"] = "tunnel: " + ex.Message });
+            return false;
+        }
+    }
+
+    private void StopFullTunnel()
+    {
+        if (_tunnel == null && !_fullTunnelOn) return;
+
+        try
+        {
+            if (!string.IsNullOrEmpty(_tunnelStopFile))
+                File.WriteAllText(_tunnelStopFile, "stop");
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (_tunnel != null && !_tunnel.HasExited)
+                _tunnel.WaitForExit(8000);
+            if (_tunnel != null && !_tunnel.HasExited)
+                _tunnel.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+        }
+
+        try { _tunnel?.Dispose(); } catch { }
+        _tunnel = null;
+        _tunnelStopFile = null;
+        _fullTunnelOn = false;
+    }
+
+    private async Task DisconnectAsync()
+    {
+        StopFullTunnel();
+        await _core.StopAsync();
+        await _session.DisconnectAsync();
+        SendState(_session.Current);
+        UpdateTray();
+    }
+
+    private async Task ScanNowAsync()
+    {
+        var options = _state.Options;
+        _scanner.Options = options.ToScanOptions();
+        _scanner.IntervalMinutes = Math.Clamp(options.ScanIntervalMinutes, 5, 1440);
+        SendScan(null, new ScanProgress { Running = true, Total = 1 }, true, null);
+        var cache = await _scanner.ScanNowAsync(CancellationToken.None);
+        SendScan(cache.Ranked.FirstOrDefault(), new ScanProgress
+        {
+            Running = false,
+            Done = cache.Ranked.Count,
+            Total = cache.Ranked.Count,
+        }, false, cache);
+        SendState(_session.Current);
     }
 
     private async Task ProbeAsync()
@@ -276,6 +535,67 @@ public sealed class MainForm : Form
         UpdateTray();
     }
 
+    private void OnCoreChanged(CoreStatus status)
+    {
+        _coreStatus = status;
+        SendState(_session.Current);
+        UpdateTray();
+    }
+
+    private CoreStatus _coreStatus = new();
+    private readonly FullTunnelAvailability _tunnelAvailability = FullTunnelAvailability.Check();
+
+    private void OnScanProgress(ScanProgress progress) => SendScan(progress.Best, progress, true, null);
+
+    private void OnBestChanged(ScanCandidate best)
+    {
+        Send(new JsonObject { ["type"] = "log", ["line"] = "scan: best edge " + best.Endpoint });
+        // A better address is used at the next reconnect. Swapping the peer of
+        // a live core is not something the core supports without restarting it,
+        // so the supervisor's failover (which picks BestAddress) is the path.
+    }
+
+    private void SendScan(ScanCandidate best, ScanProgress progress, bool running, IpScanCache cache)
+    {
+        var ranked = (cache?.Ranked ?? _scanner.Cache?.Ranked ?? new List<ScanCandidate>())
+            .Take(8)
+            .Select(c => new JsonObject
+            {
+                ["address"] = c.Address,
+                ["port"] = c.Port,
+                ["latency"] = Math.Round(c.LatencyMs, 1),
+                ["jitter"] = Math.Round(c.JitterMs, 1),
+                ["success"] = Math.Round(c.SuccessRate, 3),
+                ["score"] = Math.Round(c.Score, 4),
+                ["speed"] = Math.Round(c.SpeedBps),
+            })
+            .ToList();
+
+        var message = new JsonObject
+        {
+            ["type"] = "scan",
+            ["running"] = running,
+            ["done"] = progress?.Done ?? 0,
+            ["total"] = progress?.Total ?? 0,
+            ["fraction"] = progress?.Fraction ?? (running ? 0 : 1),
+            ["current"] = progress?.Current ?? "",
+            ["best"] = best == null ? null : new JsonObject
+            {
+                ["address"] = best.Address,
+                ["port"] = best.Port,
+                ["endpoint"] = best.Endpoint,
+                ["latency"] = Math.Round(best.LatencyMs, 1),
+                ["jitter"] = Math.Round(best.JitterMs, 1),
+                ["success"] = Math.Round(best.SuccessRate, 3),
+                ["score"] = Math.Round(best.Score, 4),
+            },
+            ["ranked"] = new JsonArray(ranked.ToArray()),
+            ["scannedAt"] = (cache?.ScannedAt ?? _scanner.Cache?.ScannedAt)?.ToString("u") ?? "",
+            ["source"] = cache?.Source ?? _scanner.Cache?.Source ?? "",
+        };
+        Send(message);
+    }
+
     private void SendState(Snapshot snapshot)
     {
         var message = new JsonObject
@@ -294,8 +614,29 @@ public sealed class MainForm : Form
             ["psiphonRegion"] = snapshot.PsiphonRegion,
             ["egress"] = EgressJson(snapshot.Egress),
             ["local"] = EgressJson(snapshot.Local),
+            ["rixState"] = _coreStatus.State.ToString().ToLowerInvariant(),
+            ["rixDetail"] = _coreStatus.Detail,
+            ["rixReconnects"] = _coreStatus.ReconnectAttempt,
+            ["tunnelMode"] = _state.Options.TunnelMode,
+            ["fullTunnelOn"] = _fullTunnelOn,
+            ["tunnelAvailable"] = _tunnelAvailability.Available,
+            ["tunnelWhy"] = _tunnelAvailability.Reason,
+            ["scannedBest"] = ScanBestJson(),
         };
         Send(message);
+    }
+
+    private JsonNode ScanBestJson()
+    {
+        var best = _scanner.Best;
+        return best == null ? null : new JsonObject
+        {
+            ["address"] = best.Address,
+            ["port"] = best.Port,
+            ["endpoint"] = best.Endpoint,
+            ["latency"] = Math.Round(best.LatencyMs, 1),
+            ["jitter"] = Math.Round(best.JitterMs, 1),
+        };
     }
 
     private static JsonNode EgressJson(Egress egress) => egress == null
@@ -323,8 +664,32 @@ public sealed class MainForm : Form
             ["psiphon"] = File.Exists(Path.Combine(AppContext.BaseDirectory, "core", "pt", "psiphon-tunnel-core.exe")),
             ["autostart"] = AutoStartEnabled(),
             ["proxy"] = SystemProxy.Current().Server,
+            ["tunnelAvailable"] = _tunnelAvailability.Available,
+            ["tunnelWhy"] = _tunnelAvailability.Reason,
+            ["elevated"] = _tunnelAvailability.Elevated,
+            ["scan"] = ScanSnapshotJson(),
         });
         SendState(_last);
+
+        if (_state.Options.ScanEnabled && _state.Options.ScanOnLaunch)
+        {
+            _scanner.Options = _state.Options.ToScanOptions();
+            _scanner.IntervalMinutes = Math.Clamp(_state.Options.ScanIntervalMinutes, 5, 1440);
+            _scanner.Start();
+        }
+    }
+
+    private JsonObject ScanSnapshotJson()
+    {
+        var cache = _scanner.Cache;
+        return new JsonObject
+        {
+            ["running"] = _scanner.IsScanning,
+            ["fraction"] = 0,
+            ["scannedAt"] = cache?.ScannedAt.ToString("u") ?? "",
+            ["source"] = cache?.Source ?? "",
+            ["best"] = ScanBestJson(),
+        };
     }
 
     /// <summary>
@@ -362,13 +727,20 @@ public sealed class MainForm : Form
     {
         _trayToggle = new ToolStripMenuItem("اتصال / Connect", null, (_, _) =>
         {
-            if (_session.Current.Phase == Phase.Running) _ = _session.DisconnectAsync();
+            if (_session.Current.Phase == Phase.Running) _ = DisconnectAsync();
             else _ = ConnectAsync();
         });
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("نمایش پنجره / Show", null, (_, _) => Restore()));
         menu.Items.Add(_trayToggle);
+        _trayProxyOff = new ToolStripMenuItem("خاموش کردن پروکسی سیستم / System proxy off", null, (_, _) =>
+        {
+            StopFullTunnel();
+            _session.DisableSystemProxy();
+            SendState(_session.Current);
+        });
+        menu.Items.Add(_trayProxyOff);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("خروج / Quit", null, (_, _) =>
         {
@@ -385,6 +757,16 @@ public sealed class MainForm : Form
 
     private void UpdateTray()
     {
+        // The session and the supervisor raise their events from background
+        // threads, and NotifyIcon is a window object. Marshalling here keeps
+        // both callers safe instead of making each remember to.
+        if (IsDisposed || !IsHandleCreated) return;
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(UpdateTray); } catch { }
+            return;
+        }
+
         var running = _last.Phase == Phase.Running;
         var detail = running
             ? "متصل — " + (_last.Egress?.Ip ?? _last.TransportLabel)
@@ -394,6 +776,8 @@ public sealed class MainForm : Form
             ? ("RIX — " + detail)[..62]
             : "RIX — " + detail;
         _trayToggle.Text = running ? "قطع / Disconnect" : "اتصال / Connect";
+        if (_trayProxyOff != null)
+            _trayProxyOff.Enabled = SystemProxy.Owned || _fullTunnelOn;
     }
 
     private void Restore()
@@ -421,8 +805,12 @@ public sealed class MainForm : Form
 
         // Synchronous on purpose, and deliberately not the async teardown: this
         // runs on the UI thread, and awaiting there while the window is closing
-        // is how an app hangs on exit. The session's own Dispose cancels the
-        // connect, turns the proxy off and stops the core.
+        // is how an app hangs on exit. The helper is told to stop first (it
+        // removes routes and firewall rules), then the session's own Dispose
+        // cancels the connect, turns the proxy off and stops the core.
+        StopFullTunnel();
+        try { _core.Dispose(); } catch { }
+        try { _scanner.Dispose(); } catch { }
         _session.Dispose();
         _state.Save();
     }

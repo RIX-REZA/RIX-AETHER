@@ -42,6 +42,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The elevated tunnel helper is a separate executable project with its
+         own entry point. Its sources are linked there, not compiled here. -->
+    <Compile Remove="tunnel\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The UI is the WebView2 host: HTML/CSS/JS for the screens, C# for the
          core, the process and the system proxy. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />

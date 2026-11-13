@@ -10,8 +10,8 @@ captures/
 *.aab
 app/src/main/jniLibs/
 # .NET build output (the Windows app is built in CI, never committed)
-windows/src/bin/
-windows/src/obj/
+windows/**/bin/
+windows/**/obj/
 windows/publish/
 windows/dist/
 

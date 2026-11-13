@@ -616,6 +616,22 @@ public sealed class RixSession : IDisposable
         Publish(_snapshot with { Phase = Phase.Error, Message = message, ProxyOn = false });
     }
 
+    /// <summary>
+    /// The independent "turn the system proxy off" action. It does not stop
+    /// the tunnel: the SOCKS5 listener keeps working for apps pointed at it by
+    /// hand, and the core stays connected. The next state push says the proxy
+    /// is off rather than leaving the old value on screen.
+    /// </summary>
+    public void DisableSystemProxy()
+    {
+        SystemProxy.Disable();
+        Publish(_snapshot with
+        {
+            ProxyOn = false,
+            Message = "پروکسی سیستم خاموش شد / system proxy off",
+        });
+    }
+
     private void Publish(Snapshot next)
     {
         _snapshot = next;

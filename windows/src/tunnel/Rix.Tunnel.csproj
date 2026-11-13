@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>RIX-Tunnel</AssemblyName>
+    <RootNamespace>Rix.Windows.Tunnel</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.7</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- One implementation, two executables: the UI app can report why Full
+         Tunnel is unavailable without dragging the whole WinForms stack in. -->
+    <Compile Include="..\Core\FullTunnel.cs" Link="FullTunnel.cs" />
+  </ItemGroup>
+
+</Project>
