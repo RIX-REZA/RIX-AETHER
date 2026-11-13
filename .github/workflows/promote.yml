@@ -1,0 +1,92 @@
+name: Promote to Public Repository
+
+# Runs only from the private staging repository.
+#
+# 1. Refuses to promote a commit that has no successful multi-platform build
+#    in staging, so an untested update can never reach the public releases.
+# 2. Pushes the tested commit to a disposable branch in the public repository.
+#    The public repository's default branch is not modified.
+# 3. Dispatches the public multi-platform release workflow on that branch.
+#
+# The public repository rebuilds and re-verifies everything. Promotion is a
+# reference to tested code, not a shortcut around the release checks.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Public release tag to update"
+        required: true
+        default: "v1.0.7"
+      publish:
+        description: "Upload to the public GitHub Release (false = build only)"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PUBLIC_REPO: "RIX-REZA/RIX-AETHER"
+
+jobs:
+  promote:
+    name: Validate and promote
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a successful staging build for this exact commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          echo "candidate commit: $sha"
+          count=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sha}&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "RIX-AETHER Multi-Platform Release" and .conclusion == "success")] | length')
+          echo "successful staging builds for $sha: $count"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::No successful staging build for $sha. Run the multi-platform workflow in this repository first."
+            exit 1
+          fi
+
+      - name: Push the tested commit to a staging branch in the public repository
+        id: push
+        env:
+          MAIN_REPO_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MAIN_REPO_TOKEN:-}" ]; then
+            echo "::error::secrets.MAIN_REPO_TOKEN is not set."
+            exit 1
+          fi
+          sha=$(git rev-parse HEAD)
+          branch="staging/promote-${sha:0:12}"
+          git push --force \
+            "https://x-access-token:${MAIN_REPO_TOKEN}@github.com/${PUBLIC_REPO}.git" \
+            "HEAD:refs/heads/${branch}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "pushed tested commit $sha to ${PUBLIC_REPO}:${branch}"
+
+      - name: Dispatch the public release workflow
+        env:
+          GH_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+          PUBLISH: ${{ inputs.publish }}
+          BRANCH: ${{ steps.push.outputs.branch }}
+        run: |
+          set -euo pipefail
+          gh workflow run multi-platform-release.yml \
+            --repo "$PUBLIC_REPO" \
+            --ref "$BRANCH" \
+            -f "release_tag=${TAG}" \
+            -f "publish=${PUBLISH}"
+          echo "dispatched multi-platform-release.yml on ${BRANCH} with publish=${PUBLISH}"
