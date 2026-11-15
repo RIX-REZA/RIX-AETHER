@@ -189,6 +189,12 @@ jobs:
           }
 
       - name: Self-check the published app
+        # The runner is x64 Windows: it executes x64 and (through WOW64) x86
+        # binaries, but an ARM64 PE cannot run here at all, so for win-arm64
+        # the PE machine-type check in the previous step is the verification,
+        # and running it there would fail with "not a valid application for
+        # this OS platform" regardless of the app itself.
+        if: ${{ matrix.rid != 'win-arm64' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
