@@ -90,8 +90,19 @@ public sealed class CoreSupervisorOptions
     /// <summary>Bound on one connect attempt, so a hung core cannot wedge the state machine.</summary>
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(90);
 
-    /// <summary>Give up after this many consecutive failed reconnects.</summary>
+    /// <summary>Give up after this many consecutive failed reconnects.
+    /// Zero or less means never give up: the supervisor keeps trying with the
+    /// capped backoff until the user stops it. The resilience profile uses
+    /// this, because a tunnel that abandoned the user would be the opposite
+    /// of what it exists for.</summary>
     public int MaxReconnects { get; set; } = 8;
+
+    /// <summary>The first reconnects wait this long at most, because a network
+    /// flap usually heals in well under a second.</summary>
+    public int FastRetryCount { get; set; }
+
+    /// <summary>Bound on one direct pre-verification of the next peer.</summary>
+    public TimeSpan VerifyTimeout { get; set; } = TimeSpan.FromSeconds(4);
 }
 
 /// <summary>
@@ -143,8 +154,24 @@ public sealed class CoreSupervisor : IDisposable
     public event Action<CoreStatus> Changed;
     public event Action<string> Log;
 
-    /// <summary>Set by the host so a failover can propose the next address.</summary>
+    /// <summary>Set by the host so a failover can propose the next address.
+    /// Called once per attempt; the host's implementation is expected to
+    /// rotate through the ranked candidates rather than always naming the
+    /// same one.</summary>
     public Func<ScanCandidate> BestAddress { get; set; }
+
+    /// <summary>
+    /// Direct pre-verification of a proposed peer. Failover that hands an
+    /// unverified address to the core trades one failed connection for
+    /// another; this probe (TCP+TLS, straight out, never through the tunnel)
+    /// costs a fraction of a core restart and is what makes the handover
+    /// worth doing.
+    /// </summary>
+    public Func<ScanCandidate, Task<bool>> PreVerify { get; set; }
+
+    /// <summary>Told when a proposed peer failed its direct probe, so the
+    /// host can cool it down before the next pick.</summary>
+    public Action<ScanCandidate> CandidateRejected { get; set; }
 
     /// <summary>Called after a path connects, so the host can apply proxy/routes.</summary>
     public Func<IConnectionPath, Task> PathReady { get; set; }
@@ -375,9 +402,7 @@ public sealed class CoreSupervisor : IDisposable
     {
         try
         {
-            var best = BestAddress?.Invoke();
-            if (best != null)
-                Log?.Invoke("failover: best edge " + best.Endpoint);
+            await VerifyPeerAsync(token);
             return await _createPath(token);
         }
         catch (OperationCanceledException)
@@ -388,6 +413,48 @@ public sealed class CoreSupervisor : IDisposable
         {
             Log?.Invoke("path: " + ex.Message);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Probes the proposed peer before it is handed to the core. Up to three
+    /// candidates are tried; each failure is reported back so the host rotates
+    /// to the next one. When PreVerify is not wired, the pick is used as is --
+    /// the scanner's own ranking is still better than nothing.
+    /// </summary>
+    private async Task VerifyPeerAsync(CancellationToken token)
+    {
+        for (var tries = 0; tries < 3; tries++)
+        {
+            var candidate = BestAddress?.Invoke();
+            if (candidate == null || PreVerify == null)
+            {
+                if (candidate != null)
+                    Log?.Invoke("failover: best edge " + candidate.Endpoint);
+                return;
+            }
+
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                timeout.CancelAfter(_options.VerifyTimeout);
+                if (await PreVerify(candidate))
+                {
+                    Log?.Invoke("failover: verified edge " + candidate.Endpoint);
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch
+            {
+                // Treated the same as a failed probe below.
+            }
+
+            Log?.Invoke("failover: " + candidate.Endpoint + " did not answer directly, rotating");
+            try { CandidateRejected?.Invoke(candidate); } catch { }
         }
     }
 
@@ -404,7 +471,7 @@ public sealed class CoreSupervisor : IDisposable
     private async Task<bool> WaitBeforeRetryAsync(CancellationToken token)
     {
         _reconnects++;
-        if (_reconnects > _options.MaxReconnects)
+        if (_options.MaxReconnects > 0 && _reconnects > _options.MaxReconnects)
         {
             Set(RixState.Disconnected,
                 "اتصال برقرار نشد / could not connect after " + _options.MaxReconnects + " attempts");
@@ -415,7 +482,14 @@ public sealed class CoreSupervisor : IDisposable
             return false;
         }
 
-        var wait = _backoff.Next(_reconnects);
+        // A network flap usually heals in well under a second, so the first
+        // couple of retries are deliberately quick; after that the exponential
+        // backoff takes over and stays capped.
+        var wait = _reconnects <= _options.FastRetryCount
+            ? Resilience.FastRetryMin + TimeSpan.FromMilliseconds(
+                Random.Shared.NextDouble() *
+                (Resilience.FastRetryMax - Resilience.FastRetryMin).TotalMilliseconds)
+            : _backoff.Next(_reconnects);
         Set(RixState.Reconnecting,
             $"تلاش دوباره تا {wait.TotalSeconds:0.0} ثانیه / reconnecting");
         Log?.Invoke($"core: backoff {wait.TotalMilliseconds:0}ms (attempt {_reconnects})");

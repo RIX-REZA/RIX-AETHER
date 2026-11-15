@@ -68,7 +68,13 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed={#AllowedArch}
+; 64-bit install mode is only meaningful on a 64-bit Windows: per the Inno
+; Setup docs this directive must never name a mode a 32-bit Windows can
+; match, so for the x86 installer the value is passed empty and the whole
+; line is left out (an omitted directive is the 32-bit install mode).
+#if Install64BitMode != ""
 ArchitecturesInstallIn64BitMode={#Install64BitMode}
+#endif
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 MinVersion={#MinWindows}

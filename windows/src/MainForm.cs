@@ -35,17 +35,30 @@ public sealed class MainForm : Form
     private Process _tunnel;
     private string _tunnelStopFile;
     private volatile bool _fullTunnelOn;
+    private readonly PeerPool _peerPool = new();
+    private readonly NetworkWatch _networkWatch;
+    private readonly IIpProbe _probe = new TlsIpProbe();
+    private string _lastPeer;
+    private RixState _lastCoreState = RixState.Disconnected;
 
     public MainForm(AppState state)
     {
         _state = state;
 
+        _peerPool.Replace(_scanner.Cache?.Ranked ?? new List<ScanCandidate>());
+
         _core = new CoreSupervisor(
             CreatePathAsync,
-            new CoreSupervisorOptions(),
+            // Resilience: health checks, fast first retries, exponential
+            // backoff after them, and no giving up on its own.
+            Resilience.Options(),
             new BackoffPolicy(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(45)))
         {
-            BestAddress = () => _scanner.Best,
+            // Rotation, not a pin: every attempt asks the pool for its current
+            // best eligible peer, and a failed one cools down.
+            BestAddress = () => _peerPool.Pick(),
+            PreVerify = VerifyPeerAsync,
+            CandidateRejected = c => _peerPool.ReportFailure(c.Endpoint),
         };
         _core.PathReady = async _ =>
         {
@@ -54,8 +67,17 @@ public sealed class MainForm : Form
         _core.Changed += OnCoreChanged;
         _core.Log += line => Send(new JsonObject { ["type"] = "log", ["line"] = "core: " + line });
 
+        // The machine moving is the most common way a healthy-looking socket
+        // goes dead; the supervisor is kicked on the first debounce instead of
+        // waiting for a health check to notice.
+        _networkWatch = new NetworkWatch(reason =>
+        {
+            Send(new JsonObject { ["type"] = "log", ["line"] = reason });
+            _core.NetworkChanged(reason);
+        });
+
         _scanner.Progress += OnScanProgress;
-        _scanner.Completed += cache => SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
+        _scanner.Completed += OnScanCompleted;
         _scanner.BestChanged += OnBestChanged;
         _scanner.Log += line => Send(new JsonObject { ["type"] = "log", ["line"] = line });
 
@@ -271,12 +293,18 @@ public sealed class MainForm : Form
                 Send(new JsonObject { ["type"] = "autostart", ["on"] = AutoStartEnabled() });
                 break;
 
+            case "checkUpdate":
+                _ = CheckUpdateAsync();
+                break;
+
             case "openUrl":
                 var url = message["url"]?.GetValue<string>() ?? "";
-                // Only the two project links; a WebView message must not become
-                // a way to launch an arbitrary URL.
+                // Only project links: the two fixed URLs and the release page
+                // the update check itself handed back. A WebView message must
+                // not become a way to launch an arbitrary URL.
                 if (url == "https://t.me/rixpanel" ||
-                    url == "https://github.com/RIX-REZA/RIX-AETHER")
+                    url == "https://github.com/RIX-REZA/RIX-AETHER" ||
+                    url.StartsWith(UpdateCheck.ReleasesBase + "/", StringComparison.Ordinal))
                 {
                     try
                     {
@@ -341,17 +369,50 @@ public sealed class MainForm : Form
     }
 
     /// <summary>
+    /// Direct pre-verification of the peer the pool proposed. Runs straight
+    /// out -- never through the tunnel -- so a failed check cannot loop.
+    /// </summary>
+    private async Task<bool> VerifyPeerAsync(ScanCandidate candidate)
+    {
+        try
+        {
+            var options = _state.Options.ToScanOptions();
+            options.MeasureSpeed = false;
+            options.Samples = 1;
+            var result = await _probe.ProbeAsync(candidate.Address, candidate.Port, options, CancellationToken.None);
+            return result.Ok;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void OnScanCompleted(IpScanCache cache)
+    {
+        _peerPool.Replace(cache.Ranked);
+        SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
+    }
+
+    /// <summary>
     /// The options handed to the core, with the scanner's winner substituted
     /// for the peer when the user has not pinned one.
+    ///
+    /// The scan only steers the root protocol. Psiphon chooses its own path
+    /// behind its own gates and ignores --peer, so when the user selected it,
+    /// the scanner's pick is left out rather than silently dropped.
     /// </summary>
     private RixOptions PeerOptions()
     {
         var options = _state.Options;
+        if (options.Psiphon) return options;
         if (!options.ScanEnabled || !options.ScanUseBestPeer) return options;
         if (!string.IsNullOrWhiteSpace(options.Peer)) return options;
 
-        var best = _scanner.Best;
-        return best == null ? options : options with { Peer = best.Endpoint };
+        var best = _peerPool.Pick() ?? _scanner.Best;
+        if (best == null) return options;
+        _lastPeer = best.Endpoint;
+        return options with { Peer = best.Endpoint };
     }
 
     private async Task ConnectAsync()
@@ -515,6 +576,27 @@ public sealed class MainForm : Form
         SendState(_session.Current);
     }
 
+    /// <summary>
+    /// Answers the home screen's update button. The page never opens a URL it
+    /// was not handed back with an "available" flag, and this is where the
+    /// flag and the URL come from.
+    /// </summary>
+    private async Task CheckUpdateAsync()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var info = await UpdateCheck.CheckAsync(http, CancellationToken.None);
+        Send(new JsonObject
+        {
+            ["type"] = "update",
+            ["available"] = info.Available,
+            ["version"] = info.Version,
+            ["url"] = info.Url,
+            ["error"] = info.Error,
+        });
+        if (!string.IsNullOrEmpty(info.Error))
+            Send(new JsonObject { ["type"] = "log", ["line"] = "update: " + info.Error });
+    }
+
     private async Task ProbeAsync()
     {
         var exit = await _session.RefreshEgressAsync();
@@ -537,6 +619,22 @@ public sealed class MainForm : Form
 
     private void OnCoreChanged(CoreStatus status)
     {
+        // The pool learns what actually carried traffic: a peer that reached
+        // Connected clears its debt, a peer that dropped back out of it takes
+        // on a cooldown, so the next reconnect rotates away from it instead of
+        // knocking on the same dead door.
+        if (_lastCoreState is RixState.Connecting or RixState.Reconnecting &&
+            status.State is RixState.Connected or RixState.Degraded)
+        {
+            _peerPool.ReportSuccess(_lastPeer);
+        }
+        else if (_lastCoreState is RixState.Connected or RixState.Degraded or RixState.Connecting &&
+                 status.State is RixState.Reconnecting or RixState.Disconnected)
+        {
+            _peerPool.ReportFailure(_lastPeer);
+        }
+        _lastCoreState = status.State;
+
         _coreStatus = status;
         SendState(_session.Current);
         UpdateTray();
@@ -811,6 +909,7 @@ public sealed class MainForm : Form
         StopFullTunnel();
         try { _core.Dispose(); } catch { }
         try { _scanner.Dispose(); } catch { }
+        try { _networkWatch.Dispose(); } catch { }
         _session.Dispose();
         _state.Save();
     }

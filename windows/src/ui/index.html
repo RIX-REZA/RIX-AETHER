@@ -10,6 +10,10 @@
 
 <header class="titlebar">
   <div class="tb-drag" id="drag">
+    <button class="icon-btn burger" id="menuBtn" title="منو / Menu" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </button>
+    <span class="tb-sep"></span>
     <span class="brand"><span class="logo"></span>RIX<span class="ver" id="ver"></span></span>
     <span class="tb-sep"></span>
     <span class="tb-state" id="tbState">آماده</span>
@@ -30,58 +34,119 @@
   </div>
 </header>
 
-<!-- The sections run across the top. On a narrow window the labels drop out
-     and the icons carry the navigation on their own. -->
-<nav class="tabs" id="tabs"></nav>
+<!-- One place for everything that is not the connection itself. The dial owns
+     the home screen; this drawer owns the rest, so the first screen stays
+     what the user opened the app for. -->
+<div class="drawer-backdrop hidden" id="drawerBackdrop"></div>
+<nav class="drawer hidden" id="drawer" aria-label="منو">
+  <div class="drawer-head"><span class="logo"></span><b>RIX</b></div>
+  <button class="drawer-item on" data-view="home"><span class="di-ico" id="diHome"></span><span class="di-label" id="dlHome"></span></button>
+  <button class="drawer-item" data-view="scan"><span class="di-ico" id="diScan"></span><span class="di-label" id="dlScan"></span></button>
+  <button class="drawer-item" data-view="settings"><span class="di-ico" id="diSettings"></span><span class="di-label" id="dlSettings"></span></button>
+  <button class="drawer-item" data-view="details"><span class="di-ico" id="diDetails"></span><span class="di-label" id="dlDetails"></span></button>
+  <button class="drawer-item" data-view="log"><span class="di-ico" id="diLog"></span><span class="di-label" id="dlLog"></span></button>
+  <button class="drawer-item" data-view="about"><span class="di-ico" id="diAbout"></span><span class="di-label" id="dlAbout"></span></button>
+</nav>
 
 <main>
 
   <!-- -------------------------------------------------------------- home -->
   <section class="view on" id="view-home">
-    <div class="home">
+    <div class="home minimal">
 
-      <div class="hero">
-        <div class="hero-main" id="heroMain">
-          <div class="hero-top">
-            <span class="phase-dot" id="phaseDot"></span>
-            <span class="phase-text" id="phaseText">آماده</span>
-            <span class="hero-spacer"></span>
-            <span class="hero-transport" id="heroTransport">—</span>
-          </div>
-
-          <div class="hero-ip" id="heroIp">—</div>
-          <div class="hero-sub" id="heroSub"></div>
-
-          <div class="track"><span class="track-fill" id="trackFill"></span></div>
-
-          <div class="mode-switch" id="modeSwitch" role="tablist">
-            <button data-mode="proxy" role="tab">پروکسی سیستم</button>
-            <button data-mode="tunnel" role="tab">تانل کامل</button>
-          </div>
-
-          <div class="hero-actions">
-            <button class="primary" id="connectBtn">اتصال</button>
-            <button class="ghost" id="probeBtn">بررسی</button>
-            <button class="ghost" id="proxyOffBtn">خاموش کردن پروکسی سیستم</button>
-          </div>
-        </div>
-
-        <div class="hero-side">
-          <div class="chart-head">
-            <span id="kChart">گذر لحظهای</span>
-            <span class="chart-key"><i class="d"></i><span id="kDown">دانلود</span>
-              <i class="u"></i><span id="kUp">آپلود</span></span>
-          </div>
-          <canvas class="chart" id="chart" width="620" height="190"></canvas>
-          <div class="chart-foot">
-            <span id="vDown">0 B</span>
-            <span class="dot">·</span>
-            <span id="vUp">0 B</span>
-            <span class="hero-spacer"></span>
-            <span id="vRate">0 B/s</span>
-          </div>
-        </div>
+      <div class="alert hidden" id="alert">
+        <span class="alert-ico">!</span>
+        <span id="alertText"></span>
       </div>
+
+      <div class="dial-wrap">
+        <button class="dial" id="connectBtn" aria-label="اتصال">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/>
+          </svg>
+          <span id="dialLabel">اتصال</span>
+        </button>
+      </div>
+
+      <div class="dial-state" id="phaseText">آماده</div>
+      <div class="dial-ip" id="heroIp">—</div>
+      <div class="dial-sub" id="heroSub"></div>
+
+      <!-- The one secondary action that earns a place on the home screen:
+           keeping the app itself current. Everything else lives in the menu. -->
+      <button class="ghost small" id="updateBtn">بررسی به‌روزرسانی</button>
+
+      <!-- The scanner's heartbeat: one thin line, the best edge when there is
+           one, and a click that opens the full scanner view. -->
+      <button class="mini-scan" id="miniScan" data-view="scan">
+        <span class="mini-track"><span class="mini-fill" id="miniFill"></span></span>
+        <span class="mini-text" id="miniScanText">اسکنر: آماده</span>
+      </button>
+
+      <div class="fulltunnel-note hidden" id="tunnelNote"></div>
+
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- scanner -->
+  <section class="view" id="view-scan">
+    <div class="scan-page">
+
+      <div class="scan-card">
+        <div class="scan-head">
+          <b id="scanTitle">اسکنر لبه کلودفلر</b>
+          <span class="scan-info" id="scanInfo"></span>
+          <span class="hero-spacer"></span>
+          <button class="ghost small" id="scanNowBtn">اسکن</button>
+        </div>
+        <div class="scan-track"><span class="scan-fill" id="scanFill"></span></div>
+        <div class="scan-foot">
+          <span id="scanCurrent"></span>
+          <span class="hero-spacer"></span>
+          <span id="scanBest"></span>
+        </div>
+        <div class="scan-list" id="scanList"></div>
+        <p class="hint" id="scanNote"></p>
+      </div>
+
+      <div class="strip">
+        <span class="stage" id="stCore"><i></i><b id="stCoreName">هسته</b></span>
+        <span class="stage-arrow">→</span>
+        <span class="stage" id="stListener"><i></i><b id="stListenerName">شنونده SOCKS5</b></span>
+        <span class="stage-arrow" id="stPsiphonArrow">→</span>
+        <span class="stage" id="stPsiphon"><i></i><b>Psiphon</b></span>
+        <span class="stage-arrow" id="stTunnelArrow">→</span>
+        <span class="stage" id="stTunnel"><i></i><b id="stTunnelName">تونل</b></span>
+        <span class="stage-arrow" id="stExitArrow">→</span>
+        <span class="stage" id="stExit"><i></i><b id="stExitName">خروج</b></span>
+      </div>
+
+      <div class="qa-row">
+        <button class="ghost" id="proxyOffBtn">خاموش کردن پروکسی سیستم</button>
+        <button class="ghost" id="probeBtn">بررسی</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- settings -->
+  <section class="view" id="view-settings">
+    <div class="split">
+      <aside class="cat" id="cat"></aside>
+      <div class="cat-body">
+        <div class="cat-head">
+          <b id="catTitle"></b>
+          <span id="catSub"></span>
+        </div>
+        <div class="fields" id="fields"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- details -->
+  <section class="view" id="view-details">
+    <div class="details">
 
       <div class="tiles">
         <div class="tile">
@@ -120,59 +185,22 @@
         </div>
       </div>
 
-      <div class="scan-card">
-        <div class="scan-head">
-          <b id="scanTitle">اسکنر لبه کلودفلر</b>
-          <span class="scan-info" id="scanInfo"></span>
+      <div class="chart-card">
+        <div class="chart-head">
+          <span id="kChart">گذر لحظهای</span>
+          <span class="chart-key"><i class="d"></i><span id="kDown">دانلود</span>
+            <i class="u"></i><span id="kUp">آپلود</span></span>
+        </div>
+        <canvas class="chart" id="chart" width="620" height="190"></canvas>
+        <div class="chart-foot">
+          <span id="vDown">0 B</span>
+          <span class="dot">·</span>
+          <span id="vUp">0 B</span>
           <span class="hero-spacer"></span>
-          <button class="ghost small" id="scanNowBtn">اسکن</button>
+          <span id="vRate">0 B/s</span>
         </div>
-        <div class="scan-track"><span class="scan-fill" id="scanFill"></span></div>
-        <div class="scan-foot">
-          <span id="scanCurrent"></span>
-          <span class="hero-spacer"></span>
-          <span id="scanBest"></span>
-        </div>
-        <div class="scan-list" id="scanList"></div>
       </div>
 
-      <!-- Four stages, and each one lights only on evidence: the core lights
-           when a child process is up, the tunnel only once a real request has
-           come back through it, the exit only once an address was answered. A
-           listener that accepts is not a tunnel, so it is not drawn as one. -->
-      <div class="strip">
-        <span class="stage" id="stCore"><i></i><b id="stCoreName">هسته</b></span>
-        <span class="stage-arrow">→</span>
-        <span class="stage" id="stListener"><i></i><b id="stListenerName">شنونده SOCKS5</b></span>
-        <span class="stage-arrow" id="stPsiphonArrow">→</span>
-        <span class="stage" id="stPsiphon"><i></i><b>Psiphon</b></span>
-        <span class="stage-arrow" id="stTunnelArrow">→</span>
-        <span class="stage" id="stTunnel"><i></i><b id="stTunnelName">تونل</b></span>
-        <span class="stage-arrow" id="stExitArrow">→</span>
-        <span class="stage" id="stExit"><i></i><b id="stExitName">خروج</b></span>
-      </div>
-
-      <div class="fulltunnel-note hidden" id="tunnelNote"></div>
-
-      <div class="alert hidden" id="alert">
-        <span class="alert-ico">!</span>
-        <span id="alertText"></span>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ---------------------------------------------------------- settings -->
-  <section class="view" id="view-settings">
-    <div class="split">
-      <aside class="cat" id="cat"></aside>
-      <div class="cat-body">
-        <div class="cat-head">
-          <b id="catTitle"></b>
-          <span id="catSub"></span>
-        </div>
-        <div class="fields" id="fields"></div>
-      </div>
     </div>
   </section>
 

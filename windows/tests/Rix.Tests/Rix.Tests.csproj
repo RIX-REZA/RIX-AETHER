@@ -23,6 +23,7 @@
     <Compile Include="..\..\src\Core\ProxyRestore.cs" Link="ProxyRestore.cs" />
     <Compile Include="..\..\src\Core\IpScanner.cs" Link="IpScanner.cs" />
     <Compile Include="..\..\src\Core\RixCore.cs" Link="RixCore.cs" />
+    <Compile Include="..\..\src\Core\Resilience.cs" Link="Resilience.cs" />
   </ItemGroup>
 
 </Project>

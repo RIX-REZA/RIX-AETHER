@@ -53,6 +53,9 @@ const T = {
     reconnecting: 'اتصال دوباره', connecting2: 'در حال اتصال',
     fqUnavailable: 'تانل کامل در این ساخت در دسترس نیست',
     telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
+    details: 'جزئیات', scan: 'اسکنر',
+    scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان peer به هسته داده می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
+    updateCheck: 'بررسی به‌روزرسانی', updateChecking: 'در حال بررسی…', updateGet: 'دانلود به‌روزرسانی',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -87,6 +90,9 @@ const T = {
     reconnecting: 'Reconnecting', connecting2: 'Connecting',
     fqUnavailable: 'Full Tunnel is not available in this build',
     telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
+    details: 'Details', scan: 'Scanner',
+    scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The winner is handed to the core as its peer on the next connect. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
+    updateCheck: 'Check for updates', updateChecking: 'Checking…', updateGet: 'Download update',
   }
 };
 
@@ -184,20 +190,32 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) =>
 
 const NAV = [
   { id: 'home', icon: ICON.home },
+  { id: 'scan', icon: ICON.globe },
   { id: 'settings', icon: ICON.gear },
+  { id: 'details', icon: ICON.bolt },
   { id: 'log', icon: ICON.list },
   { id: 'about', icon: ICON.info },
 ];
 
-function buildTabs() {
-  const tabs = el('tabs');
-  tabs.innerHTML = NAV.map((item) =>
-    `<button data-view="${item.id}">${item.icon}<span>${t(item.id)}</span></button>`
-  ).join('');
-
-  tabs.querySelectorAll('button').forEach((button) => {
-    button.onclick = () => show(button.dataset.view);
+/** The drawer replaces the tab strip: the dial keeps the home screen to
+ *  itself, and everything else is one menu away. */
+function buildDrawer() {
+  NAV.forEach((item) => {
+    const icon = el('di' + item.id.charAt(0).toUpperCase() + item.id.slice(1));
+    if (icon) icon.innerHTML = item.icon;
   });
+
+  document.querySelectorAll('.drawer-item').forEach((button) => {
+    button.onclick = () => {
+      show(button.dataset.view);
+      closeDrawer();
+    };
+  });
+}
+
+function closeDrawer() {
+  el('drawer').classList.add('hidden');
+  el('drawerBackdrop').classList.add('hidden');
 }
 
 let currentView = 'home';
@@ -206,10 +224,10 @@ function show(view) {
   currentView = view;
   document.querySelectorAll('.view').forEach((node) => node.classList.remove('on'));
   el('view-' + view).classList.add('on');
-  document.querySelectorAll('.tabs button').forEach((button) => {
+  document.querySelectorAll('.drawer-item').forEach((button) => {
     button.classList.toggle('on', button.dataset.view === view);
   });
-  if (view === 'home') drawChart();
+  if (view === 'details') drawChart();
 }
 
 /* ----------------------------------------------------------------- settings */
@@ -580,7 +598,7 @@ function applyLangTheme() {
   el('langBtn').textContent = lang === 'fa' ? 'EN' : 'فا';
   el('themeBtn').textContent = theme === 'dark' ? '☀' : '☾';
 
-  buildTabs();
+  buildDrawer();
   buildGroups();
   renderStatic();
   renderHome();
@@ -613,6 +631,11 @@ function renderStatic() {
   el('scanTitle').textContent = t('scanTitle');
   el('scanNowBtn').textContent = t('scan');
   el('proxyOffBtn').textContent = t('proxyOffBtn');
+  el('scanNote').textContent = t('scanNote');
+  NAV.forEach((item) => {
+    const label = el('dl' + item.id.charAt(0).toUpperCase() + item.id.slice(1));
+    if (label) label.textContent = t(item.id);
+  });
 }
 
 function bytes(value) {
@@ -652,15 +675,12 @@ function renderHome() {
   const running = phase === 'running';
   const failed = phase === 'error';
 
-  const main = el('heroMain');
-  main.classList.toggle('busy', busy);
-  main.classList.toggle('on', running);
-  main.classList.toggle('err', failed);
-
-  const dot = el('phaseDot');
-  dot.classList.toggle('busy', busy);
-  dot.classList.toggle('on', running);
-  dot.classList.toggle('err', failed);
+  const dial = el('connectBtn');
+  dial.classList.toggle('busy', busy);
+  dial.classList.toggle('on', running);
+  dial.classList.toggle('err', failed);
+  el('dialLabel').textContent = running ? t('disconnect')
+    : busy ? t('cancel') : failed ? t('retry') : t('connect');
 
   el('phaseText').textContent = (busy && snap.rixDetail ? snap.rixDetail : '')
     || snap.message || t(PHASE_TEXT[phase] || 'ready');
@@ -668,9 +688,6 @@ function renderHome() {
   el('tbState').textContent = running
     ? (snap.egress && snap.egress.ip ? snap.egress.ip : t('running'))
     : (failed ? (snap.message || t('error')) : t(PHASE_TEXT[phase] || 'ready'));
-
-  const transport = snap.transport || options.transport;
-  el('heroTransport').textContent = transport ? transportLabel(transport) : t('none');
 
   // The big line is the exit address when there is one, because that is the
   // fact the user came for; otherwise it says what is happening instead of
@@ -691,20 +708,28 @@ function renderHome() {
   if (snap.psiphon) parts.push('Psiphon' + (snap.psiphonRegion ? ' · ' + snap.psiphonRegion : ''));
   el('heroSub').textContent = parts.join(' · ');
 
-  el('connectBtn').textContent = running ? t('disconnect') : busy ? t('cancel') : failed ? t('retry') : t('connect');
-  el('connectBtn').className = 'primary' + (running ? ' on' : busy ? ' busy' : '');
+  // The carriage the user picked, and what Full Tunnel needs. The switch
+  // itself lives in settings; the note stays here because it changes what
+  // this very connection does.
+  const mode = options.tunnelMode === 'tunnel' ? 'tunnel' : 'proxy';
+  const note = el('tunnelNote');
+  if (mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available)) {
+    note.classList.remove('hidden');
+    note.textContent = (snap.tunnelWhy || tunnel.why) || t('fqUnavailable');
+  } else if (mode === 'tunnel') {
+    note.classList.remove('hidden');
+    note.textContent = lang === 'fa'
+      ? 'تانل کامل آزمایشی است: به RIX-Tunnel.exe، Wintun و تأیید UAC نیاز دارد. مسیرها و DNS هنگام قطع بازگردانده می‌شوند.'
+      : 'Full Tunnel is experimental: it needs RIX-Tunnel.exe, Wintun and a UAC confirmation. Routes and DNS are restored on disconnect.';
+  } else {
+    note.classList.add('hidden');
+  }
 
-  const fill = el('trackFill');
-  fill.classList.toggle('slide', busy);
-  if (!busy) fill.style.width = running ? '100%' : failed ? '100%' : '0';
-
+  // ---- the details view's numbers. They are updated even when the view is
+  // hidden, so opening the drawer shows current values, not stale ones.
   el('vDown').textContent = bytes(snap.down);
   el('vUp').textContent = bytes(snap.up);
   el('vTime').textContent = duration(snap.uptime);
-
-  // A dash until two readings of the counters are far enough apart to divide
-  // by. The chart starts empty too, so nothing on this panel claims a
-  // measurement before one exists.
   const rate = (SERIES.down[SERIES.down.length - 1] || 0) + (SERIES.up[SERIES.up.length - 1] || 0);
   el('vRate').textContent = SERIES.down.length ? bytes(Math.round(rate)) + '/s' : t('none');
 
@@ -714,6 +739,7 @@ function renderHome() {
     ? [local.country, local.colo ? 'colo ' + local.colo : ''].filter(Boolean).join(' · ')
     : '';
 
+  const transport = snap.transport || options.transport;
   const proto = el('vProto');
   proto.textContent = transportLabel(transport);
   el('mProto').textContent = running ? `${t('socks')} ${snap.port} · 127.0.0.1` : '';
@@ -727,9 +753,8 @@ function renderHome() {
     el('mRoute').textContent = '';
   }
 
-  // ---- the speed of the path the scanner recommends, and what Rix Core is
-  // doing. The two are separate facts: an address can be excellent and the
-  // supervisor still be reconnecting, and the screen must not merge them.
+  // The scanner's recommendation and the supervisor's state stay two separate
+  // facts: an address can be excellent while the supervisor is reconnecting.
   const best = scan.best || snap.scannedBest || null;
   el('vBest').textContent = best ? best.endpoint : t('noBest');
   el('mBest').textContent = best
@@ -753,34 +778,26 @@ function renderHome() {
   el('tileCore').classList.toggle('on', coreState === 'connected');
   el('tileCore').classList.toggle('bad', coreState === 'degraded');
 
-  // ---- mode switch and the independent proxy-off action
-  const mode = options.tunnelMode === 'tunnel' ? 'tunnel' : 'proxy';
-  document.querySelectorAll('#modeSwitch button').forEach((button) => {
-    button.classList.toggle('on', button.dataset.mode === mode);
-    button.disabled = button.dataset.mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available);
-    button.title = button.dataset.mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available)
-      ? ((snap.tunnelWhy || tunnel.why) || t('fqUnavailable')) : '';
-  });
-
-  const proxyOff = el('proxyOffBtn');
-  proxyOff.disabled = !(snap.proxyOn || snap.fullTunnelOn);
-
-  const note = el('tunnelNote');
-  if (mode === 'tunnel' && !(snap.tunnelAvailable ?? tunnel.available)) {
-    note.classList.remove('hidden');
-    note.textContent = (snap.tunnelWhy || tunnel.why) || t('fqUnavailable');
-  } else if (mode === 'tunnel') {
-    note.classList.remove('hidden');
-    note.textContent = lang === 'fa'
-      ? 'تانل کامل آزمایشی است: به RIX-Tunnel.exe، Wintun و تأیید UAC نیاز دارد. مسیرها و DNS هنگام قطع بازگردانده می‌شوند.'
-      : 'Full Tunnel is experimental: it needs RIX-Tunnel.exe, Wintun and a UAC confirmation. Routes and DNS are restored on disconnect.';
-  } else {
-    note.classList.add('hidden');
-  }
-
   renderStrip(phase);
   renderAlert(phase);
   renderScan();
+  renderUpdate();
+}
+
+/** The one secondary action on the home screen: keeping the app current. */
+function renderUpdate() {
+  const button = el('updateBtn');
+  const update = state.update || {};
+  if (update.checking) {
+    button.textContent = t('updateChecking');
+    button.disabled = true;
+  } else if (update.available) {
+    button.textContent = t('updateGet') + (update.version ? ' — v' + update.version : '');
+    button.disabled = false;
+  } else {
+    button.textContent = t('updateCheck');
+    button.disabled = false;
+  }
 }
 
 /** The scanner panel: progress, the address being tested, and the shortlist. */
@@ -818,6 +835,16 @@ function renderScan() {
     `<span class="scan-chip${index === 0 ? ' best' : ''}" title="${esc(entry.address || '')}">` +
     `${esc((entry.address || '') + ':' + (entry.port || ''))} · ${Math.round(entry.latency || 0)}ms</span>`
   ).join('');
+
+  // The home screen's one-line heartbeat for the same scan. Clicking it opens
+  // the full scanner view; nothing here duplicates the detail.
+  const miniFill = el('miniFill');
+  miniFill.style.width = running
+    ? Math.max(2, Math.min(100, fraction * 100)) + '%'
+    : (scan.best ? '100%' : '0');
+  el('miniScanText').textContent = running
+    ? (scan.total ? `${t('scanning')} ${scan.done}/${scan.total}` : t('scanning'))
+    : (scan.best ? `${t('best')}: ${scan.best.endpoint}` : t('scanIdle'));
 }
 
 /**
@@ -1045,12 +1072,23 @@ function onMessage(event) {
       toast(message.text, true);
       break;
 
+    case 'update':
+      state.update = {
+        checking: false,
+        available: !!message.available,
+        version: message.version || '',
+        url: message.url || '',
+      };
+      renderUpdate();
+      if (message.error) toast(message.error, true);
+      break;
+
     case 'saved':
       break;
   }
 }
 
-const state = { corePath: '', hasPsiphon: false, proxy: '' };
+const state = { corePath: '', hasPsiphon: false, proxy: '', update: { checking: false } };
 
 /* ---------------------------------------------------------------------- log */
 
@@ -1151,15 +1189,34 @@ function wire() {
   el('tgBtn').onclick = () => send({ type: 'openUrl', url: 'https://t.me/rixpanel' });
   el('ghBtn').onclick = () => send({ type: 'openUrl', url: 'https://github.com/RIX-REZA/RIX-AETHER' });
 
-  document.querySelectorAll('#modeSwitch button').forEach((button) => {
-    button.onclick = () => {
-      if (button.disabled) return;
-      options.tunnelMode = button.dataset.mode;
-      persistNow();
-      send({ type: 'mode', mode: button.dataset.mode });
-      renderHome();
-    };
-  });
+  // The drawer: one button opens it, one click inside navigates, anywhere
+  // outside closes it. Escape closes it before it cancels a connect.
+  el('menuBtn').onclick = () => {
+    const hidden = el('drawer').classList.toggle('hidden');
+    el('drawerBackdrop').classList.toggle('hidden', hidden);
+  };
+  el('drawerBackdrop').onclick = closeDrawer;
+  el('miniScan').onclick = () => { show('scan'); closeDrawer(); };
+
+  // Update check: the first press asks the host, the second opens the release
+  // page when there is something to get. The host keeps the whitelist; the
+  // page never opens a URL it was not handed back with an "available" flag.
+  el('updateBtn').onclick = () => {
+    const update = state.update || {};
+    if (update.available && update.url) {
+      send({ type: 'openUrl', url: update.url });
+      return;
+    }
+    state.update = { checking: true };
+    renderUpdate();
+    send({ type: 'checkUpdate' });
+    setTimeout(() => {
+      if (state.update && state.update.checking) {
+        state.update = {};
+        renderUpdate();
+      }
+    }, 15_000);
+  };
 
   el('proxyOffBtn').onclick = () => {
     send({ type: 'proxyOff' });
@@ -1202,8 +1259,14 @@ function wire() {
   el('logFolder').onclick = () => send({ type: 'openFolder' });
 
   window.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && (snap.phase === 'connecting' || snap.phase === 'starting')) {
-      send({ type: 'disconnect' });
+    if (event.key === 'Escape') {
+      if (!el('drawer').classList.contains('hidden')) {
+        closeDrawer();
+        return;
+      }
+      if (snap.phase === 'connecting' || snap.phase === 'starting') {
+        send({ type: 'disconnect' });
+      }
     }
   });
 

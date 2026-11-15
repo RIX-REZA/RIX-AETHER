@@ -115,7 +115,7 @@ if ($Installer) {
     if (-not $iscc) { throw 'ISCC.exe not found; install Inno Setup 6' }
 
     $arch = switch ($Runtime) {
-        'win-x86' { @{ Allowed = 'x86compatible'; Mode = 'x86compatible' } }
+        'win-x86' { @{ Allowed = 'x86compatible'; Mode = '' } }
         'win-arm64' { @{ Allowed = 'arm64'; Mode = 'arm64' } }
         default { @{ Allowed = 'x64compatible'; Mode = 'x64compatible' } }
     }
