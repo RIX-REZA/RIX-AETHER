@@ -40,12 +40,21 @@ public sealed class MainForm : Form
     private readonly IIpProbe _probe = new TlsIpProbe();
     private string _lastPeer;
     private RixState _lastCoreState = RixState.Disconnected;
+    /// <summary>The best address seen so far in the scan that is running now.
+    /// The pool only fills when a scan completes, so this is what lets a
+    /// first-ever connect use a probed candidate mid-scan instead of either
+    /// waiting for the whole scan or falling back to the default peer.</summary>
+    private ScanCandidate _progressBest;
 
     public MainForm(AppState state)
     {
         _state = state;
 
         _peerPool.Replace(_scanner.Cache?.Ranked ?? new List<ScanCandidate>());
+        // Continue the previous session's rotation: the last peer it used is
+        // cooled down for one base period, so a fresh launch does not reopen
+        // on the very same top-ranked address every time.
+        _peerPool.SeedLastUsed(_scanner.Cache?.LastPeer);
 
         _core = new CoreSupervisor(
             CreatePathAsync,
@@ -391,6 +400,7 @@ public sealed class MainForm : Form
     private void OnScanCompleted(IpScanCache cache)
     {
         _peerPool.Replace(cache.Ranked);
+        _progressBest = null; // the finished cache now owns the ranking
         SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
     }
 
@@ -409,14 +419,49 @@ public sealed class MainForm : Form
         if (!options.ScanEnabled || !options.ScanUseBestPeer) return options;
         if (!string.IsNullOrWhiteSpace(options.Peer)) return options;
 
-        var best = _peerPool.Pick() ?? _scanner.Best;
+        var best = _peerPool.Pick() ?? _scanner.Best ?? _progressBest;
         if (best == null) return options;
         _lastPeer = best.Endpoint;
+
+        // Persist the rotation point: the next launch cools this peer down
+        // for one base period and opens on the next candidate, instead of
+        // every session starting on the same address.
+        var cache = _scanner.Cache;
+        if (cache != null && cache.LastPeer != best.Endpoint)
+        {
+            cache.LastPeer = best.Endpoint;
+            cache.Save();
+        }
+
         return options with { Peer = best.Endpoint };
     }
 
     private async Task ConnectAsync()
     {
+        // The user never waits for a scan: the persisted cache is used the
+        // moment it exists, and a fresh scan runs in the background. But on a
+        // first run there is nothing cached, and connecting then would fall
+        // back to the built-in default peer -- the single-address path the
+        // scanner exists to avoid. So a first connect gives the scanner a
+        // short, bounded head start; after it, whatever is verified goes.
+        if (_state.Options.ScanEnabled && _state.Options.ScanUseBestPeer &&
+            !_state.Options.Psiphon && _peerPool.Count == 0)
+        {
+            if (!_scanner.IsScanning)
+            {
+                _scanner.Options = _state.Options.ToScanOptions();
+                _scanner.IntervalMinutes = Math.Clamp(_state.Options.ScanIntervalMinutes, 5, 1440);
+                _scanner.Start();
+            }
+
+            var deadline = Environment.TickCount64 + 6_000;
+            while (Environment.TickCount64 < deadline)
+            {
+                if (_peerPool.Count > 0 || _progressBest != null) break;
+                await Task.Delay(200);
+            }
+        }
+
         _core.Start();
         _state.Save();
         SendState(_session.Current);
@@ -643,7 +688,13 @@ public sealed class MainForm : Form
     private CoreStatus _coreStatus = new();
     private readonly FullTunnelAvailability _tunnelAvailability = FullTunnelAvailability.Check();
 
-    private void OnScanProgress(ScanProgress progress) => SendScan(progress.Best, progress, true, null);
+    private void OnScanProgress(ScanProgress progress)
+    {
+        // The running scan's interim best: usable by a first-ever connect
+        // before the full ranking (and the pool) exists.
+        if (progress?.Best != null) _progressBest = progress.Best;
+        SendScan(progress.Best, progress, true, null);
+    }
 
     private void OnBestChanged(ScanCandidate best)
     {

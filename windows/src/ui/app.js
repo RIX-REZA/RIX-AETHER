@@ -1257,7 +1257,12 @@ function wire() {
 
   const drag = el('drag');
   drag.onmousedown = (event) => {
-    if (event.button === 0) send({ type: 'drag' });
+    if (event.button !== 0) return;
+    // Buttons live inside the drag strip (the hamburger); their click must
+    // win over the drag, or the window starts moving and the menu never
+    // opens. Only bare drags start a drag.
+    if (event.target.closest('button')) return;
+    send({ type: 'drag' });
   };
   drag.ondblclick = () => send({ type: 'maximize' });
 

@@ -106,6 +106,27 @@ public sealed class PeerPoolTests
         var pool = Pool();
         Assert.Null(pool.Pick());
     }
+
+    [Fact]
+    public void The_previous_session_peer_is_cooled_down_so_a_launch_rotates()
+    {
+        var pool = Pool();
+        pool.Replace(new[] { Candidate("a", 0.9), Candidate("b", 0.8), Candidate("c", 0.7) });
+
+        // The last session used a:443; the cache persisted that fact. A fresh
+        // launch seeds it and must open on the next candidate, not the same
+        // top-ranked edge every time.
+        pool.SeedLastUsed("a:443");
+
+        Assert.Equal("b:443", pool.Pick().Endpoint);
+
+        // After one base cooldown the previous peer is offered again.
+        Now = Now.AddSeconds(31);
+        Assert.Equal("a:443", pool.Pick().Endpoint);
+
+        // And the host can read the rotation point back to persist it.
+        Assert.Equal("a:443", pool.LastPicked);
+    }
 }
 
 public sealed class ResilienceSupervisorTests

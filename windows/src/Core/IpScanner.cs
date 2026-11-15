@@ -529,6 +529,11 @@ public sealed class IpScanCache
     public string Source { get; set; } = "";
     public List<ScanCandidate> Ranked { get; set; } = new();
 
+    /// <summary>The peer the previous session used, persisted so the next
+    /// launch continues the rotation rather than reopening on the same
+    /// top-ranked address every time.</summary>
+    public string LastPeer { get; set; } = "";
+
     [System.Text.Json.Serialization.JsonIgnore]
     public ScanCandidate Best => Ranked.FirstOrDefault();
 

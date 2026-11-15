@@ -105,6 +105,33 @@ public sealed class PeerPool
         }
     }
 
+    /// <summary>Restores the rotation point from the previous run. Without it
+    /// every launch would reopen the session on the same top-ranked edge,
+    /// because the persisted ranking does not change between runs. The peer
+    /// the last session used is cooled down for one base period, so a fresh
+    /// launch rotates to the next candidate instead.</summary>
+    public void SeedLastUsed(string endpoint)
+    {
+        if (string.IsNullOrEmpty(endpoint)) return;
+        lock (_gate)
+        {
+            _lastPicked = endpoint;
+            // The same mechanism a failure uses, for the same reason: this
+            // peer was just tried. It is a preference for one base cooldown,
+            // not a verdict about the peer's quality.
+            var index = _ranked.FindIndex(e => e.Candidate.Endpoint == endpoint);
+            if (index >= 0)
+                _ranked[index] = _ranked[index].With(_ranked[index].Candidate, 1, _now());
+        }
+    }
+
+    /// <summary>The peer this pool named last, so the host can persist the
+    /// rotation point across launches.</summary>
+    public string LastPicked
+    {
+        get { lock (_gate) return _lastPicked; }
+    }
+
     /// <summary>Records that an attempt against this peer failed.</summary>
     public void ReportFailure(string endpoint)
     {
