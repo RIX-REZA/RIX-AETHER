@@ -864,6 +864,12 @@ textarea {
   border-color: var(--accent-line);
 }
 
+/* A switch whose prerequisite is missing: visibly idle and inert. */
+.switch.locked {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 .switch.on::after {
   background: var(--accent);
   transform: translateX(18px);

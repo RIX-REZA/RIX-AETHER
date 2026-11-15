@@ -489,8 +489,18 @@ function renderFields() {
 
     if (field.t === 'switch' || field.t === 'switch-app') {
       const toggle = document.createElement('button');
-      toggle.className = 'switch' + (value ? ' on' : '');
+      // A switch whose prerequisite is missing (Psiphon without its binaries,
+      // which upstream ships for x64 only) is shown locked rather than let
+      // the user flip a connection into a guaranteed failure.
+      const locked = field.k === 'psiphon' && !state.hasPsiphon;
+      toggle.className = 'switch' + (value && !locked ? ' on' : '') + (locked ? ' locked' : '');
       toggle.onclick = () => {
+        if (locked) {
+          toast(lang === 'fa'
+            ? 'سایفون در این ساخت نصب نشده (فقط ساخت ۶۴ بیتی)'
+            : 'Psiphon is not present in this build (x64 builds only)', true);
+          return;
+        }
         const next = !options[field.k];
         set(field.k, next);
         toggle.classList.toggle('on', next);

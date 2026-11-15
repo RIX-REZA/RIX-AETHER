@@ -167,14 +167,23 @@ jobs:
               return $br.ReadUInt16()
             } finally { $fs.Dispose() }
           }
-          $expected = [Convert]::ToInt32("${{ matrix.pe }}", 16)
+          # matrix.pe is a YAML integer (0x8664 is parsed to 34404), so the
+          # GitHub expression renders a decimal string -- not the literal hex
+          # text the first version assumed. Handle both shapes so the check
+          # compares the real numbers.
+          $raw = "${{ matrix.pe }}"
+          $expected = if ($raw.StartsWith("0x", "OrdinalIgnoreCase")) {
+            [Convert]::ToInt32($raw.Substring(2), 16)
+          } else {
+            [int]$raw
+          }
           foreach ($file in @(
             "windows/publish/${{ matrix.rid }}/RIX.exe",
             "windows/publish/${{ matrix.rid }}/core/RIX-Tunnel.exe",
             "windows/publish/${{ matrix.rid }}/core/aether.exe")) {
             $machine = Get-PEMachine $file
             if ($machine -ne $expected) {
-              throw "$file is 0x$($machine.ToString('X4')), expected ${{ matrix.pe }}"
+              throw "$file is 0x$($machine.ToString('X4')), expected 0x$($expected.ToString('X4'))"
             }
             Write-Host "$file : ${{ matrix.arch }}"
           }

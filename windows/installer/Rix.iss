@@ -104,9 +104,14 @@ Source: "{#PublishDir}\core\aether.exe"; DestDir: "{app}\core"; Flags: ignorever
 ; installer always ships the verified binary and a corrupted or replaced core
 ; is diagnosed instead of launched.
 Source: "{#PublishDir}\core\aether.sha256"; DestDir: "{app}\core"; Flags: ignoreversion
-Source: "{#PublishDir}\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
-Source: "{#PublishDir}\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion
-Source: "{#PublishDir}\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs
+; The core, and the Psiphon client it spawns for the BETA chain. The
+; `pt` folder name is not decoration: the core looks for the binary there.
+; Upstream Psiphon binaries exist for x64 only, so on the x86 and ARM64
+; installers these entries are skipped and the app reports the mode
+; unavailable rather than shipping a broken Psiphon chain.
+Source: "{#PublishDir}\core\pt\psiphon-tunnel-core.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\core\pt\lyrebird.exe"; DestDir: "{app}\core\pt"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\core\LICENSES\*"; DestDir: "{app}\core\LICENSES"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; Full Tunnel is optional by design: when the build carries the helper and
 ; Wintun, they are installed and the mode becomes selectable. When it does not,
 ; the app reports the mode unavailable instead of silently installing a broken
