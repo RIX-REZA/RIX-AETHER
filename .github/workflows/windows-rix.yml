@@ -272,11 +272,13 @@ jobs:
             windows/dist/RIX-Portable.zip
 
       - name: Attach to the release
-        if: ${{ inputs.release_tag != '' }}
+        # Automatic on every push to main (the staging channel always carries
+        # the newest green Windows build), and on dispatch when a tag is given.
+        if: ${{ inputs.release_tag != '' || github.event_name == 'push' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.release_tag }}
+          TAG: ${{ inputs.release_tag || 'rix-1.0.7' }}
         run: |
           $ErrorActionPreference = "Stop"
 

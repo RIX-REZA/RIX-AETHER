@@ -427,3 +427,40 @@ jobs:
           name: rix-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+  publish-staging:
+    name: publish APK to the staging release
+    # Every green Android build is attached to the staging release tag
+    # automatically -- the staging channel should reflect the newest green
+    # build without a manual dispatch. On the public repository this tag is
+    # never used for Android, so the job only makes sense here; it is guarded
+    # by the tag name it uploads to, not by visibility.
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-apk
+          path: _apk
+
+      - name: Attach to the staging release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: rix-1.0.7
+        run: |
+          set -euo pipefail
+          apk=$(find _apk -name '*.apk' | head -1)
+          mv "$apk" "_apk/RIX-${TAG}-android-debug.apk"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" _apk/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" _apk/*.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "RIX $TAG" \
+              --notes "Staging build. Windows assets are attached by the multiarch workflow when its run goes green."
+          fi
