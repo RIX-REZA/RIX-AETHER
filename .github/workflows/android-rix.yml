@@ -454,7 +454,10 @@ jobs:
         run: |
           set -euo pipefail
           apk=$(find _apk -name '*.apk' | head -1)
-          mv "$apk" "_apk/RIX-${TAG}-android-debug.apk"
+          # TAG is "rix-1.0.7"; strip the prefix so the asset is not named
+          # "RIX-rix-1.0.7-...". The result: RIX-android-1.0.7.apk.
+          version="${TAG#rix-}"
+          mv "$apk" "_apk/RIX-android-${version}.apk"
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" _apk/*.apk --repo "$GITHUB_REPOSITORY" --clobber
