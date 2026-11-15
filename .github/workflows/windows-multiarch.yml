@@ -96,7 +96,11 @@ jobs:
           git -C aether-src checkout --detach $env:AETHER_COMMIT
           $head = (git -C aether-src rev-parse HEAD).Trim()
           if ($head -ne $env:AETHER_COMMIT) { throw "Aether checkout is $head, expected $env:AETHER_COMMIT" }
-          cargo build --release --target ${{ matrix.target }} --manifest-path aether-src/aether/Cargo.toml
+          # --target-dir is pinned because the aether package is its own
+          # workspace root: without it cargo would put the output in
+          # aether-src/aether/target, not the aether-src/target the copy
+          # step (and the checksum step) reads.
+          cargo build --release --target ${{ matrix.target }} --manifest-path aether-src/aether/Cargo.toml --target-dir aether-src/target
           if ($LASTEXITCODE -ne 0) { throw "Aether build failed for ${{ matrix.rid }}" }
           New-Item -ItemType Directory -Force core-${{ matrix.rid }} | Out-Null
           Copy-Item "aether-src/target/${{ matrix.target }}/release/aether.exe" "core-${{ matrix.rid }}/aether.exe"
