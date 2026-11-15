@@ -250,6 +250,11 @@ jobs:
         # The installer is not Authenticode-signed (SECURITY.md), so for this
         # platform provenance is not a second opinion -- it is the only check
         # that distinguishes an official build from a rebuilt one.
+        # GitHub's attestation service only accepts public repositories
+        # ("Feature not available for user-owned private repositories"), so on
+        # the private staging copy this step is skipped instead of failing the
+        # whole build; the multiarch workflow verifies the artifacts itself.
+        if: ${{ github.event.repository.private != true }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |

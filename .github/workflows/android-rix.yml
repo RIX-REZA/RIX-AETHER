@@ -412,6 +412,11 @@ jobs:
         #
         # `gh attestation verify <file> --repo RIX-REZA/RIX-AETHER` is the other
         # end of this step, and it is documented in the README.
+        # GitHub's attestation service only accepts public repositories, so
+        # on the private staging copy this step is skipped instead of
+        # failing the build; the APK is still verified by the signature
+        # check in the step above.
+        if: ${{ github.event.repository.private != true }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/debug/*.apk

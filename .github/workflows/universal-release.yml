@@ -389,6 +389,10 @@ jobs:
           "$apksigner" verify --print-certs "$apk" | head -6
 
       - name: Attest the build provenance of the APK
+        # GitHub's attestation service only accepts public repositories; on
+        # the private staging copy this step is skipped instead of failing
+        # the build. The APK is still verified by apksigner in the step above.
+        if: ${{ github.event.repository.private != true }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/debug/*.apk
@@ -552,6 +556,10 @@ jobs:
           Compress-Archive -Path "$stage/*" -DestinationPath "windows/dist/RIX-Portable.zip" -Force
 
       - name: Attest the build provenance of the Windows artifacts
+        # GitHub's attestation service only accepts public repositories; on
+        # the private staging copy this step is skipped instead of failing
+        # the build.
+        if: ${{ github.event.repository.private != true }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
