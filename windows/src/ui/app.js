@@ -56,7 +56,7 @@ const T = {
     details: 'جزئیات', scan: 'اسکنر',
     scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان peer به هسته داده می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
     updateCheck: 'بررسی به‌روزرسانی', updateChecking: 'در حال بررسی…', updateGet: 'دانلود به‌روزرسانی',
-    scanNeededText: 'برای اتصال، یک بار اسکن انجام بده. پس از اسکن، اتصال خودکار با بهترین IP شروع می‌شود؛ اتصال‌های بعدی فوری‌اند و اسکن فقط وقتی خودت بخواهی تکرار می‌شود.',
+    scanNeededText: 'برای بهترین IP یک بار اسکن کن (اختیاری). اتصال همیشه آماده است و حتی بدون اسکن هم وصل میشود — اسکن فقط زمانی که خودت بخواهی تکرار میشود.',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -94,7 +94,7 @@ const T = {
     details: 'Details', scan: 'Scanner',
     scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The winner is handed to the core as its peer on the next connect. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
     updateCheck: 'Check for updates', updateChecking: 'Checking…', updateGet: 'Download update',
-    scanNeededText: 'To connect, run one scan first. The connection then starts automatically on the best IP; later connects are instant, and rescanning is only ever your choice.',
+    scanNeededText: 'Run one scan for the best IP (optional). Connecting always works, even before a scan; rescanning is only ever your choice.',
   }
 };
 
@@ -802,6 +802,7 @@ function renderHome() {
   if (state.scanNeeded) {
     el('scanPromptText').textContent = t('scanNeededText');
     el('scanPromptBtn').textContent = t('scan');
+    el('scanPromptConnectBtn').textContent = t('connect');
     el('scanPromptBtn').disabled = !!scan.running;
   }
 }
@@ -1228,7 +1229,15 @@ function wire() {
     if (scan.running) return;
     scan.running = true;
     renderScan();
-    send({ type: 'scanNow' });
+    // Scan once, then start the session on the best address it found.
+    send({ type: 'scanNow', autoConnect: true });
+  };
+  el('scanPromptConnectBtn').onclick = () => {
+    // Always available: the dial and this button connect immediately, even
+    // before any scan, using a real address from the bundled source.
+    state.scanNeeded = false;
+    renderHome();
+    send({ type: 'connect' });
   };
 
   // Update check: the first press asks the host, the second opens the release

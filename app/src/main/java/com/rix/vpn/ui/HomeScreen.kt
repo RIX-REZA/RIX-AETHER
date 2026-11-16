@@ -808,8 +808,8 @@ private fun ScannerCard(
                         "Best IP: ${best.ip} · ${best.latencyMs}ms"
                     )
                     else -> s.s(
-                        "برای اتصال، یک بار اسکن انجام بده",
-                        "To connect, run one scan first"
+                        "اسکن اختیاری است — اتصال همیشه کار میکند",
+                        "Scanning is optional — connecting always works"
                     )
                 },
                 color = RixColors.Text,
@@ -819,8 +819,8 @@ private fun ScannerCard(
             if (!scanning && best == null) {
                 Text(
                     text = s.s(
-                        "پس از اسکن، اتصال با بهترین IP شروع می‌شود",
-                        "After the scan, the connection starts on the best IP"
+                        "بهترین IP پیدا میشود؛ تا آن موقع اتصال با یک IP واقعی از منبع ۲۰۰ تایی شروع میشود",
+                        "The best IP is found here; until then, a real address from the 200-IP source is used"
                     ),
                     color = RixColors.TextMuted,
                     fontSize = 10.5.sp

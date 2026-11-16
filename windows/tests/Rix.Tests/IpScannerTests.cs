@@ -77,6 +77,7 @@ public sealed class CloudflareRangesTests
         {
             AddressesPerRange = 2,
             Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
             IncludeIpv6 = false,
         };
 
@@ -147,6 +148,7 @@ public sealed class IpScannerTests
             Samples = 2,
             AddressesPerRange = 6,
             Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
             Concurrency = 4,
             MeasureSpeed = true,
         };
@@ -180,6 +182,7 @@ public sealed class IpScannerTests
             Samples = 1,
             AddressesPerRange = 2,
             Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
             Concurrency = 2,
             MeasureSpeed = false,
         };
@@ -206,6 +209,7 @@ public sealed class IpScannerTests
             Samples = 2,
             AddressesPerRange = 1,
             Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
             Concurrency = 1,
             MeasureSpeed = false,
         };
@@ -228,6 +232,7 @@ public sealed class IpScannerTests
             Samples = 1,
             AddressesPerRange = 4,
             Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
             Concurrency = 1,
             MeasureSpeed = false,
         };

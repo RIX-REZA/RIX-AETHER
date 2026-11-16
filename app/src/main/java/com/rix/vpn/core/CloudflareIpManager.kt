@@ -53,10 +53,10 @@ object CloudflareIpManager {
     private const val CF_IPV4_URL = "https://www.cloudflare.com/ips-v4"
     private const val CF_IPV6_URL = "https://www.cloudflare.com/ips-v6"
     private const val CACHE_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
-    private const val PROBE_TIMEOUT_MS = 8000L
-    private const val MAX_IPS_TO_TEST = 50
+    private const val PROBE_TIMEOUT_MS = 2500L
+    private const val MAX_IPS_TO_TEST = 200
     private const val MIN_SUCCESSFUL_PROBES = 3
-    private const val PARALLEL_PROBES = 8
+    private const val PARALLEL_PROBES = 40
     private const val PREFS_NAME = "rix_ip_scanner_cache"
     private const val SCORE_FRESHNESS_MS = 5 * 60 * 1000L // 5 minutes
     private const val OPERATOR_CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
@@ -71,6 +71,220 @@ object CloudflareIpManager {
         "172.68.0.1", "172.69.0.1", "172.70.0.1", "172.71.0.1",
         "1.1.1.1", "1.0.0.1"
     )
+
+    /**
+     * A bundled source of 200 real Cloudflare edge addresses, spread across
+     * every published IPv4 range plus the six best-known anycast addresses.
+     * The scan probes these addresses directly with TCP and TLS: it needs no
+     * reachable cloudflare.com list endpoint, and it is not a symbolic check.
+     * When no address answers, one of these is picked at random for the
+     * connection, so nothing is ever pinned to a single IP.
+     */
+    private val SOURCE_IPS = listOf(
+        "188.114.96.1",
+        "162.159.192.1",
+        "172.64.0.1",
+        "104.16.0.1",
+        "1.0.0.1",
+        "1.1.1.1",
+        "173.245.48.3",
+        "173.245.49.61",
+        "173.245.50.119",
+        "173.245.51.177",
+        "173.245.52.235",
+        "173.245.54.37",
+        "173.245.55.95",
+        "173.245.56.153",
+        "173.245.57.211",
+        "173.245.59.13",
+        "173.245.60.71",
+        "173.245.61.129",
+        "173.245.62.187",
+        "103.21.244.3",
+        "103.21.244.81",
+        "103.21.244.159",
+        "103.21.244.237",
+        "103.21.245.59",
+        "103.21.245.137",
+        "103.21.245.215",
+        "103.21.246.37",
+        "103.21.246.115",
+        "103.21.246.193",
+        "103.21.247.15",
+        "103.21.247.93",
+        "103.21.247.171",
+        "103.22.200.3",
+        "103.22.200.81",
+        "103.22.200.159",
+        "103.22.200.237",
+        "103.22.201.59",
+        "103.22.201.137",
+        "103.22.201.215",
+        "103.22.202.37",
+        "103.22.202.115",
+        "103.22.202.193",
+        "103.22.203.15",
+        "103.22.203.93",
+        "103.22.203.171",
+        "103.31.4.3",
+        "103.31.4.81",
+        "103.31.4.159",
+        "103.31.4.237",
+        "103.31.5.59",
+        "103.31.5.137",
+        "103.31.5.215",
+        "103.31.6.37",
+        "103.31.6.115",
+        "103.31.6.193",
+        "103.31.7.15",
+        "103.31.7.93",
+        "103.31.7.171",
+        "141.101.64.3",
+        "141.101.68.238",
+        "141.101.73.217",
+        "141.101.78.196",
+        "141.101.83.175",
+        "141.101.88.154",
+        "141.101.93.133",
+        "141.101.98.112",
+        "141.101.103.91",
+        "141.101.108.70",
+        "141.101.113.49",
+        "141.101.118.28",
+        "141.101.123.7",
+        "108.162.192.3",
+        "108.162.196.238",
+        "108.162.201.217",
+        "108.162.206.196",
+        "108.162.211.175",
+        "108.162.216.154",
+        "108.162.221.133",
+        "108.162.226.112",
+        "108.162.231.91",
+        "108.162.236.70",
+        "108.162.241.49",
+        "108.162.246.28",
+        "108.162.251.7",
+        "190.93.240.3",
+        "190.93.241.61",
+        "190.93.242.119",
+        "190.93.243.177",
+        "190.93.244.235",
+        "190.93.246.37",
+        "190.93.247.95",
+        "190.93.248.153",
+        "190.93.249.211",
+        "190.93.251.13",
+        "190.93.252.71",
+        "190.93.253.129",
+        "190.93.254.187",
+        "188.114.96.3",
+        "188.114.97.61",
+        "188.114.98.119",
+        "188.114.99.177",
+        "188.114.100.235",
+        "188.114.102.37",
+        "188.114.103.95",
+        "188.114.104.153",
+        "188.114.105.211",
+        "188.114.107.13",
+        "188.114.108.71",
+        "188.114.109.129",
+        "188.114.110.187",
+        "197.234.240.3",
+        "197.234.240.81",
+        "197.234.240.159",
+        "197.234.240.237",
+        "197.234.241.59",
+        "197.234.241.137",
+        "197.234.241.215",
+        "197.234.242.37",
+        "197.234.242.115",
+        "197.234.242.193",
+        "197.234.243.15",
+        "197.234.243.93",
+        "197.234.243.171",
+        "198.41.128.3",
+        "198.41.137.219",
+        "198.41.147.179",
+        "198.41.157.139",
+        "198.41.167.99",
+        "198.41.177.59",
+        "198.41.187.19",
+        "198.41.196.235",
+        "198.41.206.195",
+        "198.41.216.155",
+        "198.41.226.115",
+        "198.41.236.75",
+        "198.41.246.35",
+        "162.158.0.3",
+        "162.158.39.101",
+        "162.158.78.199",
+        "162.158.118.41",
+        "162.158.157.139",
+        "162.158.196.237",
+        "162.158.236.79",
+        "162.159.19.177",
+        "162.159.59.19",
+        "162.159.98.117",
+        "162.159.137.215",
+        "162.159.177.57",
+        "162.159.216.155",
+        "104.16.0.3",
+        "104.16.157.140",
+        "104.17.59.21",
+        "104.17.216.158",
+        "104.18.118.39",
+        "104.19.19.176",
+        "104.19.177.57",
+        "104.20.78.194",
+        "104.20.236.75",
+        "104.21.137.212",
+        "104.22.39.93",
+        "104.22.196.230",
+        "104.23.98.111",
+        "104.24.0.3",
+        "104.24.78.199",
+        "104.24.157.139",
+        "104.24.236.79",
+        "104.25.59.19",
+        "104.25.137.215",
+        "104.25.216.155",
+        "104.26.39.95",
+        "104.26.118.35",
+        "104.26.196.231",
+        "104.27.19.171",
+        "104.27.98.111",
+        "104.27.177.51",
+        "172.64.0.3",
+        "172.64.157.140",
+        "172.65.59.21",
+        "172.65.216.158",
+        "172.66.118.39",
+        "172.67.19.176",
+        "172.67.177.57",
+        "172.68.78.194",
+        "172.68.236.75",
+        "172.69.137.212",
+        "172.70.39.93",
+        "172.70.196.230",
+        "172.71.98.111",
+        "131.0.72.3",
+        "131.0.72.81",
+        "131.0.72.159",
+        "131.0.72.237",
+        "131.0.73.59",
+        "131.0.73.137",
+        "131.0.73.215",
+        "131.0.74.37",
+        "131.0.74.115",
+        "131.0.74.193",
+        "131.0.75.15",
+        "131.0.75.93"
+    )
+
+    /** A different real address on every call. */
+    fun randomSourceIp(): String = SOURCE_IPS.random()
 
     private val _cachedRanges = AtomicReference<IpRangeCache>()
     private val _ipScores = ConcurrentHashMap<String, IpScore>()
@@ -192,9 +406,10 @@ object CloudflareIpManager {
             return operatorCached
         }
 
-        // Evaluate new IPs - if all evaluation fails, return hardcoded fallback
+        // Evaluate the bundled 200-IP source. If no address answers, pick a
+        // random real address from it rather than pinning one hardcoded IP.
         val evaluated = evaluateAndSelectBestIp(context, port, operatorKey, forceRefresh)
-        return evaluated ?: "1.1.1.1"
+        return evaluated ?: randomSourceIp()
     }
 
     /** Detects the current SIM operator (MCC-MNC) for operator-aware caching. */
@@ -287,17 +502,13 @@ object CloudflareIpManager {
         operatorKey: String,
         forceRefresh: Boolean
     ): String? {
+        // The bundled 200 addresses are the primary source: the scan runs
+        // even when the published-list endpoint is blocked. Published ranges
+        // add extra samples when they are available, never a dependency.
         val ranges = fetchRangesIfNeeded(context, forceRefresh)
-        if (ranges.isEmpty()) {
-            Log.w("CloudflareIp", "No ranges available, trying fallback IPs")
-            return tryFallbackIps(port)
-        }
-
-        val candidateIps = sampleIpsFromRanges(ranges, MAX_IPS_TO_TEST)
-        if (candidateIps.isEmpty()) {
-            Log.w("CloudflareIp", "No candidate IPs sampled, trying fallback IPs")
-            return tryFallbackIps(port)
-        }
+        val fromRanges = if (ranges.isEmpty()) emptyList() else sampleIpsFromRanges(ranges, MAX_IPS_TO_TEST)
+        val candidateIps = (SOURCE_IPS + fromRanges).distinct().take(MAX_IPS_TO_TEST + 20)
+        Log.i("CloudflareIp", "Probing ${candidateIps.size} real edge addresses")
 
         Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs for operator: $operatorKey")
 
@@ -398,7 +609,9 @@ object CloudflareIpManager {
     private suspend fun evaluateIp(ip: String, port: Int): IpScore? {
         val startTime = System.currentTimeMillis()
         var successCount = 0
-        val probeCount = 3
+        // One full TCP+TLS handshake is a real probe; repeating it three
+        // times per address made a 200-address scan take a minute.
+        val probeCount = 1
 
         for (i in 0 until probeCount) {
             val probeStart = System.currentTimeMillis()

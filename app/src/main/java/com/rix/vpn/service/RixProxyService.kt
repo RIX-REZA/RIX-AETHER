@@ -121,15 +121,17 @@ class RixProxyService : LifecycleService() {
 
                 val upstreamPort = candidate.corePort
                 val listening = try {
-                    // Same rule as the VPN service: the scanned best is used
-                    // only when it already exists (peek, never scan).
+                    // Same rule as the VPN service: scanned best or a random
+                    // real source address; never scan mid-connection, and
+                    // never inject a peer when Psiphon is in the path.
                     val coreOptions = candidate.forCore().let { opts ->
                         val scanned = if (!opts.psiphon && opts.peer.isBlank()) {
-                            CloudflareIpManager.peekCachedBest()
+                            CloudflareIpManager.peekCachedBest()?.ip
+                                ?: CloudflareIpManager.randomSourceIp()
                         } else {
                             null
                         }
-                        if (scanned != null) opts.copy(peer = "${scanned.ip}:443") else opts
+                        if (scanned != null) opts.copy(peer = "$scanned:443") else opts
                     }
                     RixRuntime.startCore(this, coreOptions)
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
