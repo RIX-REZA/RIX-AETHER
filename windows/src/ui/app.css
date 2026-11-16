@@ -1275,8 +1275,6 @@ html[dir="rtl"] .switch.on::after { transform: translateX(-18px); }
 
 /* -------------------------------------------------------- mini scan + pages */
 
-/* The one-time first-run prompt: "run one scan to connect". */
-
 .mini-scan {
   width: min(430px, 92%);
   display: flex;

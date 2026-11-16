@@ -463,7 +463,16 @@ public sealed class MainForm : Form
         if (!_connectRequested || !_scanConnectPending) return;
         if (_core.Status.IsConnected || _scanRestarting) return;
         _scanConnectPending = false;
-        RestartWithScannedPeer();
+
+        // Do not yank an attempt that is about to succeed. The connect that
+        // started this scan is on the core's own path; give it a few seconds,
+        // then switch to the verified address only if it is still not up.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            if (!_connectRequested || _core.Status.IsConnected) return;
+            RestartWithScannedPeer();
+        });
     }
 
     /// <summary>
