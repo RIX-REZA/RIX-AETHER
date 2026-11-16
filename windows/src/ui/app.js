@@ -54,8 +54,9 @@ const T = {
     fqUnavailable: 'تانل کامل در این ساخت در دسترس نیست',
     telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
     details: 'جزئیات', scan: 'اسکنر',
-    scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان peer به هسته داده می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
+    scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. اتصال اول همیشه با مسیر خود هسته برقرار می‌شود؛ آدرس اسکن‌شده فقط بعد از شکست آن مسیر، در تلاش‌های بعدی به‌عنوان peer آزمایش می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
     updateCheck: 'بررسی به‌روزرسانی', updateChecking: 'در حال بررسی…', updateGet: 'دانلود به‌روزرسانی',
+    scanTip: 'برای اتصال بهتر می‌توانی از منوی همبرگری یک اسکن تازه بزنی و آی‌پی جدید بگیری. اتصال بدون اسکن هم همیشه کار می‌کند.',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -91,8 +92,9 @@ const T = {
     fqUnavailable: 'Full Tunnel is not available in this build',
     telegram: 'Rix Channel — Telegram', github: 'Rix GitHub',
     details: 'Details', scan: 'Scanner',
-    scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The winner is handed to the core as its peer on the next connect. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
+    scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The first connect always uses the core\'s own path; a scanned address is only tried as --peer on later attempts, after that path has failed. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
     updateCheck: 'Check for updates', updateChecking: 'Checking…', updateGet: 'Download update',
+    scanTip: 'For a better connection you can run a fresh scan from the hamburger menu and get a new IP. Connecting always works without one.',
   }
 };
 
@@ -559,6 +561,11 @@ let rix = { state: 'disconnected', detail: '' };
 let tunnel = { mode: 'proxy', available: false, why: '', on: false };
 let saveTimer = null;
 
+/* The scanner tip is shown once and then never again; the page's own
+   localStorage keeps the dismissal across launches. */
+let tipClosed = false;
+try { tipClosed = localStorage.getItem('rix.scanTip') === '1'; } catch (e) { /* file:// storage */ }
+
 /** When the check button was last pressed, 0 when no check is in flight. */
 let probingAt = 0;
 
@@ -616,6 +623,15 @@ function applyLangTheme() {
 }
 
 /* --------------------------------------------------------------------- home */
+
+function renderTip() {
+  const tip = el('scanTip');
+  if (!tip) return;
+  el('scanTipText').textContent = t('scanTip');
+  // A scan is meaningless with Psiphon, which picks its own path.
+  const show = !tipClosed && !options.psiphon;
+  tip.classList.toggle('hidden', !show);
+}
 
 function renderStatic() {
   el('kChart').textContent = t('chart');
@@ -854,6 +870,7 @@ function renderScan() {
   el('miniScanText').textContent = running
     ? (scan.total ? `${t('scanning')} ${scan.done}/${scan.total}` : t('scanning'))
     : (scan.best ? `${t('best')}: ${scan.best.endpoint}` : t('scanIdle'));
+  renderTip();
 }
 
 /**
@@ -1067,6 +1084,10 @@ function onMessage(event) {
       break;
 
     case 'scan':
+      // Drop anything older than the newest scan message. Progress arrives
+      // from concurrent probes, and a late "running" report must not undo a
+      // completion the page has already drawn.
+      if (typeof message.seq === 'number' && message.seq < (scan.seq || 0)) break;
       scan = Object.assign(scan, message);
       if (typeof message.fraction === 'number') scan.fraction = message.fraction;
       renderScan();
@@ -1230,6 +1251,12 @@ function wire() {
   el('proxyOffBtn').onclick = () => {
     send({ type: 'proxyOff' });
     toast(t('proxyOffBtn'));
+  };
+
+  el('scanTipClose').onclick = () => {
+    tipClosed = true;
+    try { localStorage.setItem('rix.scanTip', '1'); } catch (e) { /* file:// storage */ }
+    renderTip();
   };
 
   el('scanNowBtn').onclick = () => {

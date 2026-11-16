@@ -13,7 +13,30 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,7 +46,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.NativeBridge
@@ -44,7 +75,10 @@ import com.rix.vpn.ui.HomeScreen
 import com.rix.vpn.ui.LocalStrings
 import com.rix.vpn.ui.LogScreen
 import com.rix.vpn.ui.OptionsScreen
+import com.rix.vpn.ui.RixColors
+import com.rix.vpn.ui.RixLogo
 import com.rix.vpn.ui.RixTheme
+import com.rix.vpn.ui.ScanScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -70,22 +104,10 @@ class MainActivity : ComponentActivity() {
                 RixApp.instance.refreshChannels()
             }
 
-            val dark = when (themeMode) {
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-            }
-
             RixTheme(mode = themeMode, en = lang == LangPref.EN) {
                 RixRoot(
                     lang = lang,
                     theme = themeMode,
-                    dark = dark,
-                    onToggleTheme = {
-                        scope.launch {
-                            uiPrefs.saveTheme(if (dark) ThemeMode.LIGHT else ThemeMode.DARK)
-                        }
-                    },
                     onLangChange = { next -> scope.launch { uiPrefs.saveLang(next) } },
                     onThemeChange = { next -> scope.launch { uiPrefs.saveTheme(next) } }
                 )
@@ -94,7 +116,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { HOME, OPTIONS, LOGS }
+private enum class Screen { HOME, SCAN, OPTIONS, LOGS }
 
 /**
  * How long a teardown may take before the UI stops waiting for it.
@@ -110,8 +132,6 @@ private const val STOP_GIVE_UP_MS = 12_000L
 private fun RixRoot(
     lang: LangPref,
     theme: ThemeMode,
-    dark: Boolean,
-    onToggleTheme: () -> Unit,
     onLangChange: (LangPref) -> Unit,
     onThemeChange: (ThemeMode) -> Unit
 ) {
@@ -124,6 +144,13 @@ private fun RixRoot(
     var options by remember { mutableStateOf(RixOptions()) }
     var diagnostics by remember { mutableStateOf("") }
     var showPicker by remember { mutableStateOf(false) }
+
+    // The scanner tip is shown once. Dismissing it is a UI preference, so it
+    // is kept in its own store and never touches the tunnel options.
+    val tipPrefs = remember { context.getSharedPreferences("rix_ui", android.content.Context.MODE_PRIVATE) }
+    var showScanTip by remember { mutableStateOf(!tipPrefs.getBoolean("scan_tip_closed", false)) }
+
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
 
     val runtimeState by RixRuntime.state.collectAsState()
 
@@ -285,9 +312,14 @@ private fun RixRoot(
         { mode -> options = options.copy(mode = mode) }
     }
 
-    val onOpenOptions: () -> Unit = remember { { screen = Screen.OPTIONS } }
-    val onOpenLogs: () -> Unit = remember { { screen = Screen.LOGS } }
     val onBackHome: () -> Unit = remember { { screen = Screen.HOME } }
+
+    val goTo: (Screen) -> Unit = remember(drawerState) {
+        { next ->
+            screen = next
+            scope.launch { drawerState.close() }
+        }
+    }
 
     val onOptionsChange: (RixOptions) -> Unit = remember {
         { updated: RixOptions ->
@@ -303,39 +335,119 @@ private fun RixRoot(
         }
     }
 
-    when (screen) {
-        Screen.HOME -> HomeScreen(
-            options = options,
-            state = runtimeState,
-            dark = dark,
-            onToggleTheme = onToggleTheme,
-            onModeChange = onModeChange,
-            onToggle = onToggle,
-            onOpenOptions = onOpenOptions,
-            onOpenLogs = onOpenLogs
-        )
-
-        Screen.OPTIONS -> {
-            BackHandler(onBack = onBackHome)
-            OptionsScreen(
-                options = options,
-                lang = lang,
-                theme = theme,
-                onLangChange = onLangChange,
-                onThemeChange = onThemeChange,
-                onOptionsChange = onOptionsChange,
-                onBack = onBackHome,
-                onPickApps = { showPicker = true }
-            )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = RixColors.Surface,
+                drawerContentColor = RixColors.Text,
+                modifier = Modifier.width(280.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RixLogo(sizeDp = 34)
+                    Spacer(Modifier.width(11.dp))
+                    Column {
+                        Text("RIX", color = RixColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            s.s("تونل امن", "Secure tunnel"),
+                            color = RixColors.TextMuted,
+                            fontSize = 10.5.sp
+                        )
+                    }
+                }
+                HorizontalDivider(color = RixColors.Stroke)
+                Spacer(Modifier.height(8.dp))
+                DrawerRow(
+                    label = s.s("خانه", "Home"),
+                    icon = Icons.Rounded.Home,
+                    selected = screen == Screen.HOME,
+                    onClick = { goTo(Screen.HOME) }
+                )
+                DrawerRow(
+                    label = s.s("اسکنر", "Scanner"),
+                    icon = Icons.Rounded.Search,
+                    selected = screen == Screen.SCAN,
+                    onClick = { goTo(Screen.SCAN) }
+                )
+                DrawerRow(
+                    label = s.s("تنظیمات", "Settings"),
+                    icon = Icons.Rounded.Settings,
+                    selected = screen == Screen.OPTIONS,
+                    onClick = { goTo(Screen.OPTIONS) }
+                )
+                DrawerRow(
+                    label = s.s("گزارش", "Log"),
+                    icon = Icons.Rounded.Description,
+                    selected = screen == Screen.LOGS,
+                    onClick = { goTo(Screen.LOGS) }
+                )
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = RixColors.Stroke)
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text(
+                        text = s.s(
+                            "اسکن اختیاری است؛ اتصال همیشه کار می‌کند.",
+                            "Scanning is optional; connecting always works."
+                        ),
+                        color = RixColors.TextMuted,
+                        fontSize = 10.5.sp
+                    )
+                }
+            }
         }
-
-        Screen.LOGS -> {
-            BackHandler(onBack = onBackHome)
-            LogScreen(
-                diagnostics = diagnostics,
-                onBack = onBackHome,
-                onClear = { LogBus.clear() }
+    ) {
+        when (screen) {
+            Screen.HOME -> HomeScreen(
+                options = options,
+                state = runtimeState,
+                showScanTip = showScanTip,
+                onModeChange = onModeChange,
+                onToggle = onToggle,
+                onOpenMenu = { scope.launch { drawerState.open() } },
+                onOpenScan = { goTo(Screen.SCAN) },
+                onDismissScanTip = {
+                    showScanTip = false
+                    tipPrefs.edit().putBoolean("scan_tip_closed", true).apply()
+                }
             )
+
+            Screen.SCAN -> {
+                BackHandler(onBack = onBackHome)
+                ScanScreen(onBack = onBackHome)
+            }
+
+            Screen.OPTIONS -> {
+                BackHandler(onBack = onBackHome)
+                OptionsScreen(
+                    options = options,
+                    lang = lang,
+                    theme = theme,
+                    onLangChange = onLangChange,
+                    onThemeChange = onThemeChange,
+                    onOptionsChange = onOptionsChange,
+                    onBack = onBackHome,
+                    onPickApps = { showPicker = true }
+                )
+            }
+
+            Screen.LOGS -> {
+                BackHandler(onBack = onBackHome)
+                LogScreen(
+                    diagnostics = diagnostics,
+                    onBack = onBackHome,
+                    onClear = { LogBus.clear() }
+                )
+            }
         }
     }
 
@@ -344,6 +456,42 @@ private fun RixRoot(
             selected = options.splitApps,
             onDismiss = { showPicker = false },
             onConfirm = onConfirmApps
+        )
+    }
+}
+/**
+ * One drawer destination. Selected is a tint and a weight, not a second
+ * navigation paradigm: the row is the only way anything is chosen here.
+ */
+@Composable
+private fun DrawerRow(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) RixColors.Teal.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (selected) RixColors.Teal else RixColors.TextMuted,
+            modifier = Modifier.width(22.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = label,
+            color = if (selected) RixColors.Text else RixColors.TextMuted,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

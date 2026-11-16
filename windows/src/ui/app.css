@@ -648,6 +648,52 @@ main {
 
 .alert.warn .alert-ico { background: var(--warn); color: #1a1a1a; }
 
+/* A one-time pointer to the scanner: quiet, closeable, and never a demand.
+   It sits above the dial on purpose -- the user can read it and dismiss it
+   without a scan ever standing between them and a connection. */
+.tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 430px;
+  margin: 0 auto 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 13px;
+  padding: 11px 12px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+.tip-ico {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--accent-2);
+  margin-top: 1px;
+}
+
+.tip-ico svg { width: 20px; height: 20px; display: block; }
+
+.tip-text { flex: 1; min-width: 0; }
+
+.tip-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: background .14s, color .14s;
+}
+
+.tip-close:hover { background: var(--surface-2); color: var(--text); }
+
 /* ----------------------------------------------------------------- settings */
 
 .split {

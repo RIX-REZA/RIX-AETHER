@@ -887,16 +887,24 @@ public sealed class IpScannerService : IDisposable
             var (ranges, source) = await CloudflareRanges.LoadAsync(_http, token);
             Log?.Invoke($"scan: {ranges.V4.Count + ranges.V6.Count} ranges from {source}");
 
+            // Progress must be delivered on the reporting thread. Progress<T>
+            // posts to the thread pool, so a queued "running" report could
+            // arrive after the final "not running" one and leave the screen
+            // spinning on a scan that had already finished.
+            var reportGate = new object();
             var lastReport = 0;
-            var progress = new Progress<ScanProgress>(p =>
+            var progress = new InlineProgress<ScanProgress>(p =>
             {
                 // The UI is a WebView; one message every few candidates is
-                // enough to move a bar and does not flood the bridge.
-                if (p.Done - lastReport >= 3 || p.Done == p.Total)
+                // enough to move a bar and does not flood the bridge. The
+                // decision is serialised because probes report in parallel.
+                bool send;
+                lock (reportGate)
                 {
-                    lastReport = p.Done;
-                    Progress?.Invoke(p);
+                    send = p.Done - lastReport >= 3 || p.Done >= p.Total;
+                    if (send) lastReport = p.Done;
                 }
+                if (send) Progress?.Invoke(p);
             });
 
             var announced = 0;
@@ -961,7 +969,13 @@ public sealed class IpScannerService : IDisposable
                 }
             }
             if (mine)
-                Progress?.Invoke(new ScanProgress { Running = false, Best = Cache.Best });
+                Progress?.Invoke(new ScanProgress
+                {
+                    Running = false,
+                    Done = Cache.Ranked.Count,
+                    Total = Cache.Ranked.Count,
+                    Best = Cache.Best,
+                });
         }
     }
 
@@ -1026,4 +1040,19 @@ public sealed class IpScannerService : IDisposable
         Stop();
         _http.Dispose();
     }
+}
+
+/// <summary>
+/// An <see cref="IProgress{T}"/> that calls its handler on the reporting
+/// thread instead of posting to the thread pool. <see cref="Progress{T}"/>
+/// reorders reports against synchronous ones, which is how a finished scan
+/// could keep drawing as if it were still running.
+/// </summary>
+internal sealed class InlineProgress<T> : IProgress<T>
+{
+    private readonly Action<T> _handler;
+
+    public InlineProgress(Action<T> handler) => _handler = handler;
+
+    public void Report(T value) => _handler(value);
 }

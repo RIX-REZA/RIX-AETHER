@@ -18,11 +18,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
@@ -45,18 +47,24 @@ import kotlin.math.sqrt
  * - Automatic re-evaluation on network changes
  * - Fallback to known good IPs when scanning fails
  *
- * The evaluation uses the same TLS-over-SOCKS probe that the tunnel uses, so
- * an IP that passes is genuinely reachable through the tunnel path.
+ * The evaluation opens a direct TCP connection and completes a real TLS
+ * handshake with the edge (SNI included), so an address that passes is one
+ * that genuinely answered -- never a symbolic check.
  */
 object CloudflareIpManager {
 
     private const val CF_IPV4_URL = "https://www.cloudflare.com/ips-v4"
     private const val CF_IPV6_URL = "https://www.cloudflare.com/ips-v6"
     private const val CACHE_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
-    private const val PROBE_TIMEOUT_MS = 2000L
+    private const val PROBE_TIMEOUT_MS = 1800L
     private const val MAX_IPS_TO_TEST = 200
     private const val MIN_SUCCESSFUL_PROBES = 3
-    private const val PARALLEL_PROBES = 64
+    private const val PARALLEL_PROBES = 80
+
+    /** The host name the edge is asked for during the TLS probe. It is served
+     * by the same anycast edge as the tunnel, and it gives the handshake the
+     * SNI Cloudflare requires. */
+    private const val SNI_HOST = "speed.cloudflare.com"
 
     /**
      * How long a scan that found nothing is trusted. Without this, every call
@@ -344,6 +352,10 @@ object CloudflareIpManager {
     data class ScanUi(
         val scanning: Boolean = false,
         val best: IpScore? = null,
+        val done: Int = 0,
+        val total: Int = 0,
+        val current: String = "",
+        val ranked: List<IpScore> = emptyList(),
         val lastScanAt: Long = 0L
     )
 
@@ -401,9 +413,10 @@ object CloudflareIpManager {
             Log.w("CloudflareIp", "warm-up scan failed: ${t.message}")
         } finally {
             scanLock.unlock()
-            _ui.value = ScanUi(
+            _ui.value = _ui.value.copy(
                 scanning = false,
-                best = peekCachedBest(),
+                best = peekCachedBest() ?: _ui.value.best,
+                current = "",
                 lastScanAt = _lastEvaluationTime.get()
             )
         }
@@ -488,7 +501,9 @@ object CloudflareIpManager {
                 ranges
             } else {
                 val v4Ranges = fetchUrl(CF_IPV4_URL)
-                val v6Ranges = fetchUrl(CF_IPV6_URL)
+                // IPv6 samples are not used by the IPv4 probe path below, so
+                // fetching the v6 list would only add a second timeout.
+                val v6Ranges = emptyList<String>()
                 val allRanges = (v4Ranges + v6Ranges).filter { it.isNotBlank() }
 
                 if (allRanges.isNotEmpty()) {
@@ -513,8 +528,11 @@ object CloudflareIpManager {
         try {
             val url = URL(urlString)
             val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
+            // The bundled 200 addresses are the primary source; this list is
+            // an optional extra. A blocked endpoint must not stall the scan
+            // for half a minute before the first real probe.
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
             connection.requestMethod = "GET"
             connection.addRequestProperty("User-Agent", "RIX-AETHER/1.8")
             if (connection.responseCode == 200) {
@@ -531,8 +549,10 @@ object CloudflareIpManager {
     }
 
     /**
-     * Evaluates a sample of IPs from the Cloudflare ranges and selects the best.
-     * Uses real TLS-over-SOCKS probe through the tunnel.
+     * Probes the bundled Cloudflare edge addresses with real TCP and TLS
+     * handshakes and selects the best. Everything is measured directly; nothing
+     * here is symbolic and nothing waits for a list endpoint that a filtered
+     * network may never answer.
      */
     private suspend fun evaluateAndSelectBestIp(
         context: Context,
@@ -540,79 +560,126 @@ object CloudflareIpManager {
         operatorKey: String,
         forceRefresh: Boolean,
         onFirst: ((IpScore) -> Unit)? = null
-    ): String? {
-        // The bundled 200 addresses are the primary source: the scan runs
-        // even when the published-list endpoint is blocked. Published ranges
-        // add extra samples when they are available, never a dependency.
-        val ranges = fetchRangesIfNeeded(context, forceRefresh)
-        val fromRanges = if (ranges.isEmpty()) emptyList() else sampleIpsFromRanges(ranges, MAX_IPS_TO_TEST)
-        val candidateIps = (SOURCE_IPS + fromRanges).distinct().take(MAX_IPS_TO_TEST + 20)
-        Log.i("CloudflareIp", "Probing ${candidateIps.size} real edge addresses")
+    ): String? = coroutineScope {
+        // The published list is optional, so it is fetched while the bundled
+        // probes are already running. A blocked endpoint costs this scan a
+        // few seconds at most instead of the whole scan.
+        val rangesDeferred = async(Dispatchers.IO) {
+            try {
+                fetchRangesIfNeeded(context, forceRefresh)
+            } catch (t: Throwable) {
+                // A cancelled scan must stay cancelled; only a network
+                // failure is treated as "no extra ranges".
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                Log.w("CloudflareIp", "range lookup failed: ${t.message}")
+                emptyList()
+            }
+        }
 
-        Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs for operator: $operatorKey")
-
-        lastAttemptAt = System.currentTimeMillis()
-
-        // Test each IP with real protocol probe in parallel
         val scores = java.util.Collections.synchronizedList(mutableListOf<IpScore>())
         val semaphore = Semaphore(PARALLEL_PROBES)
         var published = false
         var first: IpScore? = null
+        val done = AtomicInteger(0)
+        val total = AtomicInteger(SOURCE_IPS.size)
 
-        coroutineScope {
-            candidateIps.map { ip ->
-                async<IpScore?> {
-                    // Manual semaphore acquire/release for compatibility
-                    semaphore.acquire()
-                    try {
-                        val result = evaluateIp(ip, port)
-                        if (result != null) {
-                            val scoredResult = result.copyWith(operatorKey = operatorKey)
-                            scores.add(scoredResult)
-                            _ipScores[scoredResult.ip] = scoredResult
+        lastAttemptAt = System.currentTimeMillis()
+        Log.i("CloudflareIp", "Probing ${SOURCE_IPS.size} real bundled edge addresses")
+        _ui.value = _ui.value.copy(
+            scanning = true,
+            done = 0,
+            total = SOURCE_IPS.size,
+            current = "",
+            ranked = emptyList()
+        )
 
-                            // The first address that answers is published at
-                            // once: the connect path peeks at the cache, so a
-                            // connection made now already uses it instead of
-                            // waiting for the remaining 199 probes.
-                            if (scoredResult.isReachable) {
-                                val announce = synchronized(scores) {
-                                    if (published) false else {
-                                        published = true
-                                        true
-                                    }
-                                }
-                                if (announce) {
-                                    _currentBestIp.set(scoredResult.ip)
-                                    _lastEvaluationTime.set(System.currentTimeMillis())
-                                    cacheBestIpForOperator(scoredResult.ip, operatorKey)
-                                    first = scoredResult
-                                    try {
-                                        onFirst?.invoke(scoredResult)
-                                    } catch (t: Throwable) {
-                                        Log.w("CloudflareIp", "first-candidate callback failed", t)
-                                    }
-                                }
+        // One address: TCP connect, TLS handshake, score. The first reachable
+        // address is published immediately so the screen has something real
+        // to show while the remaining probes finish.
+        suspend fun probe(ip: String): IpScore? {
+            semaphore.acquire()
+            var scored: IpScore? = null
+            try {
+                val result = evaluateIp(ip, port)
+                if (result != null) {
+                    scored = result.copyWith(operatorKey = operatorKey)
+                    scores.add(scored!!)
+                    _ipScores[scored!!.ip] = scored!!
+
+                    if (scored!!.isReachable) {
+                        val announce = synchronized(scores) {
+                            if (published) false else {
+                                published = true
+                                true
                             }
                         }
-                        result
-                    } finally {
-                        semaphore.release()
+                        if (announce) {
+                            _currentBestIp.set(scored!!.ip)
+                            _lastEvaluationTime.set(System.currentTimeMillis())
+                            cacheBestIpForOperator(scored!!.ip, operatorKey)
+                            first = scored
+                            try {
+                                onFirst?.invoke(scored!!)
+                            } catch (t: Throwable) {
+                                Log.w("CloudflareIp", "first-candidate callback failed", t)
+                            }
+                        }
                     }
                 }
-            }.awaitAll()
+            } finally {
+                semaphore.release()
+                val count = done.incrementAndGet()
+                // A StateFlow write per address made the card flicker; a
+                // handful per second is enough to show real movement.
+                if (count % 4 == 0 || count >= total.get() || scored?.isReachable == true) {
+                    _ui.value = _ui.value.copy(
+                        scanning = true,
+                        done = count,
+                        total = total.get(),
+                        current = ip,
+                        best = _currentBestIp.get()?.let { _ipScores[it] } ?: _ui.value.best
+                    )
+                }
+            }
+            return scored
         }
 
-        // Select the best by composite score; the published first answer is
-        // only a fallback if the ranking pass was cut short.
-        val best = scores.filter { it.isReachable }.maxByOrNull { it.compositeScore }
+        // Start the bundled probes first: they are the source that works even
+        // when every published-list endpoint is blocked.
+        val sourceJobs = SOURCE_IPS.map { ip -> async { probe(ip) } }
+
+        // Give the optional list a short window while those probes run.
+        val ranges = withTimeoutOrNull(3_500) { rangesDeferred.await() }.orEmpty()
+        val fromRanges = if (ranges.isEmpty()) {
+            emptyList()
+        } else {
+            sampleIpsFromRanges(ranges, 20)
+        }
+        total.set(SOURCE_IPS.size + fromRanges.size)
+        val rangeJobs = fromRanges.map { ip -> async { probe(ip) } }
+
+        (sourceJobs + rangeJobs).awaitAll()
+
+        val ranked = scores
+            .filter { it.isReachable }
+            .sortedByDescending { it.compositeScore }
+        val best = ranked.firstOrNull()
+
+        _ui.value = _ui.value.copy(
+            done = done.get(),
+            total = total.get(),
+            current = "",
+            ranked = ranked.take(12)
+        )
+
         if (best != null) {
             _currentBestIp.set(best.ip)
             _lastEvaluationTime.set(System.currentTimeMillis())
             cacheBestIpForOperator(best.ip, operatorKey)
-            return best.ip
+            best.ip
+        } else {
+            first?.ip
         }
-        return first?.ip
     }
 
     /** Tries known fallback IPs when range evaluation fails. */
@@ -670,7 +737,7 @@ object CloudflareIpManager {
     }
 
     /**
-     * Evaluates a single IP with real TLS-over-SOCKS probe.
+     * Evaluates a single IP with a real direct TCP + TLS probe.
      * Returns IpScore with latency and success metrics.
      */
     private suspend fun evaluateIp(ip: String, port: Int): IpScore? {
@@ -732,12 +799,28 @@ object CloudflareIpManager {
         }
     }
 
-    /** Full TLS handshake probe - validates the IP serves valid HTTPS. */
+    /**
+     * Full TLS handshake probe: validates that the edge really speaks TLS.
+     *
+     * Cloudflare routes on SNI. A handshake with no host name is rejected
+     * outright, which is why a bare createSocket(ip, port) made every address
+     * look dead and the scan looked like it never found anything. The
+     * certificate chain still has to be trusted; the host name is not checked,
+     * because the address is what is being measured.
+     */
     private fun tlsProbe(ip: String, port: Int): Boolean {
         return try {
-            val sslSocketFactory = javax.net.ssl.SSLSocketFactory.getDefault()
-            val sslSocket = sslSocketFactory.createSocket(ip, port) as javax.net.ssl.SSLSocket
-            sslSocket.setSoTimeout(PROBE_TIMEOUT_MS.toInt())
+            val raw = java.net.Socket()
+            raw.soTimeout = PROBE_TIMEOUT_MS.toInt()
+            raw.connect(java.net.InetSocketAddress(ip, port), PROBE_TIMEOUT_MS.toInt())
+
+            val sslSocket = javax.net.ssl.SSLSocketFactory.getDefault()
+                .createSocket(raw, ip, port, true) as javax.net.ssl.SSLSocket
+            sslSocket.sslParameters = sslSocket.sslParameters.apply {
+                serverNames = listOf(javax.net.ssl.SNIHostName(SNI_HOST))
+                endpointIdentificationAlgorithm = null
+            }
+            sslSocket.soTimeout = PROBE_TIMEOUT_MS.toInt()
             sslSocket.startHandshake()
             sslSocket.close()
             true

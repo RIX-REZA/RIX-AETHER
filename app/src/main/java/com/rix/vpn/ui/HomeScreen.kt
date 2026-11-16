@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,8 +30,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,9 +40,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,12 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * The home screen.
@@ -82,12 +79,12 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     options: RixOptions,
     state: RixRuntime.State,
-    dark: Boolean,
-    onToggleTheme: () -> Unit,
+    showScanTip: Boolean,
     onModeChange: (RixMode) -> Unit,
     onToggle: () -> Unit,
-    onOpenOptions: () -> Unit,
-    onOpenLogs: () -> Unit
+    onOpenMenu: () -> Unit,
+    onOpenScan: () -> Unit,
+    onDismissScanTip: () -> Unit
 ) {
     val s = LocalStrings.current
     val running = state.phase == RixRuntime.Phase.RUNNING
@@ -120,6 +117,8 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                MenuButton(onClick = onOpenMenu)
+                Spacer(Modifier.width(10.dp))
                 RixLogo(sizeDp = 44)
                 Spacer(Modifier.width(11.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -138,8 +137,6 @@ fun HomeScreen(
                         fontSize = 11.sp
                     )
                 }
-                ThemeIconButton(dark = dark, onClick = onToggleTheme)
-                Spacer(Modifier.width(10.dp))
                 StatusBadge(state)
             }
 
@@ -220,45 +217,15 @@ fun HomeScreen(
                 )
             }
 
-            // ---- the edge scanner's card --------------------------------
-            // One small card, the same rule as the Windows client: the app
-            // scans once by itself at entry, a connection never scans, and
-            // rescanning is only ever something the user asks for. With
-            // Psiphon selected the whole card is left out, because Psiphon
-            // picks its own path.
-            if (!options.psiphon) {
-                val scanUi by CloudflareIpManager.ui.collectAsState()
-                val scanScope = rememberCoroutineScope()
-                val scanContext = androidx.compose.ui.platform.LocalContext.current
-                Spacer(Modifier.height(12.dp))
-                ScannerCard(
-                    scanning = scanUi.scanning,
-                    best = scanUi.best,
-                    onScan = {
-                        if (!scanUi.scanning) {
-                            scanScope.launch {
-                                CloudflareIpManager.warmUp(scanContext, forceRefresh = true)
-                            }
-                        }
-                    },
-                    s = s
-                )
+            // ---- one-time scanner tip -----------------------------------
+            // Not a demand and not a gate: it says where a better address can
+            // be found and closes for good. A scan is never needed to connect.
+            if (showScanTip && !options.psiphon) {
+                Spacer(Modifier.height(14.dp))
+                ScanTipCard(onOpenScan = onOpenScan, onDismiss = onDismissScanTip)
             }
 
             Spacer(Modifier.height(16.dp))
-
-            // ---- how far it has got -------------------------------------
-            StageStrip(stages = stages(state, options, running, s))
-
-            Spacer(Modifier.height(16.dp))
-
-            // ---- throughput ---------------------------------------------
-            ThroughputPanel(
-                running = running,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(12.dp))
 
             // ---- live numbers -------------------------------------------
             Row(
@@ -335,26 +302,82 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(Modifier.height(18.dp))
+        }
+    }
+}
 
-            // ---- navigation --------------------------------------------
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                NavButton(
-                    label = s.s("تنظیمات", "Settings"),
-                    icon = Icons.Rounded.Settings,
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenOptions
-                )
-                NavButton(
-                    label = s.s("گزارش", "Logs"),
-                    icon = Icons.Rounded.Description,
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenLogs
-                )
-            }
+/** The hamburger. Everything that is not the connection lives behind it. */
+@Composable
+private fun MenuButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(RixColors.SurfaceHigh)
+            .border(1.dp, RixColors.Stroke, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Rounded.Menu,
+            contentDescription = LocalStrings.current.s("منو", "Menu"),
+            tint = RixColors.Text,
+            modifier = Modifier.size(21.dp)
+        )
+    }
+}
+
+/**
+ * A one-time pointer to the scanner. The × is the whole point: the tip is
+ * information, not a step, so dismissing it never blocks a connection.
+ */
+@Composable
+private fun ScanTipCard(onOpenScan: () -> Unit, onDismiss: () -> Unit) {
+    val s = LocalStrings.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RixColors.Teal.copy(alpha = 0.10f))
+            .border(1.dp, RixColors.Teal.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onOpenScan)
+            .padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = s.s(
+                    "برای اتصال بهتر می‌توانی از منوی همبرگری یک اسکن تازه بزنی و آی‌پی جدید بگیری.",
+                    "For a better connection, run a fresh scan from the hamburger menu and get a new IP."
+                ),
+                color = RixColors.Text,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = s.s(
+                    "اتصال بدون اسکن هم همیشه کار می‌کند.",
+                    "Connecting always works without a scan."
+                ),
+                color = RixColors.TextMuted,
+                fontSize = 10.5.sp
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = s.s("بستن", "Dismiss"),
+                tint = RixColors.TextMuted,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -368,197 +391,6 @@ fun HomeScreen(
  * the timer jump or run backwards, and a VPN is exactly the app opened on a
  * phone that just came back from airplane mode.
  */
-@Composable
-private fun SessionClock(startedAt: Long) {
-    var elapsed by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(startedAt) {
-        elapsed = 0L
-        if (startedAt <= 0L) return@LaunchedEffect
-        while (true) {
-            elapsed = ((SystemClock.elapsedRealtime() - startedAt) / 1000).coerceAtLeast(0L)
-            delay(1000)
-        }
-    }
-    MonoText(text = formatDuration(elapsed), color = RixColors.Text, size = 26)
-}
-
-/**
- * The chart and its caption.
- *
- * It collects the engine's counters itself, so the readings that change every
- * second invalidate this card rather than the screen it sits on. The series is
- * built by differencing two readings against the monotonic clock, which is what
- * makes an idle tunnel draw a flat line instead of a plausible-looking curve.
- */
-@Composable
-private fun ThroughputPanel(running: Boolean, modifier: Modifier = Modifier) {
-    val s = LocalStrings.current
-
-    val downSeries = remember { mutableStateListOf<Float>() }
-    val upSeries = remember { mutableStateListOf<Float>() }
-
-    var lastRx by remember { mutableLongStateOf(0L) }
-    var lastTx by remember { mutableLongStateOf(0L) }
-    var lastAt by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(running) {
-        downSeries.clear()
-        upSeries.clear()
-        lastRx = 0L
-        lastTx = 0L
-        lastAt = 0L
-        if (!running) return@LaunchedEffect
-
-        // The service publishes one reading a second, so reacting to those is
-        // both the right pace and the only honest one: no reading, no sample,
-        // and never a curve drawn from a number the engine did not give.
-        RixRuntime.traffic.collect { reading ->
-            val now = SystemClock.elapsedRealtime()
-            if (!reading.available) {
-                // Null is not zero: the engine cannot answer, so there is no
-                // rate to draw and the series goes back to empty.
-                if (downSeries.isNotEmpty() || upSeries.isNotEmpty()) {
-                    downSeries.clear()
-                    upSeries.clear()
-                }
-                lastAt = 0L
-            } else {
-                if (lastAt != 0L) {
-                    val seconds = (now - lastAt) / 1000f
-                    if (seconds > 0f) {
-                        sample(downSeries, reading.rxBytes, lastRx, seconds)
-                        sample(upSeries, reading.txBytes, lastTx, seconds)
-                    }
-                }
-                lastRx = reading.rxBytes
-                lastTx = reading.txBytes
-                lastAt = now
-            }
-        }
-    }
-
-    // The same reading the tiles use, so the caption cannot claim a rate while
-    // they are drawing a dash for the very same counters.
-    val traffic by RixRuntime.traffic.collectAsState()
-    val rate = (downSeries.lastOrNull() ?: 0f) + (upSeries.lastOrNull() ?: 0f)
-
-    GlassCard(modifier = modifier) {
-        Column {
-            ChartLegend(
-                downLabel = s.s("دریافت", "Down"),
-                upLabel = s.s("ارسال", "Up"),
-                rateLabel = if (traffic.available) "${formatBytes(rate.toLong())}/s" else "—"
-            )
-            Spacer(Modifier.height(10.dp))
-            ThroughputChart(
-                down = downSeries,
-                up = upSeries,
-                // A tunnel that is not running has nothing to draw, and
-                // a flat line at zero would read as a real measurement.
-                modifier = Modifier.fillMaxWidth(),
-                height = 84.dp
-            )
-        }
-    }
-}
-
-/**
- * A traffic tile that reads the counters on their own flow.
- *
- * The dash is not decoration: when the engine cannot answer, drawing "0 B"
- * would claim the tunnel is up and moving nothing, which is the more
- * convincing of the two wrong answers.
- */
-@Composable
-private fun LiveStatTile(
-    label: String,
-    bytes: (RixRuntime.Traffic) -> Long,
-    accent: Color,
-    icon: ImageVector,
-    modifier: Modifier = Modifier
-) {
-    val traffic by RixRuntime.traffic.collectAsState()
-    StatTile(
-        label = label,
-        value = if (traffic.available) formatBytes(bytes(traffic)) else "—",
-        accent = accent,
-        icon = icon,
-        modifier = modifier
-    )
-}
-
-/**
- * One reading of a counter, turned into a rate.
- *
- * A counter that has gone backwards does not belong to this session -- the
- * service clears the counters when an attempt starts -- so the sample is
- * dropped and the series begins again rather than drawing a spike that never
- * happened.
- */
-private fun sample(series: MutableList<Float>, total: Long, previous: Long, seconds: Float) {
-    if (total < previous) {
-        series.clear()
-        return
-    }
-    series.add(((total - previous) / seconds).coerceAtLeast(0f))
-    while (series.size > 60) series.removeAt(0)
-}
-
-/**
- * The four (or five) stages of a connection, and the evidence for each.
- *
- * `running` is only reached after a real request came back through the tunnel,
- * so it is the proof for the tunnel stage and for nothing else: the exit stage
- * waits for an address to actually answer.
- */
-private fun stages(
-    state: RixRuntime.State,
-    options: RixOptions,
-    running: Boolean,
-    s: Strings
-): List<Pair<String, StageState>> {
-    val started = state.phase != RixRuntime.Phase.IDLE
-
-    return buildList {
-        add(
-            s.s("هسته", "Core") to when {
-                running -> StageState.DONE
-                started -> StageState.LIT
-                else -> StageState.OFF
-            }
-        )
-        add(
-            s.s("شنونده", "Listener") to when {
-                state.socksPort <= 0 -> StageState.OFF
-                running -> StageState.DONE
-                else -> StageState.LIT
-            }
-        )
-        // Left out entirely when Psiphon is off: a greyed stage reads as one
-        // that is waiting, and this one is not in the path at all.
-        if (options.psiphon) {
-            add(
-                "Psiphon" to when {
-                    running -> StageState.DONE
-                    state.phase == RixRuntime.Phase.CONNECTING ||
-                        state.phase == RixRuntime.Phase.STARTING -> StageState.LIT
-                    else -> StageState.OFF
-                }
-            )
-        }
-        add(
-            s.s("تونل", "Tunnel") to if (running) StageState.DONE else StageState.OFF
-        )
-        add(
-            s.s("خروج", "Exit") to when {
-                !running -> StageState.OFF
-                state.egressIp.isNotBlank() -> StageState.DONE
-                else -> StageState.LIT
-            }
-        )
-    }
-}
-
 /**
  * The colour a phase paints itself in.
  *
@@ -573,96 +405,6 @@ private fun phaseAccent(phase: RixRuntime.Phase): Color = when (phase) {
     RixRuntime.Phase.CONNECTING,
     RixRuntime.Phase.STOPPING -> RixColors.Warning
     RixRuntime.Phase.IDLE -> RixColors.Teal
-}
-
-/**
- * The panel the whole screen is about.
- *
- * A tinted, rounded well rather than another flat card: it gives the status,
- * the orb and the session readings one shared surface, so the eye lands there
- * first. The tint follows the phase, which means the error state is legible
- * from across the room without reading a word.
- */
-@Composable
-private fun HeroPanel(
-    accent: Color,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        accent.copy(alpha = if (RixColors.isDark) 0.15f else 0.08f),
-                        RixColors.Surface.copy(alpha = 0.92f)
-                    )
-                )
-            )
-            .border(1.dp, accent.copy(alpha = 0.24f), RoundedCornerShape(30.dp))
-            .padding(horizontal = 14.dp, vertical = 22.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        content = content
-    )
-}
-
-@Composable
-private fun StatusBadge(state: RixRuntime.State) {
-    val s = LocalStrings.current
-    val (label, color) = when (state.phase) {
-        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
-        RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
-        RixRuntime.Phase.STARTING -> s.s("آمادهسازی", "Preparing") to RixColors.Warning
-        RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
-        RixRuntime.Phase.ERROR -> s.s("خطا", "Error") to RixColors.Danger
-        RixRuntime.Phase.IDLE -> s.s("خاموش", "Off") to RixColors.TextMuted
-    }
-    Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(color.copy(alpha = 0.12f))
-            .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(end = 6.dp)
-                .height(7.dp)
-                .width(7.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Text(label, color = color, fontSize = 11.5.sp, maxLines = 1)
-    }
-}
-
-@Composable
-private fun NavButton(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(RixColors.SurfaceHigh, RixColors.Surface)
-                )
-            )
-            .border(1.dp, RixColors.Stroke, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = RixColors.TextMuted)
-        Spacer(Modifier.width(8.dp))
-        Text(label, color = RixColors.Text, fontSize = 13.5.sp)
-    }
 }
 
 private fun statusTitle(state: RixRuntime.State, s: Strings): String = when (state.phase) {
@@ -776,71 +518,3 @@ private fun formatBytes(bytes: Long): String {
     return String.format(java.util.Locale.US, "%.2f %s", value, units[index])
 }
 
-/**
- * The edge scanner's one card on the home screen.
- *
- * Before the first scan it is the ask: "to connect, run one scan" — with the
- * button right there, because that is what the user asked the app to say.
- * After a scan it shows the winner and stays as the place to rescan from.
- * A connection itself never scans: it uses whatever this card's scan left.
- */
-@Composable
-private fun ScannerCard(
-    scanning: Boolean,
-    best: CloudflareIpManager.IpScore?,
-    onScan: () -> Unit,
-    s: Strings
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(RixColors.Teal.copy(alpha = 0.10f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = when {
-                    scanning -> s.s("در حال اسکن لبه‌های کلودفلر…", "Scanning Cloudflare edges…")
-                    best != null -> s.s(
-                        "بهترین IP: ${best.ip} · ${best.latencyMs}ms",
-                        "Best IP: ${best.ip} · ${best.latencyMs}ms"
-                    )
-                    else -> s.s(
-                        "اسکن اختیاری است — اتصال همیشه کار میکند",
-                        "Scanning is optional — connecting always works"
-                    )
-                },
-                color = RixColors.Text,
-                fontSize = 12.sp,
-                lineHeight = 17.sp
-            )
-            if (!scanning && best == null) {
-                Text(
-                    text = s.s(
-                        "بهترین لبه اندازه‌گیری می‌شود و همین‌جا نشان داده می‌شود؛ اتصال مسیر خود هسته را می‌رود",
-                        "The best edge is measured and shown here; the connection takes the core's own path"
-                    ),
-                    color = RixColors.TextMuted,
-                    fontSize = 10.5.sp
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = when {
-                scanning -> s.s("…", "…")
-                best != null -> s.s("اسکن دوباره", "Rescan")
-                else -> s.s("اسکن", "Scan")
-            },
-            color = RixColors.Teal,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .clickable(enabled = !scanning, onClick = onScan)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        )
-    }
-}

@@ -757,10 +757,17 @@ public sealed class MainForm : Form
         UpdateTray();
     }
 
+    /// <summary>Ordering for scan messages; the page ignores out-of-order ones.</summary>
+    private int _scanSeq;
+
     private CoreStatus _coreStatus = new();
     private readonly FullTunnelAvailability _tunnelAvailability = FullTunnelAvailability.Check();
 
-    private void OnScanProgress(ScanProgress progress) => SendScan(progress.Best, progress, true, null);
+    // The service's own completion report carries Running = false. Hard-coding
+    // true here turned that last message back into "scanning" and left the
+    // card spinning on a scan that had already finished.
+    private void OnScanProgress(ScanProgress progress) =>
+        SendScan(progress.Best, progress, progress.Running, null);
 
     private void OnBestChanged(ScanCandidate best)
     {
@@ -789,6 +796,10 @@ public sealed class MainForm : Form
         var message = new JsonObject
         {
             ["type"] = "scan",
+            // The page drops any scan message older than the newest one it
+            // has seen. A stale "running" report can therefore never arrive
+            // last and leave the scanner card spinning forever.
+            ["seq"] = Interlocked.Increment(ref _scanSeq),
             ["running"] = running,
             ["done"] = progress?.Done ?? 0,
             ["total"] = progress?.Total ?? 0,
