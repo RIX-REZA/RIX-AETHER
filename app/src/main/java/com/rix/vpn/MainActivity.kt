@@ -138,7 +138,7 @@ private fun RixRoot(
     LaunchedEffect(options.psiphon) {
         if (!options.psiphon) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                CloudflareIpManager.warmUp(applicationContext)
+                CloudflareIpManager.warmUp(context.applicationContext)
             }
         }
     }

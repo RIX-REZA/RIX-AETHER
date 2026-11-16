@@ -204,7 +204,7 @@ fun OptionsScreen(
                 subtitle = "${draft.transport.label(s)} • ${draft.scanMode.label(s)}",
                 icon = Icons.Rounded.Route,
                 initiallyExpanded = true,
-                accent = RixColors.Violet
+                accent = RixColors.Teal
             ) {
                 SectionTitle(s.s("پروتکل", "Protocol"))
                 ChipFlow {
@@ -472,7 +472,7 @@ fun OptionsScreen(
                         Icon(
                             Icons.Rounded.Apps,
                             contentDescription = null,
-                            tint = RixColors.Violet,
+                            tint = RixColors.Teal,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(10.dp))
@@ -806,7 +806,7 @@ private fun presets(): List<Preset> = listOf(
         labelFa = "ضد DPI",
         labelEn = "Anti-DPI",
         icon = Icons.Rounded.VerifiedUser,
-        accent = RixColors.Violet,
+        accent = RixColors.Teal,
         configure = { o ->
             o.copy(
                 transport = Transport.MIM,
@@ -936,12 +936,12 @@ private fun ChipFlow(content: @Composable () -> Unit) {
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = RixColors.Violet,
+    focusedBorderColor = RixColors.Teal,
     unfocusedBorderColor = RixColors.Stroke,
     focusedContainerColor = RixColors.Surface,
     unfocusedContainerColor = RixColors.Surface,
-    cursorColor = RixColors.Violet,
-    focusedLabelColor = RixColors.Violet,
+    cursorColor = RixColors.Teal,
+    focusedLabelColor = RixColors.Teal,
     unfocusedLabelColor = RixColors.TextMuted,
     focusedTextColor = RixColors.Text,
     unfocusedTextColor = RixColors.Text

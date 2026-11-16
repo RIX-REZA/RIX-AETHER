@@ -122,7 +122,7 @@ fun AppPickerDialog(
                 )
                 DialogButton(
                     s.s("تأیید", "Apply"),
-                    RixColors.Violet.copy(alpha = 0.22f),
+                    RixColors.Teal.copy(alpha = 0.22f),
                     RixColors.Text,
                     Modifier.weight(1f)
                 ) { onConfirm(chosen.toList()) }
@@ -169,7 +169,7 @@ private fun AppRow(app: AppEntry, checked: Boolean, onToggle: () -> Unit) {
             checked = checked,
             onCheckedChange = { onToggle() },
             colors = CheckboxDefaults.colors(
-                checkedColor = RixColors.Violet,
+                checkedColor = RixColors.Teal,
                 uncheckedColor = RixColors.Stroke,
                 checkmarkColor = RixColors.Background
             )

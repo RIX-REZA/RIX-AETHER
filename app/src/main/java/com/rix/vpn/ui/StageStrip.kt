@@ -130,7 +130,7 @@ fun ThroughputChart(
     // Read outside the draw scope: the palette accessors are composable, and a
     // Canvas lambda is not.
     val downColor = RixColors.Teal
-    val upColor = RixColors.Violet
+    val upColor = RixColors.Teal
 
     Canvas(
         modifier = modifier
@@ -238,7 +238,7 @@ fun ChartLegend(
     ) {
         LegendDot(RixColors.Teal)
         Text(downLabel, color = RixColors.TextMuted, fontSize = 11.sp)
-        LegendDot(RixColors.Violet)
+        LegendDot(RixColors.Teal)
         Text(upLabel, color = RixColors.TextMuted, fontSize = 11.sp)
         Spacer(Modifier.weight(1f))
         MonoText(text = rateLabel, color = RixColors.Text, size = 11)

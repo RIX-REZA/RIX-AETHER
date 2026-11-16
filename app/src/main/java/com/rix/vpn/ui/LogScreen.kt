@@ -152,7 +152,7 @@ fun LogScreen(
                                 color = when {
                                     line.contains("خطا") -> RixColors.Danger
                                     line.contains("[hev]") -> RixColors.Teal
-                                    line.contains("[core]") -> RixColors.Violet
+                                    line.contains("[core]") -> RixColors.Teal
                                     else -> RixColors.Text.copy(alpha = 0.88f)
                                 },
                                 fontSize = 10.5.sp,
