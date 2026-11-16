@@ -56,6 +56,7 @@ const T = {
     details: 'جزئیات', scan: 'اسکنر',
     scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان peer به هسته داده می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
     updateCheck: 'بررسی به‌روزرسانی', updateChecking: 'در حال بررسی…', updateGet: 'دانلود به‌روزرسانی',
+    scanNeededText: 'برای اتصال، یک بار اسکن انجام بده. پس از اسکن، اتصال خودکار با بهترین IP شروع می‌شود؛ اتصال‌های بعدی فوری‌اند و اسکن فقط وقتی خودت بخواهی تکرار می‌شود.',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -93,6 +94,7 @@ const T = {
     details: 'Details', scan: 'Scanner',
     scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The winner is handed to the core as its peer on the next connect. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
     updateCheck: 'Check for updates', updateChecking: 'Checking…', updateGet: 'Download update',
+    scanNeededText: 'To connect, run one scan first. The connection then starts automatically on the best IP; later connects are instant, and rescanning is only ever your choice.',
   }
 };
 
@@ -792,6 +794,16 @@ function renderHome() {
   renderAlert(phase);
   renderScan();
   renderUpdate();
+
+  // The one-time first-run prompt: nothing scanned yet, so this session
+  // starts on the scan's winner the moment the scan completes.
+  const prompt = el('scanPrompt');
+  prompt.classList.toggle('hidden', !state.scanNeeded);
+  if (state.scanNeeded) {
+    el('scanPromptText').textContent = t('scanNeededText');
+    el('scanPromptBtn').textContent = t('scan');
+    el('scanPromptBtn').disabled = !!scan.running;
+  }
 }
 
 /** The one secondary action on the home screen: keeping the app current. */
@@ -1082,6 +1094,11 @@ function onMessage(event) {
       toast(message.text, true);
       break;
 
+    case 'scanNeeded':
+      state.scanNeeded = !!message.needed;
+      renderHome();
+      break;
+
     case 'update':
       state.update = {
         checking: false,
@@ -1098,7 +1115,7 @@ function onMessage(event) {
   }
 }
 
-const state = { corePath: '', hasPsiphon: false, proxy: '', update: { checking: false } };
+const state = { corePath: '', hasPsiphon: false, proxy: '', update: { checking: false }, scanNeeded: false };
 
 /* ---------------------------------------------------------------------- log */
 
@@ -1207,6 +1224,12 @@ function wire() {
   };
   el('drawerBackdrop').onclick = closeDrawer;
   el('miniScan').onclick = () => { show('scan'); closeDrawer(); };
+  el('scanPromptBtn').onclick = () => {
+    if (scan.running) return;
+    scan.running = true;
+    renderScan();
+    send({ type: 'scanNow' });
+  };
 
   // Update check: the first press asks the host, the second opens the release
   // page when there is something to get. The host keeps the whitelist; the

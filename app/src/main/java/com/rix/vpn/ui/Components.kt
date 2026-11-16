@@ -82,7 +82,7 @@ fun RixSurface(content: @Composable () -> Unit) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(palette.violet.copy(alpha = palette.wellViolet), Color.Transparent),
+                    colors = listOf(palette.teal.copy(alpha = palette.wellTeal), Color.Transparent),
                     center = Offset(size.width * 0.16f, size.height * 0.10f),
                     radius = size.minDimension * 0.75f
                 ),
@@ -173,7 +173,7 @@ fun SegmentedRow(
         options.forEachIndexed { index, label ->
             val active = index == selectedIndex
             val bg by animateColorAsState(
-                targetValue = if (active) RixColors.Violet.copy(alpha = 0.22f) else Color.Transparent,
+                targetValue = if (active) RixColors.Teal.copy(alpha = 0.22f) else Color.Transparent,
                 animationSpec = tween(220),
                 label = "seg-bg"
             )
@@ -228,7 +228,7 @@ fun SettingSwitch(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = RixColors.Background,
-                checkedTrackColor = RixColors.Violet,
+                checkedTrackColor = RixColors.Teal,
                 uncheckedThumbColor = RixColors.TextMuted,
                 uncheckedTrackColor = RixColors.SurfaceHigh,
                 uncheckedBorderColor = RixColors.Stroke
@@ -272,12 +272,12 @@ fun RixChip(
     modifier: Modifier = Modifier
 ) {
     val bg by animateColorAsState(
-        targetValue = if (selected) RixColors.Violet.copy(alpha = 0.20f) else RixColors.Surface,
+        targetValue = if (selected) RixColors.Teal.copy(alpha = 0.20f) else RixColors.Surface,
         animationSpec = tween(180),
         label = "chip-bg"
     )
     val border by animateColorAsState(
-        targetValue = if (selected) RixColors.Violet.copy(alpha = 0.65f) else RixColors.Stroke,
+        targetValue = if (selected) RixColors.Teal.copy(alpha = 0.65f) else RixColors.Stroke,
         animationSpec = tween(180),
         label = "chip-border"
     )
@@ -334,12 +334,12 @@ fun PowerOrb(
         active -> RixColors.Teal
         failed -> RixColors.Danger
         cancellable || stopping -> RixColors.Warning
-        else -> RixColors.Violet
+        else -> RixColors.Teal
     }
     val deep = when {
         active -> RixColors.TealDeep
         failed -> RixColors.Danger
-        else -> RixColors.VioletDeep
+        else -> RixColors.TealDeep
     }
 
     // Created only while there is something to animate: an infinite transition
@@ -503,7 +503,7 @@ fun SelectCard(
     subtitle: String,
     selected: Boolean,
     onClick: () -> Unit,
-    accent: Color = RixColors.Violet,
+    accent: Color = RixColors.Teal,
     badge: String? = null,
     modifier: Modifier = Modifier
 ) {
@@ -588,7 +588,7 @@ fun SelectCard(
  */
 @Composable
 fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
-    val violet = RixColors.Violet
+    val accent = RixColors.Teal
     val teal = RixColors.Teal
     val disc = RixColors.BackgroundLift
 
@@ -596,14 +596,14 @@ fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
         val d = size.minDimension
         val mid = Offset(size.width / 2f, size.height / 2f)
 
-        // Sweep ring: violet on one side, teal on the other.
-        drawCircle(brush = Brush.sweepGradient(listOf(violet, teal, violet)), radius = d / 2f)
+        // Sweep ring: accent on one side, teal on the other.
+        drawCircle(brush = Brush.sweepGradient(listOf(accent, teal, accent)), radius = d / 2f)
         drawCircle(color = disc, radius = d / 2f - d * 0.06f)
 
         // Soft inner glow so the mark does not look like a flat sticker.
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(violet.copy(alpha = 0.38f), Color.Transparent),
+                colors = listOf(accent.copy(alpha = 0.38f), Color.Transparent),
                 center = mid,
                 radius = d * 0.42f
             ),
@@ -620,7 +620,7 @@ fun RixLogo(sizeDp: Int = 56, modifier: Modifier = Modifier) {
             lineTo(mid.x + d * 0.010f, mid.y - d * 0.040f)
             close()
         }
-        drawPath(bolt, brush = Brush.linearGradient(listOf(teal, violet)))
+        drawPath(bolt, brush = Brush.linearGradient(listOf(teal, accent)))
     }
 }
 
@@ -722,7 +722,7 @@ fun ExpandableCard(
     subtitle: String? = null,
     icon: ImageVector? = null,
     initiallyExpanded: Boolean = false,
-    accent: Color = RixColors.Violet,
+    accent: Color = RixColors.Teal,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -830,7 +830,7 @@ fun ThemeIconButton(dark: Boolean, onClick: () -> Unit) {
                 } else {
                     s.s("تاریک کردن", "Switch to dark")
                 },
-                tint = if (isDark) RixColors.Violet else RixColors.Warning,
+                tint = if (isDark) RixColors.Teal else RixColors.Warning,
                 modifier = Modifier.size(18.dp)
             )
         }

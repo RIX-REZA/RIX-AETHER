@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.NativeBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
@@ -129,6 +130,17 @@ private fun RixRoot(
     // Load persisted options once.
     LaunchedEffect(Unit) {
         options = prefs.read()
+    }
+
+    // One background scan at app entry, so the best Cloudflare IP is already
+    // cached before the user presses connect. A connection itself never
+    // scans: it peeks at whatever this (or a later user-requested) scan left.
+    LaunchedEffect(options.psiphon) {
+        if (!options.psiphon) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                CloudflareIpManager.warmUp(applicationContext)
+            }
+        }
     }
 
     // Probe the native libraries once, off the composition thread. The result

@@ -59,6 +59,15 @@
         <span id="alertText"></span>
       </div>
 
+      <!-- Shown exactly once, when a connect found nothing scanned yet: the
+           user runs one scan, the session starts on its winner, and every
+           later connect is instant. Rescanning stays the user's choice, from
+           the scanner view. -->
+      <div class="scan-prompt hidden" id="scanPrompt">
+        <span class="sp-text" id="scanPromptText"></span>
+        <button class="ghost small" id="scanPromptBtn"></button>
+      </div>
+
       <div class="dial-wrap">
         <button class="dial" id="connectBtn" aria-label="اتصال">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"

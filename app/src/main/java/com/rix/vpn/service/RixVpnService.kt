@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.rix.vpn.MainActivity
 import com.rix.vpn.R
 import com.rix.vpn.RixApp
+import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
@@ -156,7 +157,19 @@ class RixVpnService : VpnService() {
                 // same port and nothing here changes.
                 val upstreamPort = candidate.corePort
                 val listening = try {
-                    RixRuntime.startCore(this, candidate.forCore())
+                    // The scanned best IP rides along only when it already
+                    // exists: peek, never scan. A connection with nothing
+                    // scanned starts exactly like the previous versions did,
+                    // and the next one picks the scan's winner up.
+                    val coreOptions = candidate.forCore().let { opts ->
+                        val scanned = if (!opts.psiphon && opts.peer.isBlank()) {
+                            CloudflareIpManager.peekCachedBest()
+                        } else {
+                            null
+                        }
+                        if (scanned != null) opts.copy(peer = "${scanned.ip}:443") else opts
+                    }
+                    RixRuntime.startCore(this, coreOptions)
                     LogBus.i("vpn", "${candidate.transport.label}: core started, waiting for SOCKS5 on $upstreamPort")
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
                 } catch (c: CancellationException) {

@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,10 +54,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
 import com.rix.vpn.core.RixRuntime
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The home screen.
@@ -217,6 +220,31 @@ fun HomeScreen(
                 )
             }
 
+            // ---- the edge scanner's card --------------------------------
+            // One small card, the same rule as the Windows client: the app
+            // scans once by itself at entry, a connection never scans, and
+            // rescanning is only ever something the user asks for. With
+            // Psiphon selected the whole card is left out, because Psiphon
+            // picks its own path.
+            if (!options.psiphon) {
+                val scanUi by CloudflareIpManager.ui.collectAsState()
+                val scanScope = rememberCoroutineScope()
+                val scanContext = androidx.compose.ui.platform.LocalContext.current
+                Spacer(Modifier.height(12.dp))
+                ScannerCard(
+                    scanning = scanUi.scanning,
+                    best = scanUi.best,
+                    onScan = {
+                        if (!scanUi.scanning) {
+                            scanScope.launch {
+                                CloudflareIpManager.warmUp(scanContext, forceRefresh = true)
+                            }
+                        }
+                    },
+                    s = s
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
 
             // ---- how far it has got -------------------------------------
@@ -258,7 +286,7 @@ fun HomeScreen(
                 LiveStatTile(
                     label = s.s("ارسال", "Up"),
                     bytes = { it.txBytes },
-                    accent = RixColors.Violet,
+                    accent = RixColors.Teal,
                     icon = Icons.Rounded.ArrowUpward,
                     modifier = Modifier.weight(1f)
                 )
@@ -544,7 +572,7 @@ private fun phaseAccent(phase: RixRuntime.Phase): Color = when (phase) {
     RixRuntime.Phase.STARTING,
     RixRuntime.Phase.CONNECTING,
     RixRuntime.Phase.STOPPING -> RixColors.Warning
-    RixRuntime.Phase.IDLE -> RixColors.Violet
+    RixRuntime.Phase.IDLE -> RixColors.Teal
 }
 
 /**
@@ -746,4 +774,73 @@ private fun formatBytes(bytes: Long): String {
         index++
     }
     return String.format(java.util.Locale.US, "%.2f %s", value, units[index])
+}
+
+/**
+ * The edge scanner's one card on the home screen.
+ *
+ * Before the first scan it is the ask: "to connect, run one scan" — with the
+ * button right there, because that is what the user asked the app to say.
+ * After a scan it shows the winner and stays as the place to rescan from.
+ * A connection itself never scans: it uses whatever this card's scan left.
+ */
+@Composable
+private fun ScannerCard(
+    scanning: Boolean,
+    best: CloudflareIpManager.IpScore?,
+    onScan: () -> Unit,
+    s: Strings
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RixColors.Teal.copy(alpha = 0.10f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = when {
+                    scanning -> s.s("در حال اسکن لبه‌های کلودفلر…", "Scanning Cloudflare edges…")
+                    best != null -> s.s(
+                        "بهترین IP: ${best.ip} · ${best.latencyMs}ms",
+                        "Best IP: ${best.ip} · ${best.latencyMs}ms"
+                    )
+                    else -> s.s(
+                        "برای اتصال، یک بار اسکن انجام بده",
+                        "To connect, run one scan first"
+                    )
+                },
+                color = RixColors.Text,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            if (!scanning && best == null) {
+                Text(
+                    text = s.s(
+                        "پس از اسکن، اتصال با بهترین IP شروع می‌شود",
+                        "After the scan, the connection starts on the best IP"
+                    ),
+                    color = RixColors.TextMuted,
+                    fontSize = 10.5.sp
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = when {
+                scanning -> s.s("…", "…")
+                best != null -> s.s("اسکن دوباره", "Rescan")
+                else -> s.s("اسکن", "Scan")
+            },
+            color = RixColors.Teal,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(enabled = !scanning, onClick = onScan)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
 }

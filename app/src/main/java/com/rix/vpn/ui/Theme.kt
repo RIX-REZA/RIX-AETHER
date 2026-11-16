@@ -37,18 +37,15 @@ data class RixPalette(
     val surface: Color,
     val surfaceHigh: Color,
     val stroke: Color,
-    val violet: Color,
-    val violetDeep: Color,
     val teal: Color,
     val tealDeep: Color,
     val text: Color,
     val textMuted: Color,
     val danger: Color,
     val warning: Color,
-    /** Text/icon colour drawn on top of [violet] or [teal]. */
+    /** Text/icon colour drawn on top of the accent. */
     val onAccent: Color,
     /** Opacity of the decorative background wells; lower in light mode. */
-    val wellViolet: Float,
     val wellTeal: Float
 )
 
@@ -59,8 +56,6 @@ val RixDarkPalette = RixPalette(
     surface = Color(0xFF10101F),
     surfaceHigh = Color(0xFF17172B),
     stroke = Color(0xFF23233C),
-    violet = Color(0xFF8F7BFF),
-    violetDeep = Color(0xFF5B45D6),
     teal = Color(0xFF2BD9C4),
     tealDeep = Color(0xFF12A08F),
     text = Color(0xFFEFEDFF),
@@ -68,7 +63,6 @@ val RixDarkPalette = RixPalette(
     danger = Color(0xFFFF5C7A),
     warning = Color(0xFFFFC46B),
     onAccent = Color(0xFF0B0616),
-    wellViolet = 0.16f,
     wellTeal = 0.10f
 )
 
@@ -79,8 +73,6 @@ val RixLightPalette = RixPalette(
     surface = Color(0xFFFCFCFE),
     surfaceHigh = Color(0xFFFFFFFF),
     stroke = Color(0xFFE1E1EE),
-    violet = Color(0xFF6847F0),
-    violetDeep = Color(0xFF4A2FC4),
     teal = Color(0xFF0C9C8C),
     tealDeep = Color(0xFF0A8377),
     text = Color(0xFF14142B),
@@ -88,7 +80,6 @@ val RixLightPalette = RixPalette(
     danger = Color(0xFFD62B4B),
     warning = Color(0xFFA96B05),
     onAccent = Color(0xFFFFFFFF),
-    wellViolet = 0.09f,
     wellTeal = 0.07f
 )
 
@@ -108,8 +99,6 @@ object RixColors {
     val Surface: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.surface
     val SurfaceHigh: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.surfaceHigh
     val Stroke: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.stroke
-    val Violet: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.violet
-    val VioletDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.violetDeep
     val Teal: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.teal
     val TealDeep: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.tealDeep
     val Text: Color @Composable @ReadOnlyComposable get() = LocalRixPalette.current.text
@@ -121,9 +110,9 @@ object RixColors {
 
 private fun schemeFor(p: RixPalette) = if (p.isDark) {
     darkColorScheme(
-        primary = p.violet,
+        primary = p.teal,
         onPrimary = p.onAccent,
-        primaryContainer = p.violetDeep,
+        primaryContainer = p.tealDeep,
         onPrimaryContainer = p.text,
         secondary = p.teal,
         onSecondary = p.onAccent,
@@ -139,9 +128,9 @@ private fun schemeFor(p: RixPalette) = if (p.isDark) {
     )
 } else {
     lightColorScheme(
-        primary = p.violet,
+        primary = p.teal,
         onPrimary = p.onAccent,
-        primaryContainer = p.violetDeep,
+        primaryContainer = p.tealDeep,
         onPrimaryContainer = Color.White,
         secondary = p.teal,
         onSecondary = p.onAccent,

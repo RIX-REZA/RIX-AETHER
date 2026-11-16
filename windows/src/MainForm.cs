@@ -40,11 +40,9 @@ public sealed class MainForm : Form
     private readonly IIpProbe _probe = new TlsIpProbe();
     private string _lastPeer;
     private RixState _lastCoreState = RixState.Disconnected;
-    /// <summary>The best address seen so far in the scan that is running now.
-    /// The pool only fills when a scan completes, so this is what lets a
-    /// first-ever connect use a probed candidate mid-scan instead of either
-    /// waiting for the whole scan or falling back to the default peer.</summary>
-    private ScanCandidate _progressBest;
+    /// <summary>Set when a connect found nothing scanned yet: the session
+    /// starts automatically on the scan's winner, once.</summary>
+    private bool _connectAfterScan;
 
     public MainForm(AppState state)
     {
@@ -400,8 +398,17 @@ public sealed class MainForm : Form
     private void OnScanCompleted(IpScanCache cache)
     {
         _peerPool.Replace(cache.Ranked);
-        _progressBest = null; // the finished cache now owns the ranking
         SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
+
+        // The one scan a connect ever waits for: the user pressed connect
+        // with nothing scanned yet, so the session starts on the winner the
+        // moment it exists. Every later connect is instant.
+        if (_connectAfterScan && cache.Ranked.Count > 0)
+        {
+            _connectAfterScan = false;
+            Send(new JsonObject { ["type"] = "scanNeeded", ["needed"] = false });
+            _ = ConnectAsync();
+        }
     }
 
     /// <summary>
@@ -419,7 +426,7 @@ public sealed class MainForm : Form
         if (!options.ScanEnabled || !options.ScanUseBestPeer) return options;
         if (!string.IsNullOrWhiteSpace(options.Peer)) return options;
 
-        var best = _peerPool.Pick() ?? _scanner.Best ?? _progressBest;
+        var best = _peerPool.Pick() ?? _scanner.Best;
         if (best == null) return options;
         _lastPeer = best.Endpoint;
 
@@ -438,28 +445,20 @@ public sealed class MainForm : Form
 
     private async Task ConnectAsync()
     {
-        // The user never waits for a scan: the persisted cache is used the
-        // moment it exists, and a fresh scan runs in the background. But on a
-        // first run there is nothing cached, and connecting then would fall
-        // back to the built-in default peer -- the single-address path the
-        // scanner exists to avoid. So a first connect gives the scanner a
-        // short, bounded head start; after it, whatever is verified goes.
+        // No scan ever blocks or slows the connection. A cached ranking is
+        // used as-is, instantly. When nothing has been scanned yet, the user
+        // is told -- with the buttons right there on the home screen -- to
+        // run one scan first, and that scan's completion starts the session
+        // on the best address it found. From then on, connecting never
+        // touches the scanner again; rescanning is the user's choice, from
+        // the scanner view.
         if (_state.Options.ScanEnabled && _state.Options.ScanUseBestPeer &&
-            !_state.Options.Psiphon && _peerPool.Count == 0)
+            !_state.Options.Psiphon && _peerPool.Count == 0 && _scanner.Best == null)
         {
-            if (!_scanner.IsScanning)
-            {
-                _scanner.Options = _state.Options.ToScanOptions();
-                _scanner.IntervalMinutes = Math.Clamp(_state.Options.ScanIntervalMinutes, 5, 1440);
-                _scanner.Start();
-            }
-
-            var deadline = Environment.TickCount64 + 6_000;
-            while (Environment.TickCount64 < deadline)
-            {
-                if (_peerPool.Count > 0 || _progressBest != null) break;
-                await Task.Delay(200);
-            }
+            _connectAfterScan = true;
+            Send(new JsonObject { ["type"] = "scanNeeded", ["needed"] = true });
+            StartScanBackground();
+            return;
         }
 
         _core.Start();
@@ -467,6 +466,16 @@ public sealed class MainForm : Form
         SendState(_session.Current);
         UpdateTray();
         await Task.CompletedTask;
+    }
+
+    /// <summary>Configures and starts the periodic scanner once, without ever
+    /// making a connection wait for it.</summary>
+    private void StartScanBackground()
+    {
+        if (_scanner.IsScanning) return;
+        _scanner.Options = _state.Options.ToScanOptions();
+        _scanner.IntervalMinutes = Math.Clamp(_state.Options.ScanIntervalMinutes, 5, 1440);
+        _scanner.Start();
     }
 
     // ------------------------------------------------------------- full tunnel
@@ -688,13 +697,7 @@ public sealed class MainForm : Form
     private CoreStatus _coreStatus = new();
     private readonly FullTunnelAvailability _tunnelAvailability = FullTunnelAvailability.Check();
 
-    private void OnScanProgress(ScanProgress progress)
-    {
-        // The running scan's interim best: usable by a first-ever connect
-        // before the full ranking (and the pool) exists.
-        if (progress?.Best != null) _progressBest = progress.Best;
-        SendScan(progress.Best, progress, true, null);
-    }
+    private void OnScanProgress(ScanProgress progress) => SendScan(progress.Best, progress, true, null);
 
     private void OnBestChanged(ScanCandidate best)
     {

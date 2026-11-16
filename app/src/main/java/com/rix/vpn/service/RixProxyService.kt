@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.rix.vpn.MainActivity
 import com.rix.vpn.R
 import com.rix.vpn.RixApp
+import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
@@ -120,7 +121,17 @@ class RixProxyService : LifecycleService() {
 
                 val upstreamPort = candidate.corePort
                 val listening = try {
-                    RixRuntime.startCore(this, candidate.forCore())
+                    // Same rule as the VPN service: the scanned best is used
+                    // only when it already exists (peek, never scan).
+                    val coreOptions = candidate.forCore().let { opts ->
+                        val scanned = if (!opts.psiphon && opts.peer.isBlank()) {
+                            CloudflareIpManager.peekCachedBest()
+                        } else {
+                            null
+                        }
+                        if (scanned != null) opts.copy(peer = "${scanned.ip}:443") else opts
+                    }
+                    RixRuntime.startCore(this, coreOptions)
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
                 } catch (c: CancellationException) {
                     // Cancelled, not failed: see [RixVpnService.bringUp].

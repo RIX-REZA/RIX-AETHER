@@ -13,6 +13,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -113,6 +116,53 @@ object CloudflareIpManager {
     fun initialize(context: Context) {
         if (_prefs.get() == null) {
             _prefs.set(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))
+        }
+    }
+
+    /** What the home screen's scan card shows. */
+    data class ScanUi(
+        val scanning: Boolean = false,
+        val best: IpScore? = null,
+        val lastScanAt: Long = 0L
+    )
+
+    private val _ui = MutableStateFlow(
+        ScanUi(lastScanAt = _lastEvaluationTime.get())
+    )
+    val ui: StateFlow<ScanUi> = _ui.asStateFlow()
+
+    /**
+     * The already-scanned best IP, without any network work. The connect path
+     * uses this and only this: a connection is never slowed down by, nor made
+     * to wait for, a scan. Scanning happens at app entry in the background,
+     * or when the user asks for it.
+     */
+    fun peekCachedBest(): IpScore? {
+        val ip = _currentBestIp.get() ?: return null
+        return _ipScores[ip]
+    }
+
+    /**
+     * One background scan. Runs once at app entry (so the cached best is
+     * ready before the user ever presses connect) and whenever the user asks
+     * again. It never runs as part of a connection attempt.
+     */
+    suspend fun warmUp(context: Context, forceRefresh: Boolean = false) {
+        initialize(context)
+        if (_ui.value.scanning) return
+        _ui.value = _ui.value.copy(scanning = true)
+        try {
+            // getBestIp returns the fresh cache instantly; it only evaluates
+            // when the cache is stale, which is exactly the one scan wanted.
+            getBestIp(context, forceRefresh = forceRefresh)
+        } catch (t: Throwable) {
+            Log.w("CloudflareIp", "warm-up scan failed: ${t.message}")
+        } finally {
+            _ui.value = ScanUi(
+                scanning = false,
+                best = peekCachedBest(),
+                lastScanAt = _lastEvaluationTime.get()
+            )
         }
     }
 
