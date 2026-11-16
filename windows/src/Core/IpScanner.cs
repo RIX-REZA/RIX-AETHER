@@ -252,22 +252,24 @@ public static class CloudflareFallbackIps
 public sealed class IpScanOptions
 {
     /// <summary>Endpoints probed at the same time. Higher is faster and noisier.</summary>
-    public int Concurrency { get; set; } = 96;
+    public int Concurrency { get; set; } = 128;
 
     /// <summary>Per-attempt limit for connect + TLS + the first bytes.</summary>
-    public int TimeoutMs { get; set; } = 1500;
+    public int TimeoutMs { get; set; } = 1200;
 
     /// <summary>How many times each address is tried, for success rate and jitter.</summary>
     public int Samples { get; set; } = 1;
 
-    /// <summary>The ports Cloudflare serves the edge on.</summary>
-    public int[] Ports { get; set; } = { 443, 2053, 2083, 2087, 2096, 8443 };
+    /// <summary>The ports Cloudflare serves the edge on. Three instead of
+    /// six: on a filtered network every closed port costs a full timeout per
+    /// address, and 443/2053/8443 already cover the ones that answer there.</summary>
+    public int[] Ports { get; set; } = { 443, 2053, 8443 };
 
     public bool IncludeIpv6 { get; set; }
 
     /// <summary>Addresses sampled from each published range. A /13 has 500k
     /// addresses; probing all of them is a port scan, not a scan for an edge.</summary>
-    public int AddressesPerRange { get; set; } = 6;
+    public int AddressesPerRange { get; set; } = 3;
 
     /// <summary>Take a small throughput sample. Off makes a scan much lighter.</summary>
     public bool MeasureSpeed { get; set; } = true;
@@ -625,7 +627,8 @@ public sealed class IpScanner
         IpScanOptions options,
         CloudflareRanges ranges,
         IProgress<ScanProgress> progress,
-        CancellationToken token)
+        CancellationToken token,
+        Action<ScanCandidate> onFirstCandidate = null)
     {
         // The bundled 200-address source is the primary candidate set: it is
         // real Cloudflare address space carried in the app, so the scan is a
@@ -639,6 +642,7 @@ public sealed class IpScanner
         var results = new ConcurrentBag<ScanCandidate>();
         var done = 0;
         var working = 0;
+        var announced = 0;
         ScanCandidate best = null;
 
         var parallel = new ParallelOptions
@@ -659,6 +663,13 @@ public sealed class IpScanner
                     lock (results)
                     {
                         if (best == null || candidate.Score > best.Score) best = candidate;
+                    }
+                    // Hand the very first verified address straight out: the
+                    // host can open the session on it without waiting for the
+                    // remaining hundreds of probes to finish.
+                    if (onFirstCandidate != null && Interlocked.Exchange(ref announced, 1) == 0)
+                    {
+                        try { onFirstCandidate(candidate); } catch { }
                     }
                 }
             }
@@ -803,16 +814,25 @@ public sealed class IpScanCache
 }
 
 /// <summary>
-/// The long-lived scanner: one scan on demand, then periodically in the
-/// background, plus the "best address changed" signal the supervisor uses to
-/// migrate without waiting for the user.
+/// The long-lived scanner.
+///
+/// One scan is one scan: a second caller joins the scan already in flight
+/// instead of starting another, and the automatic scan happens at most once
+/// per launch. There is deliberately no periodic loop -- a scanner that keeps
+/// re-probing the same addresses makes the app look busy, spends network and
+/// battery, and never connects a moment sooner. Rescanning is the user's
+/// choice, or the single scan a connect asks for when nothing was ever
+/// scanned.
 /// </summary>
 public sealed class IpScannerService : IDisposable
 {
     private readonly IpScanner _scanner;
     private readonly HttpClient _http;
     private readonly object _gate = new();
-    private CancellationTokenSource _loop;
+    private Task<IpScanCache> _inflight;
+    private CancellationTokenSource _auto;
+    private bool _autoRan;
+    private int _scanId;
     private bool _disposed;
 
     public IpScannerService(IpScanner scanner = null, HttpClient http = null)
@@ -824,23 +844,42 @@ public sealed class IpScannerService : IDisposable
     public event Action<ScanProgress> Progress;
     public event Action<IpScanCache> Completed;
     public event Action<ScanCandidate> BestChanged;
+    /// <summary>Raised the moment the first address of a scan answers. The
+    /// host uses it to start the connection on that address immediately,
+    /// while the rest of the scan keeps going in the background.</summary>
+    public event Action<ScanCandidate> FirstCandidate;
     public event Action<string> Log;
 
     public IpScanCache Cache { get; private set; } = IpScanCache.Load();
 
     public ScanCandidate Best => Cache.Best;
 
-    public bool IsScanning { get; private set; }
-
-    public int IntervalMinutes { get; set; } = 30;
+    public bool IsScanning
+    {
+        get { lock (_gate) return _inflight != null; }
+    }
 
     public IpScanOptions Options { get; set; } = new();
 
-    /// <summary>Runs one scan now. Concurrent calls join the one in flight.</summary>
-    public async Task<IpScanCache> ScanNowAsync(CancellationToken token)
+    /// <summary>
+    /// One scan now. A concurrent call joins the scan already running and
+    /// resolves with its result -- it never starts a second probe storm.
+    /// </summary>
+    public Task<IpScanCache> ScanNowAsync(CancellationToken token)
     {
-        if (IsScanning) return Cache;
-        IsScanning = true;
+        lock (_gate)
+        {
+            if (_disposed) return Task.FromResult(Cache);
+            if (_inflight != null) return _inflight;
+            var id = ++_scanId;
+            var task = ScanCoreAsync(token, id);
+            _inflight = task;
+            return task;
+        }
+    }
+
+    private async Task<IpScanCache> ScanCoreAsync(CancellationToken token, int id)
+    {
         try
         {
             Log?.Invoke("scan: شروع / starting");
@@ -860,7 +899,16 @@ public sealed class IpScannerService : IDisposable
                 }
             });
 
-            var ranked = await _scanner.ScanAsync(Options, ranges, progress, token);
+            var announced = 0;
+            void OnFirst(ScanCandidate candidate)
+            {
+                if (candidate == null) return;
+                if (Interlocked.Exchange(ref announced, 1) == 1) return;
+                Log?.Invoke($"scan: اولین آدرس پاسخ داد / first address answered — {candidate.Endpoint}");
+                try { FirstCandidate?.Invoke(candidate); } catch { }
+            }
+
+            var ranked = await _scanner.ScanAsync(Options, ranges, progress, token, OnFirst);
 
             var fresh = new IpScanCache
             {
@@ -903,50 +951,69 @@ public sealed class IpScannerService : IDisposable
         }
         finally
         {
-            IsScanning = false;
-            Progress?.Invoke(new ScanProgress { Running = false, Best = Cache.Best });
+            var mine = false;
+            lock (_gate)
+            {
+                if (id == _scanId)
+                {
+                    _inflight = null;
+                    mine = true;
+                }
+            }
+            if (mine)
+                Progress?.Invoke(new ScanProgress { Running = false, Best = Cache.Best });
         }
     }
 
-    /// <summary>Starts the periodic loop. Safe to call more than once.</summary>
+    /// <summary>
+    /// The single automatic scan of this launch, a few seconds after start so
+    /// the first connect owns the link. Calling it again is a no-op: this is
+    /// a latch, not a timer.
+    /// </summary>
     public void Start()
     {
         lock (_gate)
         {
-            if (_loop != null) return;
-            _loop = new CancellationTokenSource();
-            _ = LoopAsync(_loop.Token);
+            if (_disposed || _autoRan || _auto != null) return;
+            _autoRan = true;
+            _auto = new CancellationTokenSource();
+        }
+        _ = AutoScanOnceAsync(_auto.Token);
+    }
+
+    private async Task AutoScanOnceAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), token);
+            await ScanNowAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            CancellationTokenSource own;
+            lock (_gate)
+            {
+                own = _auto;
+                _auto = null;
+            }
+            try { own?.Dispose(); } catch { }
         }
     }
 
+    /// <summary>Cancels the automatic scan (Psiphon, or scanning turned off).
+    /// A scan the user started is left alone.</summary>
     public void Stop()
     {
+        CancellationTokenSource auto;
         lock (_gate)
         {
-            _loop?.Cancel();
-            _loop?.Dispose();
-            _loop = null;
+            auto = _auto;
+            _auto = null;
         }
-    }
-
-    private async Task LoopAsync(CancellationToken token)
-    {
-        // First scan shortly after launch, when the user is still reading the
-        // window, rather than competing with the first connect.
-        try { await Task.Delay(TimeSpan.FromSeconds(8), token); } catch { return; }
-
-        while (!token.IsCancellationRequested)
-        {
-            await ScanNowAsync(token);
-            try
-            {
-                await Task.Delay(TimeSpan.FromMinutes(Math.Clamp(IntervalMinutes, 5, 1440)), token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
+        try { auto?.Cancel(); auto?.Dispose(); } catch { }
     }
 
     public void Dispose()

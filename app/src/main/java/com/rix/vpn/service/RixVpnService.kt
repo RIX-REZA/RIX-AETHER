@@ -157,14 +157,15 @@ class RixVpnService : VpnService() {
                 // same port and nothing here changes.
                 val upstreamPort = candidate.corePort
                 val listening = try {
-                    // The scanned best when it exists, otherwise a random
-                    // address from the bundled 200-IP source: a connect is
-                    // never refused or pinned to one IP. Psiphon picks its
-                    // own path and takes no peer at all.
+                    // Only a verified scan winner is injected, and only if
+                    // one already exists: this never scans and never waits.
+                    // With nothing verified the core takes its own default
+                    // path -- exactly what the original client did, and the
+                    // reason it connected. Psiphon picks its own path and
+                    // takes no peer at all.
                     val coreOptions = candidate.forCore().let { opts ->
                         val scanned = if (!opts.psiphon && opts.peer.isBlank()) {
                             CloudflareIpManager.peekCachedBest()?.ip
-                                ?: CloudflareIpManager.randomSourceIp()
                         } else {
                             null
                         }

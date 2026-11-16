@@ -1276,20 +1276,6 @@ html[dir="rtl"] .switch.on::after { transform: translateX(-18px); }
 /* -------------------------------------------------------- mini scan + pages */
 
 /* The one-time first-run prompt: "run one scan to connect". */
-.scan-prompt {
-  width: min(470px, 92%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border-radius: 12px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  text-align: start;
-}
-
-.sp-text { font-size: 12px; color: var(--text); line-height: 1.6; flex: 1; }
-.scan-prompt .ghost { flex: none; }
 
 .mini-scan {
   width: min(430px, 92%);

@@ -56,7 +56,6 @@ const T = {
     details: 'جزئیات', scan: 'اسکنر',
     scanNote: 'هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان peer به هسته داده می‌شود. با Psiphon این انتخاب کنار گذاشته می‌شود چون سایفون مسیر خودش را انتخاب می‌کند.',
     updateCheck: 'بررسی به‌روزرسانی', updateChecking: 'در حال بررسی…', updateGet: 'دانلود به‌روزرسانی',
-    scanNeededText: 'برای بهترین IP یک بار اسکن کن (اختیاری). اتصال همیشه آماده است و حتی بدون اسکن هم وصل میشود — اسکن فقط زمانی که خودت بخواهی تکرار میشود.',
   },
   en: {
     connect: 'Connect', disconnect: 'Disconnect', cancel: 'Cancel', retry: 'Try again',
@@ -94,7 +93,6 @@ const T = {
     details: 'Details', scan: 'Scanner',
     scanNote: 'Each address is probed directly with TCP and TLS; nothing goes through the tunnel. The winner is handed to the core as its peer on the next connect. With Psiphon selected, this pick is left out because Psiphon chooses its own path.',
     updateCheck: 'Check for updates', updateChecking: 'Checking…', updateGet: 'Download update',
-    scanNeededText: 'Run one scan for the best IP (optional). Connecting always works, even before a scan; rescanning is only ever your choice.',
   }
 };
 
@@ -264,10 +262,9 @@ const GROUPS = [
     title: { fa: 'اسکنر لبه', en: 'Edge scanner' },
     sub: { fa: 'رنج‌های کلودفلر و انتخاب بهترین آی‌پی', en: 'Cloudflare ranges and best-address selection' },
     fields: [
-      { k: 'scanEnabled', t: 'switch', name: { fa: 'اسکن دوره‌ای', en: 'Periodic scan' } },
+      { k: 'scanEnabled', t: 'switch', name: { fa: 'اسکن پس‌زمینه', en: 'Background scan' } },
       { k: 'scanUseBestPeer', t: 'switch', name: { fa: 'استفاده از بهترین آی‌پی به‌عنوان peer', en: 'Use best IP as peer' } },
-      { k: 'scanIntervalMinutes', t: 'number', name: { fa: 'فاصله اسکن (دقیقه)', en: 'Scan interval (minutes)' } },
-      { k: 'scanPorts', t: 'text', name: { fa: 'پورت‌ها', en: 'Ports' }, ph: '443,2053,2083,2087,2096,8443' },
+      { k: 'scanPorts', t: 'text', name: { fa: 'پورت‌ها', en: 'Ports' }, ph: '443,2053,8443' },
       { k: 'scanConcurrency', t: 'number', name: { fa: 'هم‌زمانی', en: 'Concurrency' } },
       { k: 'scanTimeoutMs', t: 'number', name: { fa: 'مهلت هر تلاش (میلی‌ثانیه)', en: 'Timeout per attempt (ms)' } },
       { k: 'scanIpv6', t: 'switch', name: { fa: 'شامل IPv6', en: 'Include IPv6' } },
@@ -276,8 +273,8 @@ const GROUPS = [
       {
         k: 'scannerNote', t: 'note',
         text: {
-          fa: 'اسکنر رنج‌های رسمی ips-v4 و ips-v6 را می‌گیرد و در data\\ نگه می‌دارد. هر آدرس با TCP و TLS روی پورت‌های بالا و به‌صورت مستقیم آزمایش می‌شود؛ از تانل عبور نمی‌کند. بهترین آدرس در اتصال بعدی به‌عنوان --peer به هسته داده می‌شود.',
-          en: 'The scanner fetches the official ips-v4 and ips-v6 lists and caches them under data\\. Each address is tested directly with TCP and TLS on the ports above; nothing goes through the tunnel. The winner is passed to the core as --peer on the next connect.',
+          fa: 'اسکنر یک منبع ۲۰۰ آدرسی کلودفلر را همراه خود دارد و هر آدرس را مستقیم با TCP و TLS روی پورت‌های بالا آزمایش می‌کند؛ از تانل عبور نمی‌کند. در هر اجرا حداکثر یک اسکن انجام می‌شود، و اولین آدرسی که پاسخ دهد همان لحظه برای اتصال استفاده می‌شود. اسکن دوباره فقط با دکمهٔ خودت.',
+          en: 'The scanner carries a bundled 200-address Cloudflare source and tests each address directly with TCP and TLS on the ports above; nothing goes through the tunnel. At most one scan runs per launch, and the first address that answers is used for the connection at that moment. Rescanning is only your button.',
         },
       },
     ],
@@ -574,8 +571,8 @@ function defaults() {
     perf: '', logLevel: 'INFO', ech: '', routeDirect: '', routeBlock: '', extraArgs: '',
     tunnelMode: 'proxy', killSwitch: false, splitTunnel: '',
     scanEnabled: true, scanUseBestPeer: true, scanIntervalMinutes: 30,
-    scanConcurrency: 24, scanTimeoutMs: 1800,
-    scanPorts: '443,2053,2083,2087,2096,8443', scanIpv6: false,
+    scanConcurrency: 128, scanTimeoutMs: 1200,
+    scanPorts: '443,2053,8443', scanIpv6: false,
     scanSpeedSample: true, scanOnLaunch: true,
     psiphon: false, psiphonRegion: '', psiphonMode: 'auto',
     theme: 'dark', lang: 'fa', startWithWindows: false, minimizeToTray: true,
@@ -794,17 +791,6 @@ function renderHome() {
   renderAlert(phase);
   renderScan();
   renderUpdate();
-
-  // The one-time first-run prompt: nothing scanned yet, so this session
-  // starts on the scan's winner the moment the scan completes.
-  const prompt = el('scanPrompt');
-  prompt.classList.toggle('hidden', !state.scanNeeded);
-  if (state.scanNeeded) {
-    el('scanPromptText').textContent = t('scanNeededText');
-    el('scanPromptBtn').textContent = t('scan');
-    el('scanPromptConnectBtn').textContent = t('connect');
-    el('scanPromptBtn').disabled = !!scan.running;
-  }
 }
 
 /** The one secondary action on the home screen: keeping the app current. */
@@ -1095,11 +1081,6 @@ function onMessage(event) {
       toast(message.text, true);
       break;
 
-    case 'scanNeeded':
-      state.scanNeeded = !!message.needed;
-      renderHome();
-      break;
-
     case 'update':
       state.update = {
         checking: false,
@@ -1116,7 +1097,7 @@ function onMessage(event) {
   }
 }
 
-const state = { corePath: '', hasPsiphon: false, proxy: '', update: { checking: false }, scanNeeded: false };
+const state = { corePath: '', hasPsiphon: false, proxy: '', update: { checking: false } };
 
 /* ---------------------------------------------------------------------- log */
 
@@ -1225,20 +1206,6 @@ function wire() {
   };
   el('drawerBackdrop').onclick = closeDrawer;
   el('miniScan').onclick = () => { show('scan'); closeDrawer(); };
-  el('scanPromptBtn').onclick = () => {
-    if (scan.running) return;
-    scan.running = true;
-    renderScan();
-    // Scan once, then start the session on the best address it found.
-    send({ type: 'scanNow', autoConnect: true });
-  };
-  el('scanPromptConnectBtn').onclick = () => {
-    // Always available: the dial and this button connect immediately, even
-    // before any scan, using a real address from the bundled source.
-    state.scanNeeded = false;
-    renderHome();
-    send({ type: 'connect' });
-  };
 
   // Update check: the first press asks the host, the second opens the release
   // page when there is something to get. The host keeps the whitelist; the

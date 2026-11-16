@@ -819,8 +819,8 @@ private fun ScannerCard(
             if (!scanning && best == null) {
                 Text(
                     text = s.s(
-                        "بهترین IP پیدا میشود؛ تا آن موقع اتصال با یک IP واقعی از منبع ۲۰۰ تایی شروع میشود",
-                        "The best IP is found here; until then, a real address from the 200-IP source is used"
+                        "اولین آدرسی که پاسخ داد همان لحظه برای اتصال استفاده میشود؛ بقیهٔ اسکن در پس‌زمینه ادامه پیدا می‌کند",
+                        "The first address that answers is used for the connection at once; the rest of the scan continues in the background"
                     ),
                     color = RixColors.TextMuted,
                     fontSize = 10.5.sp

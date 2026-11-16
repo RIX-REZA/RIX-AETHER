@@ -128,11 +128,27 @@ public sealed record RixOptions
     {
         Concurrency = Math.Clamp(ScanConcurrency, 1, 128),
         TimeoutMs = Math.Clamp(ScanTimeoutMs, 250, 10000),
-        Samples = 2,
+        Samples = 1,
         Ports = ScanPortList,
         IncludeIpv6 = ScanIpv6,
         MeasureSpeed = ScanSpeedSample,
     };
+
+    /// <summary>
+    /// Brings settings written by an older build up to the current defaults
+    /// where the stored value was that build's default rather than a choice.
+    /// It is idempotent: once migrated, the values no longer match.
+    /// </summary>
+    public void Migrate()
+    {
+        // Earlier builds shipped 24 workers, a 1.8 s timeout and six ports
+        // for a 200-address scan, which is why a scan took minutes. Those were
+        // defaults, not decisions.
+        if (ScanConcurrency == 24) ScanConcurrency = 128;
+        if (ScanTimeoutMs == 1800) ScanTimeoutMs = 1200;
+        if ((ScanPorts ?? "").Replace(" ", "") == "443,2053,2083,2087,2096,8443")
+            ScanPorts = "443,2053,8443";
+    }
 
     [JsonIgnore]
     public int[] ScanPortList
@@ -360,7 +376,11 @@ public sealed class AppState
             {
                 var text = File.ReadAllText(FilePath);
                 var loaded = JsonSerializer.Deserialize<AppState>(text, Json);
-                if (loaded?.Options != null) return loaded;
+                if (loaded?.Options != null)
+                {
+                    loaded.Options.Migrate();
+                    return loaded;
+                }
             }
         }
         catch

@@ -53,10 +53,17 @@ object CloudflareIpManager {
     private const val CF_IPV4_URL = "https://www.cloudflare.com/ips-v4"
     private const val CF_IPV6_URL = "https://www.cloudflare.com/ips-v6"
     private const val CACHE_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
-    private const val PROBE_TIMEOUT_MS = 2500L
+    private const val PROBE_TIMEOUT_MS = 2000L
     private const val MAX_IPS_TO_TEST = 200
     private const val MIN_SUCCESSFUL_PROBES = 3
-    private const val PARALLEL_PROBES = 40
+    private const val PARALLEL_PROBES = 64
+
+    /**
+     * How long a scan that found nothing is trusted. Without this, every call
+     * to [getBestIp] re-probed all 200 addresses -- which is what made the app
+     * look like it scanned over and over on a network where nothing answers.
+     */
+    private const val EMPTY_RESULT_COOLDOWN_MS = 10 * 60 * 1000L
     private const val PREFS_NAME = "rix_ip_scanner_cache"
     private const val SCORE_FRESHNESS_MS = 5 * 60 * 1000L // 5 minutes
     private const val OPERATOR_CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
@@ -345,6 +352,15 @@ object CloudflareIpManager {
     )
     val ui: StateFlow<ScanUi> = _ui.asStateFlow()
 
+    /** One scan at a time, whoever asks. */
+    private val scanLock = kotlinx.coroutines.sync.Mutex()
+
+    /** True once this process has run its automatic scan. */
+    @Volatile private var warmedUp = false
+
+    /** When a full probe pass last finished, successful or not. */
+    @Volatile private var lastAttemptAt = 0L
+
     /**
      * The already-scanned best IP, without any network work. The connect path
      * uses this and only this: a connection is never slowed down by, nor made
@@ -363,15 +379,28 @@ object CloudflareIpManager {
      */
     suspend fun warmUp(context: Context, forceRefresh: Boolean = false) {
         initialize(context)
-        if (_ui.value.scanning) return
-        _ui.value = _ui.value.copy(scanning = true)
+
+        // Exactly one automatic scan per process. An activity that is
+        // recreated (rotation, theme change) must not start another, and a
+        // second caller joins the running one instead of probing again.
+        if (!forceRefresh && warmedUp) return
+        if (!scanLock.tryLock()) return
         try {
+            if (!forceRefresh && warmedUp) return
+            _ui.value = _ui.value.copy(scanning = true)
+
             // getBestIp returns the fresh cache instantly; it only evaluates
             // when the cache is stale, which is exactly the one scan wanted.
-            getBestIp(context, forceRefresh = forceRefresh)
+            // The first address that answers is published while the scan is
+            // still running, so a connect right after it uses that address.
+            getBestIp(context, forceRefresh = forceRefresh, onFirst = { first ->
+                _ui.value = _ui.value.copy(scanning = true, best = first)
+            })
+            warmedUp = true
         } catch (t: Throwable) {
             Log.w("CloudflareIp", "warm-up scan failed: ${t.message}")
         } finally {
+            scanLock.unlock()
             _ui.value = ScanUi(
                 scanning = false,
                 best = peekCachedBest(),
@@ -388,7 +417,8 @@ object CloudflareIpManager {
     suspend fun getBestIp(
         context: Context,
         port: Int = 443,
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        onFirst: ((IpScore) -> Unit)? = null
     ): String {
         val operatorKey = detectOperatorKey(context) ?: "unknown"
         _operatorKey.set(operatorKey)
@@ -406,9 +436,17 @@ object CloudflareIpManager {
             return operatorCached
         }
 
+        // A scan that just found nothing is not repeated on every caller:
+        // nothing has changed on the network in ten minutes. The connection
+        // simply takes the core's own path, exactly like the original client.
+        val now = System.currentTimeMillis()
+        if (!forceRefresh && lastAttemptAt > 0 && now - lastAttemptAt < EMPTY_RESULT_COOLDOWN_MS) {
+            return _currentBestIp.get() ?: randomSourceIp()
+        }
+
         // Evaluate the bundled 200-IP source. If no address answers, pick a
         // random real address from it rather than pinning one hardcoded IP.
-        val evaluated = evaluateAndSelectBestIp(context, port, operatorKey, forceRefresh)
+        val evaluated = evaluateAndSelectBestIp(context, port, operatorKey, forceRefresh, onFirst)
         return evaluated ?: randomSourceIp()
     }
 
@@ -500,7 +538,8 @@ object CloudflareIpManager {
         context: Context,
         port: Int,
         operatorKey: String,
-        forceRefresh: Boolean
+        forceRefresh: Boolean,
+        onFirst: ((IpScore) -> Unit)? = null
     ): String? {
         // The bundled 200 addresses are the primary source: the scan runs
         // even when the published-list endpoint is blocked. Published ranges
@@ -512,12 +551,16 @@ object CloudflareIpManager {
 
         Log.i("CloudflareIp", "Evaluating ${candidateIps.size} candidate IPs for operator: $operatorKey")
 
-        // Test each IP with real protocol probe in parallel
-        val scores = mutableListOf<IpScore>()
-        val semaphore = Semaphore(PARALLEL_PROBES)
+        lastAttemptAt = System.currentTimeMillis()
 
-        val deferreds = coroutineScope {
-            candidateIps.mapNotNull { ip ->
+        // Test each IP with real protocol probe in parallel
+        val scores = java.util.Collections.synchronizedList(mutableListOf<IpScore>())
+        val semaphore = Semaphore(PARALLEL_PROBES)
+        var published = false
+        var first: IpScore? = null
+
+        coroutineScope {
+            candidateIps.map { ip ->
                 async<IpScore?> {
                     // Manual semaphore acquire/release for compatibility
                     semaphore.acquire()
@@ -527,6 +570,30 @@ object CloudflareIpManager {
                             val scoredResult = result.copyWith(operatorKey = operatorKey)
                             scores.add(scoredResult)
                             _ipScores[scoredResult.ip] = scoredResult
+
+                            // The first address that answers is published at
+                            // once: the connect path peeks at the cache, so a
+                            // connection made now already uses it instead of
+                            // waiting for the remaining 199 probes.
+                            if (scoredResult.isReachable) {
+                                val announce = synchronized(scores) {
+                                    if (published) false else {
+                                        published = true
+                                        true
+                                    }
+                                }
+                                if (announce) {
+                                    _currentBestIp.set(scoredResult.ip)
+                                    _lastEvaluationTime.set(System.currentTimeMillis())
+                                    cacheBestIpForOperator(scoredResult.ip, operatorKey)
+                                    first = scoredResult
+                                    try {
+                                        onFirst?.invoke(scoredResult)
+                                    } catch (t: Throwable) {
+                                        Log.w("CloudflareIp", "first-candidate callback failed", t)
+                                    }
+                                }
+                            }
                         }
                         result
                     } finally {
@@ -536,16 +603,16 @@ object CloudflareIpManager {
             }.awaitAll()
         }
 
-        // Select best by composite score
-        return scores
-            .filter { it.isReachable }
-            .maxByOrNull { it.compositeScore }
-            ?.also { best ->
-                _currentBestIp.set(best.ip)
-                _lastEvaluationTime.set(System.currentTimeMillis())
-                cacheBestIpForOperator(best.ip, operatorKey)
-            }
-            ?.ip
+        // Select the best by composite score; the published first answer is
+        // only a fallback if the ranking pass was cut short.
+        val best = scores.filter { it.isReachable }.maxByOrNull { it.compositeScore }
+        if (best != null) {
+            _currentBestIp.set(best.ip)
+            _lastEvaluationTime.set(System.currentTimeMillis())
+            cacheBestIpForOperator(best.ip, operatorKey)
+            return best.ip
+        }
+        return first?.ip
     }
 
     /** Tries known fallback IPs when range evaluation fails. */

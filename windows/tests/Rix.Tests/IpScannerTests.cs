@@ -248,4 +248,32 @@ public sealed class IpScannerTests
             Assert.Contains(reports, r => r.Done == r.Total && r.Total == 4);
         }
     }
+
+    [Fact]
+    public async Task The_first_verified_address_is_handed_over_while_the_scan_runs()
+    {
+        var scanner = new IpScanner(new ScriptedProbe((_, _) => new ProbeResult(true, 20, 0, 0)));
+        var options = new IpScanOptions
+        {
+            Ports = new[] { 443 },
+            Samples = 1,
+            AddressesPerRange = 4,
+            Seeds = Array.Empty<string>(),
+            UseBundledSource = false,
+            Concurrency = 1,
+            MeasureSpeed = false,
+        };
+
+        var handed = new List<ScanCandidate>();
+        await scanner.ScanAsync(options, OneRange(), null, CancellationToken.None,
+            candidate => { lock (handed) handed.Add(candidate); });
+
+        lock (handed)
+        {
+            // One candidate, handed out as soon as it answered -- not after
+            // the whole scan.
+            Assert.Single(handed);
+            Assert.False(string.IsNullOrEmpty(handed[0].Endpoint));
+        }
+    }
 }
