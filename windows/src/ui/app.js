@@ -273,8 +273,8 @@ const GROUPS = [
       {
         k: 'scannerNote', t: 'note',
         text: {
-          fa: 'اسکنر یک منبع ۲۰۰ آدرسی کلودفلر را همراه خود دارد و هر آدرس را مستقیم با TCP و TLS روی پورت‌های بالا آزمایش می‌کند؛ از تانل عبور نمی‌کند. در هر اجرا حداکثر یک اسکن انجام می‌شود، و اولین آدرسی که پاسخ دهد همان لحظه برای اتصال استفاده می‌شود. اسکن دوباره فقط با دکمهٔ خودت.',
-          en: 'The scanner carries a bundled 200-address Cloudflare source and tests each address directly with TCP and TLS on the ports above; nothing goes through the tunnel. At most one scan runs per launch, and the first address that answers is used for the connection at that moment. Rescanning is only your button.',
+          fa: 'اسکنر یک منبع ۲۰۰ آدرسی کلودفلر را همراه خود دارد و هر آدرس را مستقیم با TCP و TLS روی پورت‌های بالا آزمایش می‌کند؛ از تانل عبور نمی‌کند. در هر اجرا حداکثر یک اسکن انجام می‌شود. اتصال اول همیشه با مسیر خود هسته برقرار می‌شود؛ آدرس اسکن‌شده فقط بعد از شکست آن مسیر، در تلاش‌های بعدی به‌عنوان peer آزمایش می‌شود. اسکن دوباره فقط با دکمهٔ خودت.',
+          en: 'The scanner carries a bundled 200-address Cloudflare source and tests each address directly with TCP and TLS on the ports above; nothing goes through the tunnel. At most one scan runs per launch. The first connect always uses the core\'s own path; a scanned address is only tried as --peer on later attempts, after it has failed. Rescanning is only your button.',
         },
       },
     ],

@@ -40,24 +40,14 @@ public sealed class MainForm : Form
     private readonly IIpProbe _probe = new TlsIpProbe();
     private string _lastPeer;
     private RixState _lastCoreState = RixState.Disconnected;
-    /// <summary>The first address a running scan verified. It is good enough
-    /// to open the session on immediately, without waiting for the rest of
-    /// the scan.</summary>
+    /// <summary>The first address a running scan verified. It is kept for the
+    /// failover chain and for the screen; the first attempt never uses it.</summary>
     private ScanCandidate _firstCandidate;
-    /// <summary>Set when a connect had nothing scanned yet: the first address
-    /// the scan verifies is used to (re)start the session, once.</summary>
-    private bool _scanConnectPending;
-    /// <summary>Guards the one re-attempt the first scan result may cause.</summary>
-    private bool _scanRestarting;
-    /// <summary>True between a connect and a disconnect. A scan result may
-    /// re-open the session only while the user still wants it open.</summary>
-    private bool _connectRequested;
-    /// <summary>Consecutive attempts that failed. The core's own default path
-    /// (the one the original client used) is tried first; after a couple of
-    /// failures a real address from the bundled source is tried as a peer,
-    /// and a peer that keeps failing is dropped again.</summary>
+    /// <summary>Consecutive attempts that failed. Attempt 0 is the core's own
+    /// path -- exactly what the original client ran -- and every later pair
+    /// alternates that path with one verified scanned address, so neither a
+    /// happy core nor a blocked one is ever locked out.</summary>
     private int _peerFailures;
-    private bool _peerDisabled;
 
     public MainForm(AppState state)
     {
@@ -308,7 +298,6 @@ public sealed class MainForm : Form
                         ["text"] = "Psiphon مسیر خودش را انتخاب میکند / Psiphon picks its own path" });
                     break;
                 }
-                _scanConnectPending = message["autoConnect"]?.GetValue<bool>() ?? false;
                 _ = ScanNowAsync();
                 break;
 
@@ -439,68 +428,17 @@ public sealed class MainForm : Form
             _firstCandidate = cache.Best;
         }
         SendScan(cache.Ranked.FirstOrDefault(), null, false, cache);
-
-        // Nothing to wait for either way: a usable address is in the pool for
-        // the next attempt, and if this scan was started by a connect that
-        // found nothing, that connect is retried now -- once.
-        if (_scanConnectPending)
-        {
-            _scanConnectPending = false;
-            if (cache.Ranked.Count > 0 && !_core.Status.IsConnected)
-                RestartWithScannedPeer();
-        }
     }
 
     /// <summary>The scan's first verified address, arriving while the scan is
-    /// still running. It opens the session right away instead of leaving the
-    /// user waiting for the other few hundred probes.</summary>
+    /// still running. It is shown at once and is available to the failover
+    /// chain; a session that is already trying does not get restarted for it,
+    /// because forcing a peer is what the core's own probe skips.</summary>
     private void OnFirstCandidate(ScanCandidate candidate)
     {
         if (_state.Options.Psiphon) return;
         _firstCandidate = candidate;
         SendScan(candidate, null, true, null);
-
-        if (!_connectRequested || !_scanConnectPending) return;
-        if (_core.Status.IsConnected || _scanRestarting) return;
-        _scanConnectPending = false;
-
-        // Do not yank an attempt that is about to succeed. The connect that
-        // started this scan is on the core's own path; give it a few seconds,
-        // then switch to the verified address only if it is still not up.
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(4));
-            if (!_connectRequested || _core.Status.IsConnected) return;
-            RestartWithScannedPeer();
-        });
-    }
-
-    /// <summary>
-    /// Re-opens the session around the scanned address. Only ever called while
-    /// nothing is connected, so it cannot interrupt a live tunnel; the guard
-    /// makes sure a scan can cause exactly one such restart.
-    /// </summary>
-    private void RestartWithScannedPeer()
-    {
-        if (_scanRestarting) return;
-        _scanRestarting = true;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _core.StopAsync();
-            }
-            catch
-            {
-            }
-            finally
-            {
-                _scanRestarting = false;
-            }
-            // The user may have pressed disconnect while the hopeless attempt
-            // was being torn down; never reconnect on their behalf.
-            if (_connectRequested) await ConnectAsync();
-        });
     }
 
     /// <summary>
@@ -517,64 +455,74 @@ public sealed class MainForm : Form
         if (options.Psiphon) return options;
         if (!string.IsNullOrWhiteSpace(options.Peer)) return options;
 
-        // The order of preference is the order of evidence:
+        // The first attempt never names a peer. That is the exact command
+        // the original client ran, and the only one where the core picks and
+        // probes its own edge. A forced peer makes it log "probe skipped" and
+        // then fail the tunnel's own verify -- a TCP/TLS handshake to an edge
+        // says nothing about whether that edge carries the tunnel.
         //
-        // 1. a verified scan winner (the pool rotates through them);
-        // 2. the core's own default path -- exactly what the original client
-        //    used, and the reason it connected;
-        // 3. only after the default path has failed a couple of times, a real
-        //    address from the bundled 200-IP source, a different one per
-        //    attempt, so a blocked edge is never mistaken for a broken app.
-        var best = (options.ScanEnabled && options.ScanUseBestPeer && !_peerDisabled)
-            ? (_peerPool.Pick() ?? _firstCandidate)
-            : null;
-        var endpoint = best?.Endpoint;
+        // After a failure the two paths alternate: the core's own path, then
+        // one verified scanned address, then the core's path again. Neither
+        // side is ever locked out, so a blocked default path finds a scanned
+        // edge within a couple of attempts and vice versa.
+        var endpoint = (string)null;
+        var verifyWithPeer = options.ScanEnabled && options.ScanUseBestPeer;
 
-        // A scanned peer that was retired gets a couple of attempts on the
-        // core's own path before a random source address is tried; with no
-        // scanned peer at all, the second failure is enough.
-        var randomAfter = _peerDisabled ? 6 : 2;
-        if (endpoint == null && options.ScanEnabled && _peerFailures >= randomAfter)
-            endpoint = CloudflareFallbackIps.Random() + ":443";
-
-        if (endpoint == null)
+        if (_peerFailures == 0)
         {
-            // No peer this attempt: the core uses its own path, and a
-            // failure must not be blamed on the peer the last attempt used.
             _lastPeer = "";
             return options;
         }
-        _lastPeer = endpoint;
 
-        // Persist the rotation point: the next launch cools this peer down
-        // for one base period and opens on the next candidate, instead of
-        // every session starting on the same address.
-        var cache = _scanner.Cache;
-        if (best != null && cache != null && cache.LastPeer != endpoint)
+        if (_peerFailures % 2 == 1)
         {
-            cache.LastPeer = endpoint;
-            cache.Save();
+            var best = verifyWithPeer ? (_peerPool.Pick() ?? _firstCandidate) : null;
+            endpoint = best?.Endpoint;
+
+            // Deep into the chain with nothing verified: a real address from
+            // the bundled source, a different one each time.
+            if (endpoint == null && _peerFailures >= 8 && options.ScanEnabled)
+                endpoint = CloudflareFallbackIps.Random() + ":443";
+
+            if (endpoint != null && best != null)
+            {
+                // Persist the rotation point: the next launch cools this peer
+                // down for one base period and opens on the next candidate,
+                // instead of every session starting on the same address.
+                var cache = _scanner.Cache;
+                if (cache != null && cache.LastPeer != endpoint)
+                {
+                    cache.LastPeer = endpoint;
+                    cache.Save();
+                }
+            }
         }
 
+        if (endpoint == null)
+        {
+            // This attempt is the core's own path; a failure must not be
+            // blamed on the peer the previous attempt used.
+            _lastPeer = "";
+            return options;
+        }
+
+        _lastPeer = endpoint;
         return options with { Peer = endpoint };
     }
 
     private async Task ConnectAsync()
     {
-        // The dial connects at once, on the path the original client used.
-        // Nothing is gated behind a scan and nothing waits for one: the scan
-        // only ever improves the *next* attempt, and its first verified
-        // address is handed over the moment it appears (see OnFirstCandidate).
-        // Psiphon picks its own path and neither scans nor takes a peer.
-        _connectRequested = true;
-        _peerDisabled = false;
+        // The dial connects at once, on the path the original client used:
+        // no peer, so the core finds and verifies its own edge. Nothing is
+        // gated behind a scan and nothing waits for one. The scan only feeds
+        // the failover chain, and even then only after this first attempt
+        // has failed. Psiphon picks its own path and takes no peer.
         _peerFailures = 0;
         _lastPeer = "";
 
         if (_state.Options.ScanEnabled && !_state.Options.Psiphon &&
             _peerPool.Count == 0 && _scanner.Best == null && _firstCandidate == null)
         {
-            _scanConnectPending = true;
             _scanner.Options = _state.Options.ToScanOptions();
             _scanner.Start();   // at most one automatic scan per launch
         }
@@ -715,8 +663,6 @@ public sealed class MainForm : Form
 
     private async Task DisconnectAsync()
     {
-        _connectRequested = false;
-        _scanConnectPending = false;
         StopFullTunnel();
         await _core.StopAsync();
         await _session.DisconnectAsync();
@@ -795,19 +741,15 @@ public sealed class MainForm : Form
                  status.State is RixState.Reconnecting or RixState.Disconnected)
         {
             _peerPool.ReportFailure(_lastPeer);
-            // Repeated drops mean this network does not carry the peer. A
-            // scanned peer retires first (the core's own path, the one the
-            // original client used, takes over); if that also fails, a
-            // different real address from the bundled source is tried.
-            if (!_state.Options.Psiphon)
-            {
+            // Only an attempt that never reached Connected advances the
+            // chain towards a scanned peer (see PeerOptions). A session that
+            // was up and dropped retries the same default path first.
+            if (_lastCoreState == RixState.Connecting && !_state.Options.Psiphon)
                 _peerFailures++;
-                if (_peerFailures >= 3 && _peerPool.Count > 0)
-                    _peerDisabled = true;
-            }
         }
         if (status.State is RixState.Connected or RixState.Degraded)
             _peerFailures = 0;
+
         _lastCoreState = status.State;
 
         _coreStatus = status;

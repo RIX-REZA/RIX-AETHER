@@ -819,8 +819,8 @@ private fun ScannerCard(
             if (!scanning && best == null) {
                 Text(
                     text = s.s(
-                        "اولین آدرسی که پاسخ داد همان لحظه برای اتصال استفاده میشود؛ بقیهٔ اسکن در پس‌زمینه ادامه پیدا می‌کند",
-                        "The first address that answers is used for the connection at once; the rest of the scan continues in the background"
+                        "بهترین لبه اندازه‌گیری می‌شود و همین‌جا نشان داده می‌شود؛ اتصال مسیر خود هسته را می‌رود",
+                        "The best edge is measured and shown here; the connection takes the core's own path"
                     ),
                     color = RixColors.TextMuted,
                     fontSize = 10.5.sp

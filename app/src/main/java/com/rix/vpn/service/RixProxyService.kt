@@ -13,7 +13,6 @@ import androidx.lifecycle.lifecycleScope
 import com.rix.vpn.MainActivity
 import com.rix.vpn.R
 import com.rix.vpn.RixApp
-import com.rix.vpn.core.CloudflareIpManager
 import com.rix.vpn.core.PsiphonBridge
 import com.rix.vpn.core.RixMode
 import com.rix.vpn.core.RixOptions
@@ -121,20 +120,13 @@ class RixProxyService : LifecycleService() {
 
                 val upstreamPort = candidate.corePort
                 val listening = try {
-                    // Only a verified scan winner is injected, and only if
-                    // one already exists: this never scans and never waits.
-                    // With nothing verified the core takes its own default
-                    // path -- exactly what the original client did, and the
-                    // reason it connected. Psiphon picks its own path and
-                    // takes no peer at all.
-                    val coreOptions = candidate.forCore().let { opts ->
-                        val scanned = if (!opts.psiphon && opts.peer.isBlank()) {
-                            CloudflareIpManager.peekCachedBest()?.ip
-                        } else {
-                            null
-                        }
-                        if (scanned != null) opts.copy(peer = "$scanned:443") else opts
-                    }
+                    // No peer is injected. The core picks and probes its
+                    // own edge; a forced peer makes it skip its own probe and
+                    // then fail the tunnel's verify, which is exactly how a
+                    // connection ends up "not working". The scanner stays a
+                    // measurement of the best edge on screen, and a peer the
+                    // user pins in settings is still honoured upstream.
+                    val coreOptions = candidate.forCore()
                     RixRuntime.startCore(this, coreOptions)
                     RixRuntime.awaitSocks(upstreamPort, timeoutMs = CORE_LISTEN_MS)
                 } catch (c: CancellationException) {
