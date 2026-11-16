@@ -985,7 +985,10 @@ public sealed class IpScannerService : IDisposable
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
+            // Eight seconds: the first connect gets the link and the CPU to
+            // itself. The scan is for failover and for the screen, never a
+            // gate on the connection.
+            await Task.Delay(TimeSpan.FromSeconds(8), token);
             await ScanNowAsync(token);
         }
         catch (OperationCanceledException)
