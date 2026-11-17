@@ -1,12 +1,12 @@
 name: RIX-AETHER Multi-Platform Release
 
-# Builds the complete 1.0.7 release matrix:
+# Builds the complete 1.0.8 release matrix:
 #   Android  armeabi-v7a, arm64-v8a, universal (both ABIs)
 #   Windows  portable 10/11, desktop installers 10/11
 #
-# The release job updates the existing v1.0.7 release in place: it removes that
+# The release job updates the existing v1.0.8 release in place: it removes that
 # release's old assets, uploads the new ones, and leaves every tag and every
-# other release untouched. It can only be started by hand so a push never
+# other release untouched. The tag itself is created by hand before the run. It can only be started by hand so a push never
 # replaces a published release.
 
 on:
@@ -15,7 +15,7 @@ on:
       release_tag:
         description: "Existing release tag to update"
         required: true
-        default: "v1.0.7"
+        default: "v1.0.8"
       publish:
         description: "Upload to GitHub Releases (false = build-only validation)"
         type: boolean
@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 env:
-  VERSION: "1.0.7"
+  VERSION: "1.0.8"
   # Aether: pinned tag and commit. Both must agree, so a moved tag is a build
   # failure rather than a silently different tunnel core.
   AETHER_TAG: "v2.4.0"
@@ -494,7 +494,7 @@ jobs:
           if-no-files-found: error
 
   # ------------------------------------------------------------------
-  # Release: replace v1.0.7's assets. Tags and other releases are untouched.
+  # Release: replace v1.0.8's assets. Tags and other releases are untouched.
   # ------------------------------------------------------------------
   release:
     name: Publish to ${{ inputs.release_tag }}
@@ -543,8 +543,7 @@ jobs:
           gh release edit "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "RIX-AETHER Multi-Platform Release" \
-            --notes-file docs/release-notes-1.0.7.md \
-            --latest
+            --notes-file docs/release-notes-1.0.8.md
 
           # Upload the new files before removing anything, so a failed upload
           # cannot leave the release empty. --clobber replaces a same-named

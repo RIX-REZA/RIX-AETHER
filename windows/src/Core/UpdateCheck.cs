@@ -58,7 +58,7 @@ public static class UpdateCheck
     }
 
     /// <summary>
-    /// "v1.0.7", "1.0.7", "v1.0.7-beta" all become 1.0.7. A tag the app cannot
+    /// "v1.0.8", "1.0.8", "v1.0.8-beta" all become 1.0.8. A tag the app cannot
     /// read is not an update, rather than a crash.
     /// </summary>
     internal static Version ParseVersion(string tag)

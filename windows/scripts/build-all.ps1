@@ -13,7 +13,7 @@
     ./build-all.ps1 -Edition 10 -CoreRoot C:\aether
 #>
 param(
-    [string] $Version = '1.0.7',
+    [string] $Version = '1.0.8',
     [string] $CoreRoot = '',
     [ValidateSet('10', '11')]
     [string] $Edition = '10'

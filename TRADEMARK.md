@@ -18,7 +18,7 @@ of it.
 - The RIX icon and banner (`docs/banner.svg`, the launcher icons under
   `app/src/main/res/mipmap-*`, and the Windows icon).
 - The Android application id `com.rix.vpn`.
-- The release asset names `RIX-*` (`RIX-1.0.7-debug.apk`, `RIX-Setup-*.exe`,
+- The release asset names `RIX-*` (`RIX-1.0.8-debug.apk`, `RIX-Setup-*.exe`,
   `RIX-Portable.zip`, `RIX-<version>.zip`).
 
 No registration is claimed. The rights asserted here come from use of the name

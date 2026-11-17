@@ -1,16 +1,16 @@
 name: RIX Universal Release
 
 # Builds ALL architectures for Android + Windows, then publishes/updates
-# a single release tag (default v1.0.7). Windows assets are replaced;
+# a single release tag (default v1.0.8). Windows assets are replaced;
 # Android assets are added/updated. Existing release is preserved.
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to create or update (default: v1.0.7)"
+        description: "Release tag to create or update (default: v1.0.8)"
         required: false
-        default: "v1.0.7"
+        default: "v1.0.8"
       abis:
         description: "Comma-separated ABIs to build (default: all supported)"
         required: false
@@ -577,7 +577,7 @@ jobs:
             windows/dist/RIX-Portable.zip
 
   # ──────────────────────────────────────────────────────────────
-  # RELEASE: Create or update v1.0.7 with ALL artifacts
+  # RELEASE: Create or update v1.0.8 with ALL artifacts
   # ──────────────────────────────────────────────────────────────
   release:
     name: publish to release (${{ github.event.inputs.release_tag }})

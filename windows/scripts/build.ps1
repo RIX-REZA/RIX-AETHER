@@ -20,7 +20,7 @@ param(
     [ValidateSet('win-x86', 'win-x64', 'win-arm64')]
     [string] $Runtime,
 
-    [string] $Version = '1.0.7',
+    [string] $Version = '1.0.8',
 
     # Folder containing aether.exe (and optionally pt\, LICENSES\).
     [string] $CoreDir = '',

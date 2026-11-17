@@ -6,7 +6,7 @@
     <AssemblyName>RIX-Tunnel</AssemblyName>
     <RootNamespace>Rix.Windows.Tunnel</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>

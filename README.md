@@ -56,27 +56,22 @@
 
 | Package | Latest published artifact | Notes |
 |:--|:--|:--|
-| **Android · ARMv7** | [`RIX-AETHER-Android-ARMv7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-ARMv7.apk) · 25.8 MiB | 32-bit ARM devices, `armeabi-v7a` |
-| **Android · ARM64** | [`RIX-AETHER-Android-ARM64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-ARM64.apk) · 26.2 MiB | 64-bit ARM devices, `arm64-v8a` |
-| **Android · Universal** | [`RIX-AETHER-Android-Universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Android-Universal.apk) · 41.2 MiB | Contains both ARM ABIs; use this if unsure |
-| **Windows 10 · Portable** | [`RIX-AETHER-Windows-10-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-10-Portable.zip) · 84.2 MiB | Extract and run; data stays in `data\` beside `RIX.exe` |
-| **Windows 11 · Portable** | [`RIX-AETHER-Windows-11-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-11-Portable.zip) · 84.2 MiB | Same portable app; declares Windows 11 as the minimum |
-| **Windows 10 · Desktop** | [`RIX-AETHER-Windows-10-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-10-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 10 1809 (build 17763) or newer |
-| **Windows 11 · Desktop** | [`RIX-AETHER-Windows-11-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/RIX-AETHER-Windows-11-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 11 (build 22000) or newer |
-| **Checksums** | [`SHA256SUMS.txt`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.7/SHA256SUMS.txt) | Covers every artifact above; each file also has a `.sha256` sidecar |
-| **Release Notes** | [v1.0.7](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.7) | Multi-platform 1.0.7 build |
+| **Android · ARMv7** | [`RIX-AETHER-Android-ARMv7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-ARMv7.apk) · 25.8 MiB | 32-bit ARM devices, `armeabi-v7a` |
+| **Android · ARM64** | [`RIX-AETHER-Android-ARM64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-ARM64.apk) · 26.2 MiB | 64-bit ARM devices, `arm64-v8a` |
+| **Android · Universal** | [`RIX-AETHER-Android-Universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-Universal.apk) · 41.2 MiB | Contains both ARM ABIs; use this if unsure |
+| **Windows 10 · Portable** | [`RIX-AETHER-Windows-10-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Portable.zip) · 84.2 MiB | Extract and run; data stays in `data\` beside `RIX.exe` |
+| **Windows 11 · Portable** | [`RIX-AETHER-Windows-11-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Portable.zip) · 84.2 MiB | Same portable app; declares Windows 11 as the minimum |
+| **Windows 10 · Desktop** | [`RIX-AETHER-Windows-10-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 10 1809 (build 17763) or newer |
+| **Windows 11 · Desktop** | [`RIX-AETHER-Windows-11-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 11 (build 22000) or newer |
+| **Checksums** | [`SHA256SUMS.txt`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/SHA256SUMS.txt) | Covers every artifact above; each file also has a `.sha256` sidecar |
+| **Release Notes** | [v1.0.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.8) | Multi-platform 1.0.8 build |
 
 <details>
   <summary><strong>📦 Release integrity · SHA-256</strong></summary>
 
   ```text
-  da3143218eb27d5da7f71f136f063115579d48ebd531e2155a42c9e8c86a5d04  RIX-AETHER-Android-ARM64.apk
-  589554c0cad3fce659c48a7bcf1221e53d072a01db253fa3724396b1b6ccf1b5  RIX-AETHER-Android-ARMv7.apk
-  ceed2f6996df7118e859f7e3f287c0d46f884b064241ff2d5518749541e5358d  RIX-AETHER-Android-Universal.apk
-  94c6f2cd714e5162e6324fa70e0bf9891fb59650040b3f9ec397775c6af59cb0  RIX-AETHER-Windows-10-Desktop-Setup.exe
-  5bc766dc06c97bc3fa59bd00684bc60514be05f0dcbc28eb467471bcce2c5128  RIX-AETHER-Windows-10-Portable.zip
-  aeeae5b6f372ac1b1215a3494398a910e972e6399ef13f2001e1eea1c20590fb  RIX-AETHER-Windows-11-Desktop-Setup.exe
-  5bc766dc06c97bc3fa59bd00684bc60514be05f0dcbc28eb467471bcce2c5128  RIX-AETHER-Windows-11-Portable.zip
+  Published in SHA256SUMS.txt on the release page. Verify with:
+  sha256sum -c SHA256SUMS.txt
   ```
 </details>
 
@@ -87,12 +82,14 @@ Download from the [releases page](https://github.com/RIX-REZA/RIX-AETHER/release
 1. **Checksum.** `SHA256SUMS.txt` covers all seven published files, and every artifact also has a `<filename>.sha256` sidecar. Compare the file you downloaded (`sha256sum -c SHA256SUMS.txt`). This catches a truncated or swapped download and nothing more — anyone can publish a matching sum for their own file.
 2. **Android signature.** `apksigner verify --print-certs RIX-AETHER-Android-Universal.apk` prints `CN=RIX VPN` and the certificate SHA-256 `dc351af6…`. It proves the file was not signed by some *other* key. It does **not** prove the build is ours: that key has been public since it was committed to this repository, so a forged build can show the same fingerprint. [SECURITY.md](SECURITY.md) is the full account, and the rotation plan in it is what ends this.
 
-The multi-platform artifacts were built by workflow run `43251153950` of `multi-platform-release.yml` at commit `653cb50` (Android native libraries and signed APKs on Linux, Windows executable and installers on a Windows x64 runner). These files do **not** have GitHub build attestations, so `gh attestation verify` is not available for this set. An attestation issued for the previous `RIX-1.0.7-debug.apk` from `android-rix.yml` does not cover any file published here.
+The multi-platform artifacts were built by `multi-platform-release.yml` at the `v1.0.8` tag (Android native libraries and signed APKs on Linux, Windows executable and installers on a Windows x64 runner). These files do **not** have GitHub build attestations, so `gh attestation verify` is not available for this set. An attestation issued for an APK from `android-rix.yml` does not cover any file published here.
 
 If you redistribute a modified build, [TRADEMARK.md](TRADEMARK.md) lists what has to change first — the name, the application id and the icons. Forking is allowed and this project does not try to prevent it; the name and the artwork are what stay here.
 
 > [!NOTE]
-> Version **1.0.7** rebuilds the interface on both platforms and fixes the cause of the Android lag: the engine's traffic counters were carried in the same state as the connection phase, so every reading rebuilt the whole screen — once a second, for as long as a tunnel was up. They now live on a flow of their own, and only the session clock, the chart and the two traffic tiles follow them. The live log no longer animates a scroll to the tail on every line.
+> Version **1.0.8** fixes the Windows scanner card that could stay on "scanning" after the scan had finished, and makes the Android scanner real: every candidate is probed with TCP and a TLS handshake that includes SNI, with live progress and a ranked list. The first connect never waits for a scan — it always uses the core's own path, and a scanned address is only tried on later attempts after that path fails. The Android home screen is reduced to the header, status, connect orb and two counters; scanner, settings and log live in a hamburger drawer, and a one-time dismissible tip says scanning is optional. Purple and violet are gone from both palettes.
+>
+> Version **1.0.7** rebuilt the interface on both platforms and removed the cause of the Android lag: the engine's traffic counters travelled in the same state as the connection phase, so every reading rebuilt the whole screen. They now live on a flow of their own, and only the session clock and the traffic tiles follow them.
 >
 > The multi-platform release also ships separate ARMv7, ARM64 and Universal Android APKs, plus Windows 10 and Windows 11 portable and desktop editions. Windows is x64 only: the upstream Aether Windows core used by this version is x86_64, so no Windows ARM64 build is published.
 >
@@ -262,7 +259,7 @@ The Android native core is built in CI because its dependencies (including Borin
 
 ```bash
 # Build and validate the multi-platform release without publishing it
-gh workflow run multi-platform-release.yml -f release_tag=v1.0.7 -f publish=false
+gh workflow run multi-platform-release.yml -f release_tag=v1.0.8 -f publish=false
 
 # For Android-only work, the existing workflow still builds a chosen ABI list
 gh workflow run android-rix.yml -f abis=arm64-v8a,armeabi-v7a
