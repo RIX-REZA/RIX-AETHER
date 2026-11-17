@@ -21,3 +21,6 @@ keystore/
 *.p12
 *.jks
 *.keystore
+
+# Kotlin compiler session markers (local builds)
+.kotlin/
