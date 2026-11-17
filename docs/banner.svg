@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="RIX — Android client for the Aether WARP / MASQUE core">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="RIX — Android and Windows client for the Aether WARP / MASQUE core">
   <title>RIX</title>
 
   <defs>
@@ -81,7 +81,7 @@
         font-size="96" font-weight="800" letter-spacing="6" fill="url(#word)">RIX</text>
 
   <text x="252" y="200" font-family="'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif"
-        font-size="25" fill="#8D93A8">Android client for the Aether WARP / MASQUE core</text>
+        font-size="25" fill="#8D93A8">Android + Windows client for the Aether WARP / MASQUE core</text>
 
   <!-- capability chips -->
   <g font-family="'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15">

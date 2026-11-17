@@ -44,8 +44,8 @@
     <g>
       <rect x="352" y="56" width="40" height="40" rx="12" fill="#171C29" stroke="#232A3C"/>
       <g fill="none" stroke="#ECEEF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="382" y1="76" x2="366" y2="76"/>
-        <path d="M373 69 l-7 7 7 7"/>
+        <line x1="366" y1="76" x2="382" y2="76"/>
+        <path d="M375 69 l7 7 -7 7"/>
       </g>
       <text class="fa" x="340" y="74" direction="rtl" text-anchor="start" font-size="19" font-weight="600" fill="#ECEEF6">اسکنر لبه</text>
       <text class="fa" x="340" y="92" direction="rtl" text-anchor="start" font-size="10.5" fill="#8D93A8">آزمایش واقعی TCP و TLS</text>

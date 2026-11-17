@@ -103,9 +103,9 @@
     <!-- down, exit IP, up -->
     <g>
       <rect x="48" y="610" width="94" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#232A3C"/>
-      <path d="M130 632 v12 M125 639 l5 6 5-6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <text class="fa" x="120" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">دریافت</text>
-      <text class="mono" x="130" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">2.41 MB</text>
+      <path d="M130 639 v-12 M125 632 l5-6 5 6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="fa" x="120" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">ارسال</text>
+      <text class="mono" x="130" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">318 KB</text>
 
       <rect x="152" y="610" width="136" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#2BD9C4" stroke-opacity="0.35"/>
       <circle cx="244" cy="629" r="5" fill="none" stroke="#2BD9C4" stroke-width="1.3"/>
@@ -115,9 +115,9 @@
       <text class="mono" x="220" y="673" text-anchor="middle" font-size="9" fill="#8D93A8">FRA · DE</text>
 
       <rect x="298" y="610" width="94" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#232A3C"/>
-      <path d="M380 639 v-12 M375 632 l5-6 5 6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <text class="fa" x="370" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">ارسال</text>
-      <text class="mono" x="380" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">318 KB</text>
+      <path d="M380 632 v12 M375 639 l5 6 5-6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="fa" x="370" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">دریافت</text>
+      <text class="mono" x="380" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">2.41 MB</text>
     </g>
 
     <!-- mode switch -->
@@ -128,7 +128,7 @@
       <text class="fa" x="135" y="729" direction="rtl" text-anchor="middle" font-size="12.5" fill="#8D93A8">پروکسی (SOCKS5)</text>
     </g>
 
-    <text class="fa" x="220" y="768" direction="rtl" text-anchor="middle" font-size="10.5" fill="#8D93A8">همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService).</text>
+    <text class="fa" x="220" y="768" direction="rtl" text-anchor="middle" font-size="10.5" fill="#8D93A8">برای تغییر حالت، اول اتصال را قطع کن.</text>
 
     <rect x="184" y="846" width="72" height="4" rx="2" fill="#232A3C"/>
   </g>
