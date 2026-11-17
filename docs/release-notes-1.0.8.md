@@ -120,7 +120,15 @@ next to every package. Verify a download with:
 sha256sum -c SHA256SUMS.txt
 ```
 
-<!-- SHA256SUMS -->
+```text
+f88be5e9d935b64ed2aea393c5f1f25345b54087fb36a7cd9be82f3502b93bb7  RIX-AETHER-Android-ARM64.apk
+a83f807d58046946191e87bfec4833a4713f2d44c79bce66e6e0fbf2ada37fa5  RIX-AETHER-Android-ARMv7.apk
+23acdec100dd1e01acc5f0ea003ab331f1d463465b0587da78116a627f0a2e8e  RIX-AETHER-Android-Universal.apk
+f61b43502d9f5737bfa71bc6d9233d68fb8ae81cb7292ddc205bacf427213cf2  RIX-AETHER-Windows-10-Desktop-Setup.exe
+00154ca28d654e946b5688a3ac43fc35670d73b2105763c883890bdf0d6f84c5  RIX-AETHER-Windows-10-Portable.zip
+135ec89aaff826ede3e55871f96fce25560a4119041d2f39bd943a9a8d96c4ca  RIX-AETHER-Windows-11-Desktop-Setup.exe
+00154ca28d654e946b5688a3ac43fc35670d73b2105763c883890bdf0d6f84c5  RIX-AETHER-Windows-11-Portable.zip
+```
 
 ## Verification
 

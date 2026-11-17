@@ -59,10 +59,10 @@
 | **Android · ARMv7** | [`RIX-AETHER-Android-ARMv7.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-ARMv7.apk) · 25.8 MiB | 32-bit ARM devices, `armeabi-v7a` |
 | **Android · ARM64** | [`RIX-AETHER-Android-ARM64.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-ARM64.apk) · 26.2 MiB | 64-bit ARM devices, `arm64-v8a` |
 | **Android · Universal** | [`RIX-AETHER-Android-Universal.apk`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Android-Universal.apk) · 41.2 MiB | Contains both ARM ABIs; use this if unsure |
-| **Windows 10 · Portable** | [`RIX-AETHER-Windows-10-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Portable.zip) · 84.2 MiB | Extract and run; data stays in `data\` beside `RIX.exe` |
-| **Windows 11 · Portable** | [`RIX-AETHER-Windows-11-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Portable.zip) · 84.2 MiB | Same portable app; declares Windows 11 as the minimum |
-| **Windows 10 · Desktop** | [`RIX-AETHER-Windows-10-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 10 1809 (build 17763) or newer |
-| **Windows 11 · Desktop** | [`RIX-AETHER-Windows-11-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Desktop-Setup.exe) · 76.5 MiB | Per-user installer, Windows 11 (build 22000) or newer |
+| **Windows 10 · Portable** | [`RIX-AETHER-Windows-10-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Portable.zip) · 84.4 MiB | Extract and run; data stays in `data\` beside `RIX.exe` |
+| **Windows 11 · Portable** | [`RIX-AETHER-Windows-11-Portable.zip`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Portable.zip) · 84.4 MiB | Same portable app; declares Windows 11 as the minimum |
+| **Windows 10 · Desktop** | [`RIX-AETHER-Windows-10-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-10-Desktop-Setup.exe) · 76.7 MiB | Per-user installer, Windows 10 1809 (build 17763) or newer |
+| **Windows 11 · Desktop** | [`RIX-AETHER-Windows-11-Desktop-Setup.exe`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/RIX-AETHER-Windows-11-Desktop-Setup.exe) · 76.7 MiB | Per-user installer, Windows 11 (build 22000) or newer |
 | **Checksums** | [`SHA256SUMS.txt`](https://github.com/RIX-REZA/RIX-AETHER/releases/download/v1.0.8/SHA256SUMS.txt) | Covers every artifact above; each file also has a `.sha256` sidecar |
 | **Release Notes** | [v1.0.8](https://github.com/RIX-REZA/RIX-AETHER/releases/tag/v1.0.8) | Multi-platform 1.0.8 build |
 
@@ -70,8 +70,13 @@
   <summary><strong>📦 Release integrity · SHA-256</strong></summary>
 
   ```text
-  Published in SHA256SUMS.txt on the release page. Verify with:
-  sha256sum -c SHA256SUMS.txt
+  f88be5e9d935b64ed2aea393c5f1f25345b54087fb36a7cd9be82f3502b93bb7  RIX-AETHER-Android-ARM64.apk
+  a83f807d58046946191e87bfec4833a4713f2d44c79bce66e6e0fbf2ada37fa5  RIX-AETHER-Android-ARMv7.apk
+  23acdec100dd1e01acc5f0ea003ab331f1d463465b0587da78116a627f0a2e8e  RIX-AETHER-Android-Universal.apk
+  f61b43502d9f5737bfa71bc6d9233d68fb8ae81cb7292ddc205bacf427213cf2  RIX-AETHER-Windows-10-Desktop-Setup.exe
+  00154ca28d654e946b5688a3ac43fc35670d73b2105763c883890bdf0d6f84c5  RIX-AETHER-Windows-10-Portable.zip
+  135ec89aaff826ede3e55871f96fce25560a4119041d2f39bd943a9a8d96c4ca  RIX-AETHER-Windows-11-Desktop-Setup.exe
+  00154ca28d654e946b5688a3ac43fc35670d73b2105763c883890bdf0d6f84c5  RIX-AETHER-Windows-11-Portable.zip
   ```
 </details>
 
@@ -82,7 +87,7 @@ Download from the [releases page](https://github.com/RIX-REZA/RIX-AETHER/release
 1. **Checksum.** `SHA256SUMS.txt` covers all seven published files, and every artifact also has a `<filename>.sha256` sidecar. Compare the file you downloaded (`sha256sum -c SHA256SUMS.txt`). This catches a truncated or swapped download and nothing more — anyone can publish a matching sum for their own file.
 2. **Android signature.** `apksigner verify --print-certs RIX-AETHER-Android-Universal.apk` prints `CN=RIX VPN` and the certificate SHA-256 `dc351af6…`. It proves the file was not signed by some *other* key. It does **not** prove the build is ours: that key has been public since it was committed to this repository, so a forged build can show the same fingerprint. [SECURITY.md](SECURITY.md) is the full account, and the rotation plan in it is what ends this.
 
-The multi-platform artifacts were built by `multi-platform-release.yml` at the `v1.0.8` tag (Android native libraries and signed APKs on Linux, Windows executable and installers on a Windows x64 runner). These files do **not** have GitHub build attestations, so `gh attestation verify` is not available for this set. An attestation issued for an APK from `android-rix.yml` does not cover any file published here.
+The multi-platform artifacts were built by workflow run `44127338916` of `multi-platform-release.yml` at commit `5504157` (the `v1.0.8` tag) (Android native libraries and signed APKs on Linux, Windows executable and installers on a Windows x64 runner). These files do **not** have GitHub build attestations, so `gh attestation verify` is not available for this set. An attestation issued for an APK from `android-rix.yml` does not cover any file published here.
 
 If you redistribute a modified build, [TRADEMARK.md](TRADEMARK.md) lists what has to change first — the name, the application id and the icons. Forking is allowed and this project does not try to prevent it; the name and the artwork are what stay here.
 
