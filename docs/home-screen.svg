@@ -1,170 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="440" height="872" viewBox="0 0 440 872" role="img" aria-label="RIX home screen: tunnel up, egress IP between the down and up counters">
-  <title>RIX — home screen</title>
-  <desc>A mockup of the RIX home screen drawn in the app's own palette: header with the RIX mark and a connected badge, the power orb, the session clock, the mode switch, the live counters with the tunnel egress IP between them, and the settings/log navigation.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="900" viewBox="0 0 440 900" role="img" aria-label="RIX for Android 1.0.8 home screen: hamburger menu, RIX mark, connected badge, hero panel with the connect orb and session clock, the optional-scan tip, down, exit-IP and up tiles, and the tunnel/proxy mode switch">
+  <title>RIX for Android — home</title>
+  <desc>The 1.0.8 Android home screen in Persian RTL: the hamburger menu and RIX mark in the header with a connected badge, the tinted hero panel with the power orb, session clock and SOCKS5 port, the one-time dismissible scan tip, the down / exit IP / up tiles, and the full-tunnel or SOCKS5 mode switch.</desc>
 
   <defs>
-    <linearGradient id="phone" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#07070D"/>
-      <stop offset="100%" stop-color="#0B0B16"/>
+    <linearGradient id="screenBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B0E17"/>
+      <stop offset="100%" stop-color="#07090F"/>
     </linearGradient>
-
-    <linearGradient id="screen" x1="0" y1="0" x2="0.6" y2="1">
-      <stop offset="0%" stop-color="#07070D"/>
-      <stop offset="60%" stop-color="#0B0B16"/>
-      <stop offset="100%" stop-color="#07070D"/>
+    <linearGradient id="hero" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#10141F" stop-opacity="0.92"/>
     </linearGradient>
-
-    <radialGradient id="wellV" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#8F7BFF" stop-opacity="0.20"/>
-      <stop offset="100%" stop-color="#8F7BFF" stop-opacity="0"/>
-    </radialGradient>
-
-    <radialGradient id="wellT" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.14"/>
-      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
-    </radialGradient>
-
-    <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.30"/>
-      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
-    </radialGradient>
-
-    <linearGradient id="orbDisc" x1="0" y1="0" x2="0" y2="1">
+    <radialGradient id="orbDisc" cx="34%" cy="28%" r="78%">
       <stop offset="0%" stop-color="#12A08F"/>
-      <stop offset="100%" stop-color="#10101F"/>
-    </linearGradient>
-
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#17172B"/>
-      <stop offset="100%" stop-color="#10101F"/>
-    </linearGradient>
-
-    <linearGradient id="ringTop" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#5B45D6"/>
-      <stop offset="100%" stop-color="#8F7BFF"/>
-    </linearGradient>
-
-    <linearGradient id="ringBottom" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#2BD9C4"/>
+      <stop offset="100%" stop-color="#10141F"/>
+    </radialGradient>
+    <radialGradient id="well" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.11"/>
+      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="logoRing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5EEAD4"/>
       <stop offset="100%" stop-color="#12A08F"/>
     </linearGradient>
-
-    <linearGradient id="bolt" x1="0.1" y1="1" x2="0.9" y2="0">
-      <stop offset="0%" stop-color="#2BD9C4"/>
-      <stop offset="100%" stop-color="#8F7BFF"/>
-    </linearGradient>
-
+    <filter id="deviceShadow" x="-30%" y="-20%" width="160%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
     <clipPath id="screenClip">
-      <rect x="20" y="20" width="400" height="832" rx="36"/>
+      <rect x="30" y="26" width="380" height="848" rx="32"/>
     </clipPath>
-
-    <style>
-      .fa { font-family: Vazirmatn, 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif; }
-      .en { font-family: 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
-    </style>
   </defs>
 
+  <style>
+    .fa{font-family:Vazirmatn,'Noto Sans Arabic','Segoe UI',Tahoma,sans-serif}
+    .mono{font-family:'JetBrains Mono',Consolas,monospace}
+  </style>
+
   <!-- device -->
-  <rect x="10" y="10" width="420" height="852" rx="44" fill="url(#phone)" stroke="#23233C" stroke-width="2"/>
+  <rect x="22" y="18" width="396" height="864" rx="40" fill="#05070C" stroke="#1B2233" stroke-width="2" filter="url(#deviceShadow)"/>
+  <rect x="30" y="26" width="380" height="848" rx="32" fill="url(#screenBg)"/>
 
   <g clip-path="url(#screenClip)">
-    <rect x="20" y="20" width="400" height="832" fill="url(#screen)"/>
-    <ellipse cx="70" cy="90" rx="260" ry="230" fill="url(#wellV)"/>
-    <ellipse cx="390" cy="700" rx="250" ry="230" fill="url(#wellT)"/>
+    <ellipse cx="120" cy="160" rx="230" ry="210" fill="url(#well)"/>
+    <ellipse cx="360" cy="770" rx="220" ry="200" fill="url(#well)" opacity="0.65"/>
 
-    <!-- ===== header ===== -->
+    <!-- status bar -->
+    <text class="mono" x="220" y="50" text-anchor="middle" font-size="10" fill="#8D93A8">12:04</text>
+
+    <!-- header: menu and mark at the start (right), status badge at the end (left) -->
     <g>
-      <circle cx="375" cy="78" r="23" fill="#0B0B16"/>
-      <path d="M358 78 A17 17 0 0 1 392 78" fill="none" stroke="url(#ringTop)" stroke-width="4" stroke-linecap="round"/>
-      <path d="M392 78 A17 17 0 0 1 358 78" fill="none" stroke="url(#ringBottom)" stroke-width="4" stroke-linecap="round"/>
-      <path d="M376.9 70.2 L369.9 78.5 L373.5 78.5 L371.1 84.6 L377.6 76.2 L374 76.2 Z" fill="url(#bolt)"/>
+      <rect x="352" y="58" width="40" height="40" rx="12" fill="#171C29" stroke="#232A3C"/>
+      <g stroke="#ECEEF6" stroke-width="2" stroke-linecap="round">
+        <line x1="362" y1="72" x2="382" y2="72"/>
+        <line x1="362" y1="78" x2="382" y2="78"/>
+        <line x1="362" y1="84" x2="374" y2="84"/>
+      </g>
 
-      <text class="en" x="341" y="84" text-anchor="end" font-size="24" font-weight="700" fill="#EFEDFF">RIX</text>
-      <text class="fa" x="341" y="102" direction="rtl" text-anchor="start" font-size="11" fill="#8E8BAD">تونل امن WARP / MASQUE</text>
+      <circle cx="320" cy="78" r="22" fill="url(#logoRing)"/>
+      <circle cx="320" cy="78" r="20" fill="#0B0E17"/>
+      <path d="M325.2 66.4 L315.4 79.8 L320.2 79.8 L317.4 89.6 L326.6 75.8 L321.8 75.8 Z" fill="#2BD9C4"/>
 
-      <!-- theme button -->
-      <circle cx="170" cy="78" r="18" fill="#10101F" stroke="#23233C"/>
-      <path d="M170 70 A8 8 0 0 1 170 86 Z" fill="#8E8BAD"/>
-      <circle cx="170" cy="78" r="8" fill="none" stroke="#8E8BAD" stroke-width="1.6"/>
+      <text x="287" y="76" text-anchor="end" font-size="22" font-weight="700" letter-spacing="0.5" fill="#ECEEF6" font-family="'Segoe UI',Inter,Roboto,Helvetica,Arial,sans-serif">RIX</text>
+      <text class="fa" x="287" y="94" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">تونل امن WARP / MASQUE</text>
 
-      <!-- status badge -->
-      <rect x="43" y="65" width="84" height="26" rx="13" fill="#2BD9C4" fill-opacity="0.12" stroke="#2BD9C4" stroke-opacity="0.45"/>
-      <circle cx="113" cy="78" r="3.5" fill="#2BD9C4"/>
-      <text class="fa" x="75" y="83" direction="rtl" text-anchor="middle" font-size="11.5" fill="#2BD9C4">متصل</text>
+      <rect x="48" y="64" width="78" height="28" rx="14" fill="#2BD9C4" fill-opacity="0.12" stroke="#2BD9C4" stroke-opacity="0.45"/>
+      <circle cx="110" cy="78" r="3.5" fill="#2BD9C4"/>
+      <text class="fa" x="102" y="82" direction="rtl" text-anchor="start" font-size="10.5" fill="#2BD9C4">متصل</text>
     </g>
 
-    <!-- ===== status ===== -->
-    <text class="fa" x="220" y="142" direction="rtl" text-anchor="middle" font-size="19" font-weight="600" fill="#EFEDFF">تونل برقرار است</text>
-    <text class="fa" x="220" y="166" direction="rtl" text-anchor="middle" font-size="12.5" fill="#8E8BAD">MASQUE / HTTP-2 • پیش‌فرض هسته • لبهٔ FRA</text>
-
-    <!-- ===== power orb ===== -->
+    <!-- hero: status, orb, clock, socks port -->
     <g>
-      <circle cx="220" cy="268" r="112" fill="none" stroke="#2BD9C4" stroke-opacity="0.07" stroke-width="2.2"/>
-      <circle cx="220" cy="268" r="95"  fill="none" stroke="#2BD9C4" stroke-opacity="0.13" stroke-width="2.2"/>
-      <circle cx="220" cy="268" r="78"  fill="none" stroke="#2BD9C4" stroke-opacity="0.20" stroke-width="2.2"/>
-      <circle cx="220" cy="268" r="115" fill="url(#orbGlow)"/>
-      <circle cx="220" cy="268" r="75" fill="url(#orbDisc)" stroke="#2BD9C4" stroke-opacity="0.75" stroke-width="1.5"/>
+      <rect x="48" y="114" width="344" height="380" rx="30" fill="url(#hero)" stroke="#2BD9C4" stroke-opacity="0.24"/>
 
-      <!-- power glyph -->
-      <circle cx="220" cy="246" r="22" fill="none" stroke="#2BD9C4" stroke-width="5"
-              stroke-linecap="round" stroke-dasharray="115.19 23.04" transform="rotate(-60 220 246)"/>
-      <line x1="220" y1="216" x2="220" y2="244" stroke="#2BD9C4" stroke-width="5" stroke-linecap="round"/>
+      <text class="fa" x="220" y="156" direction="rtl" text-anchor="middle" font-size="19" font-weight="600" fill="#ECEEF6">تونل برقرار است</text>
+      <text class="fa" x="220" y="178" direction="rtl" text-anchor="middle" font-size="10.5" fill="#8D93A8">MASQUE / HTTP-2 · اسکن پیش‌فرض · لبهٔ FRA</text>
 
-      <text class="fa" x="220" y="320" direction="rtl" text-anchor="middle" font-size="15" font-weight="600" fill="#EFEDFF">قطع</text>
+      <circle cx="220" cy="296" r="112" fill="none" stroke="#2BD9C4" stroke-opacity="0.06" stroke-width="2"/>
+      <circle cx="220" cy="296" r="98" fill="none" stroke="#2BD9C4" stroke-opacity="0.10" stroke-width="2"/>
+      <circle cx="220" cy="296" r="86" fill="none" stroke="#2BD9C4" stroke-opacity="0.14" stroke-width="2"/>
+      <circle cx="220" cy="296" r="100" fill="none" stroke="#2BD9C4" stroke-opacity="0.16" stroke-width="3"/>
+      <circle cx="220" cy="296" r="75" fill="url(#orbDisc)" stroke="#2BD9C4" stroke-opacity="0.75" stroke-width="1.5"/>
+      <circle cx="220" cy="296" r="18" fill="none" stroke="#2BD9C4" stroke-width="5" stroke-linecap="round" stroke-dasharray="87 26" transform="rotate(-58 220 296)"/>
+      <line x1="220" y1="270" x2="220" y2="292" stroke="#2BD9C4" stroke-width="5" stroke-linecap="round"/>
+      <text class="fa" x="220" y="348" direction="rtl" text-anchor="middle" font-size="14" font-weight="600" fill="#ECEEF6">قطع</text>
+
+      <text class="mono" x="220" y="442" text-anchor="middle" font-size="26" fill="#ECEEF6">12:04</text>
+      <text class="mono" x="220" y="466" text-anchor="middle" font-size="12" fill="#8D93A8">127.0.0.1:1819</text>
     </g>
 
-    <!-- ===== session clock ===== -->
-    <text class="mono" x="220" y="402" text-anchor="middle" font-size="26" fill="#EFEDFF">12:04</text>
-    <text class="mono" x="220" y="424" text-anchor="middle" font-size="12" fill="#8E8BAD">127.0.0.1:1819</text>
-
-    <!-- ===== mode switch ===== -->
+    <!-- one-time scan tip -->
     <g>
-      <rect x="40" y="452" width="360" height="38" rx="19" fill="#10101F" stroke="#23233C"/>
-      <rect x="222" y="456" width="174" height="30" rx="15" fill="#8F7BFF" fill-opacity="0.18" stroke="#8F7BFF" stroke-opacity="0.55"/>
-      <text class="fa" x="309" y="477" direction="rtl" text-anchor="middle" font-size="13" fill="#EFEDFF">تونل کامل</text>
-      <text class="fa" x="130" y="477" direction="rtl" text-anchor="middle" font-size="13" fill="#8E8BAD">پروکسی (SOCKS5)</text>
+      <rect x="48" y="508" width="344" height="88" rx="16" fill="#2BD9C4" fill-opacity="0.10" stroke="#2BD9C4" stroke-opacity="0.35"/>
+      <text class="fa" x="378" y="534" direction="rtl" text-anchor="start" font-size="11" fill="#ECEEF6">برای اتصال بهتر می‌توانی از منوی همبرگری</text>
+      <text class="fa" x="378" y="552" direction="rtl" text-anchor="start" font-size="11" fill="#ECEEF6">یک اسکن تازه بزنی و آی‌پی جدید بگیری.</text>
+      <text class="fa" x="378" y="576" direction="rtl" text-anchor="start" font-size="9.5" fill="#8D93A8">اتصال بدون اسکن هم همیشه کار می‌کند.</text>
+      <g stroke="#8D93A8" stroke-width="1.6" stroke-linecap="round">
+        <line x1="64" y1="534" x2="76" y2="546"/>
+        <line x1="76" y1="534" x2="64" y2="546"/>
+      </g>
     </g>
 
-    <text class="fa" x="220" y="514" direction="rtl" text-anchor="middle" font-size="11.5" fill="#8E8BAD">همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService).</text>
-
-    <!-- ===== counters, with the egress IP in the middle ===== -->
+    <!-- down, exit IP, up -->
     <g>
-      <rect x="40" y="538" width="101.5" height="80" rx="18" fill="#10101F" fill-opacity="0.75" stroke="#23233C" stroke-opacity="0.6"/>
-      <text class="fa" x="90.8" y="565" direction="rtl" text-anchor="middle" font-size="11" fill="#8E8BAD">دریافت</text>
-      <text class="mono" x="90.8" y="595" text-anchor="middle" font-size="14" fill="#EFEDFF">2.41 MB</text>
+      <rect x="48" y="610" width="94" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#232A3C"/>
+      <path d="M130 632 v12 M125 639 l5 6 5-6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="fa" x="120" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">دریافت</text>
+      <text class="mono" x="130" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">2.41 MB</text>
 
-      <rect x="151.5" y="538" width="137" height="80" rx="18" fill="#10101F" fill-opacity="0.75" stroke="#2BD9C4" stroke-opacity="0.35"/>
-      <text class="fa" x="220" y="563" direction="rtl" text-anchor="middle" font-size="10.5" fill="#8E8BAD">آی‌پی خروجی</text>
-      <text class="mono" x="220" y="584" text-anchor="middle" font-size="13" font-weight="600" fill="#EFEDFF">104.28.211.7</text>
-      <text class="mono" x="220" y="601" text-anchor="middle" font-size="9.5" fill="#8E8BAD">FRA · DE</text>
+      <rect x="152" y="610" width="136" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#2BD9C4" stroke-opacity="0.35"/>
+      <circle cx="244" cy="629" r="5" fill="none" stroke="#2BD9C4" stroke-width="1.3"/>
+      <path d="M239 629 h10 M244 624 v10" stroke="#2BD9C4" stroke-width="1.1"/>
+      <text class="fa" x="238" y="633" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">آی‌پی خروجی</text>
+      <text class="mono" x="220" y="656" text-anchor="middle" font-size="13" font-weight="600" fill="#ECEEF6">104.28.211.7</text>
+      <text class="mono" x="220" y="673" text-anchor="middle" font-size="9" fill="#8D93A8">FRA · DE</text>
 
-      <rect x="298.5" y="538" width="101.5" height="80" rx="18" fill="#10101F" fill-opacity="0.75" stroke="#23233C" stroke-opacity="0.6"/>
-      <text class="fa" x="349.3" y="565" direction="rtl" text-anchor="middle" font-size="11" fill="#8E8BAD">ارسال</text>
-      <text class="mono" x="349.3" y="595" text-anchor="middle" font-size="14" fill="#EFEDFF">318 KB</text>
+      <rect x="298" y="610" width="94" height="76" rx="18" fill="#10141F" fill-opacity="0.92" stroke="#232A3C"/>
+      <path d="M380 639 v-12 M375 632 l5-6 5 6" fill="none" stroke="#2BD9C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="fa" x="370" y="640" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">ارسال</text>
+      <text class="mono" x="380" y="670" text-anchor="end" font-size="15" fill="#ECEEF6">318 KB</text>
     </g>
 
+    <!-- mode switch -->
     <g>
-      <rect x="40" y="632" width="178" height="68" rx="18" fill="#10101F" fill-opacity="0.75" stroke="#23233C" stroke-opacity="0.6"/>
-      <text class="fa" x="129" y="658" direction="rtl" text-anchor="middle" font-size="11" fill="#8E8BAD">بستهٔ دریافتی</text>
-      <text class="mono" x="129" y="684" text-anchor="middle" font-size="15" fill="#EFEDFF">1,204</text>
-
-      <rect x="222" y="632" width="178" height="68" rx="18" fill="#10101F" fill-opacity="0.75" stroke="#23233C" stroke-opacity="0.6"/>
-      <text class="fa" x="311" y="658" direction="rtl" text-anchor="middle" font-size="11" fill="#8E8BAD">بستهٔ ارسالی</text>
-      <text class="mono" x="311" y="684" text-anchor="middle" font-size="15" fill="#EFEDFF">986</text>
+      <rect x="48" y="702" width="344" height="44" rx="16" fill="#10141F" stroke="#232A3C"/>
+      <rect x="222" y="706" width="166" height="36" rx="12" fill="#2BD9C4" fill-opacity="0.22"/>
+      <text class="fa" x="305" y="729" direction="rtl" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ECEEF6">تونل کامل</text>
+      <text class="fa" x="135" y="729" direction="rtl" text-anchor="middle" font-size="12.5" fill="#8D93A8">پروکسی (SOCKS5)</text>
     </g>
 
-    <!-- ===== navigation ===== -->
-    <g>
-      <rect x="222" y="716" width="178" height="46" rx="16" fill="url(#tile)" stroke="#23233C"/>
-      <text class="fa" x="311" y="744" direction="rtl" text-anchor="middle" font-size="13.5" fill="#EFEDFF">تنظیمات</text>
+    <text class="fa" x="220" y="768" direction="rtl" text-anchor="middle" font-size="10.5" fill="#8D93A8">همهٔ ترافیک گوشی از تونل عبور می‌کند (VpnService).</text>
 
-      <rect x="40" y="716" width="178" height="46" rx="16" fill="url(#tile)" stroke="#23233C"/>
-      <text class="fa" x="129" y="744" direction="rtl" text-anchor="middle" font-size="13.5" fill="#EFEDFF">گزارش</text>
-    </g>
-
-    <text class="mono" x="220" y="788" text-anchor="middle" font-size="10" fill="#8E8BAD" fill-opacity="0.75">libaether ok · libhev ok · arm64-v8a</text>
-
-    <rect x="185" y="818" width="70" height="5" rx="2.5" fill="#EFEDFF" fill-opacity="0.25"/>
+    <rect x="184" y="846" width="72" height="4" rx="2" fill="#232A3C"/>
   </g>
 </svg>

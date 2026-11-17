@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" role="img" aria-label="RIX for Windows 1.0.8 home window: title bar with hamburger, Telegram and GitHub icons, the large connect dial, connected state, exit IP, the one-time scan tip and the one-line scan heartbeat">
+  <title>RIX for Windows — home</title>
+  <desc>The 1.0.8 Windows home window in Persian RTL: a native title bar with the hamburger menu, Telegram and GitHub icon buttons, language and theme switches, the one-time dismissible scan tip, the large connect dial with the disconnect label, the connected state, the exit IP and protocol line, the update button, and the thin scanner heartbeat.</desc>
+
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B0E17"/>
+      <stop offset="100%" stop-color="#07090F"/>
+    </linearGradient>
+    <linearGradient id="titlebar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141724"/>
+      <stop offset="100%" stop-color="#0F111A"/>
+    </linearGradient>
+    <radialGradient id="dial" cx="30%" cy="25%" r="80%">
+      <stop offset="0%" stop-color="#141724"/>
+      <stop offset="100%" stop-color="#0F111A"/>
+    </radialGradient>
+    <linearGradient id="miniFill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <radialGradient id="well" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#14B8A6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <style>
+    .fa{font-family:Vazirmatn,'Noto Sans Arabic','Segoe UI',Tahoma,sans-serif}
+    .mono{font-family:'JetBrains Mono',Consolas,monospace}
+  </style>
+
+  <rect x="24" y="20" width="952" height="600" rx="14" fill="url(#frame)" stroke="#232A3C"/>
+  <ellipse cx="500" cy="360" rx="420" ry="260" fill="url(#well)"/>
+
+  <!-- title bar -->
+  <g>
+    <path d="M38 20 H962 A14 14 0 0 1 976 34 V68 H24 V34 A14 14 0 0 1 38 20 Z" fill="url(#titlebar)"/>
+    <line x1="24" y1="68" x2="976" y2="68" stroke="#232A3C"/>
+
+    <!-- start side (right) -->
+    <rect x="930" y="29" width="32" height="30" rx="8" fill="#171C29" stroke="#232A3C"/>
+    <g stroke="#ECEEF6" stroke-width="1.8" stroke-linecap="round">
+      <line x1="939" y1="39" x2="953" y2="39"/>
+      <line x1="939" y1="44" x2="953" y2="44"/>
+      <line x1="939" y1="49" x2="948" y2="49"/>
+    </g>
+    <line x1="924" y1="32" x2="924" y2="56" stroke="#232A3C"/>
+    <rect x="897" y="36" width="17" height="17" rx="5" fill="url(#logo)"/>
+    <text x="890" y="50" text-anchor="end" font-size="12.5" font-weight="650" letter-spacing="1.4" fill="#ECEEF6" font-family="'Segoe UI',Inter,Roboto,Helvetica,Arial,sans-serif">RIX</text>
+    <text x="855" y="50" text-anchor="end" font-size="10.5" fill="#5D6376" font-family="'Segoe UI',Inter,Roboto,Helvetica,Arial,sans-serif">v1.0.8</text>
+    <line x1="816" y1="32" x2="816" y2="56" stroke="#232A3C"/>
+    <text class="fa" x="796" y="48" direction="rtl" text-anchor="start" font-size="11" fill="#34D399">متصل</text>
+
+    <!-- actions (left) -->
+    <g>
+      <g stroke="#8D93A8" stroke-width="1.4" stroke-linecap="round">
+        <line x1="43" y1="39" x2="53" y2="49"/>
+        <line x1="53" y1="39" x2="43" y2="49"/>
+        <rect x="75" y="39" width="10" height="10" rx="1.5" fill="none"/>
+        <line x1="107" y1="49" x2="117" y2="49"/>
+      </g>
+      <line x1="132" y1="32" x2="132" y2="56" stroke="#232A3C"/>
+      <text x="148" y="50" text-anchor="middle" font-size="13" fill="#8D93A8">◐</text>
+      <text x="180" y="49" text-anchor="middle" font-size="11" fill="#8D93A8" font-family="'Segoe UI',Inter,Roboto,Helvetica,Arial,sans-serif">EN</text>
+      <g fill="#ECEEF6">
+        <path transform="translate(204 34) scale(0.9)" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+      </g>
+      <g fill="#5EEAD4">
+        <path transform="translate(236 34) scale(0.9)" d="M14.9 3.1 2.7 7.8c-.8.3-.8 1.4.1 1.6l3.1.9 1.2 3.6c.2.7 1 .8 1.5.3l1.7-1.6 3.2 2.4c.6.4 1.4.1 1.6-.6l2.2-10.5c.2-.9-.7-1.6-1.5-1.3zM6.4 9.3l7.8-4.7-6.4 5.5-.2 2.4-1.2-3.2z"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- one-time scan tip -->
+  <g>
+    <rect x="285" y="86" width="430" height="58" rx="13" fill="#14B8A6" fill-opacity="0.15" stroke="#14B8A6" stroke-opacity="0.42"/>
+    <g fill="none" stroke="#5EEAD4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M695 100 v4 M695 112 v4 M689 108 h4 M701 108 h4 M691 102 l3 3 M699 114 l3 3 M701 102 l-3 3 M691 114 l3-3"/>
+      <circle cx="695" cy="108" r="3.4"/>
+    </g>
+    <text class="fa" x="684" y="110" direction="rtl" text-anchor="start" font-size="11" fill="#ECEEF6">برای اتصال بهتر می‌توانی از منوی همبرگری یک اسکن تازه</text>
+    <text class="fa" x="684" y="128" direction="rtl" text-anchor="start" font-size="11" fill="#ECEEF6">بزنی و آی‌پی جدید بگیری. اتصال بدون اسکن هم کار می‌کند.</text>
+    <g stroke="#8D93A8" stroke-width="1.5" stroke-linecap="round">
+      <line x1="299" y1="105" x2="309" y2="115"/>
+      <line x1="309" y1="105" x2="299" y2="115"/>
+    </g>
+  </g>
+
+  <!-- dial -->
+  <g>
+    <circle cx="500" cy="248" r="86" fill="url(#dial)" stroke="#2E3447" stroke-width="1.5"/>
+    <circle cx="500" cy="248" r="70" fill="none" stroke="#14B8A6" stroke-opacity="0.10"/>
+    <circle cx="500" cy="244" r="24" fill="none" stroke="#34D399" stroke-width="5" stroke-linecap="round" stroke-dasharray="116 35" transform="rotate(-58 500 244)"/>
+    <line x1="500" y1="210" x2="500" y2="240" stroke="#34D399" stroke-width="5" stroke-linecap="round"/>
+    <text class="fa" x="500" y="296" direction="rtl" text-anchor="middle" font-size="14" font-weight="600" fill="#ECEEF6">قطع</text>
+  </g>
+
+  <text class="fa" x="500" y="360" direction="rtl" text-anchor="middle" font-size="13" fill="#8D93A8">متصل</text>
+  <text class="mono" x="500" y="396" text-anchor="middle" font-size="30" font-weight="650" fill="#ECEEF6">104.28.211.7</text>
+  <text class="fa" x="500" y="420" direction="rtl" text-anchor="middle" font-size="12.5" fill="#5D6376">MASQUE / HTTP-2 · اسکن پیش‌فرض · لبهٔ FRA</text>
+
+  <g>
+    <rect x="430" y="438" width="140" height="30" rx="8" fill="#0F111A" stroke="#2E3447"/>
+    <text class="fa" x="500" y="458" direction="rtl" text-anchor="middle" font-size="11" fill="#8D93A8">بررسی به‌روزرسانی</text>
+  </g>
+
+  <!-- scanner heartbeat -->
+  <g>
+    <rect x="285" y="486" width="430" height="38" rx="12" fill="#FFFFFF" fill-opacity="0.04" stroke="#FFFFFF" stroke-opacity="0.08"/>
+    <rect x="299" y="496" width="402" height="3" rx="1.5" fill="#FFFFFF" fill-opacity="0.07"/>
+    <rect x="299" y="496" width="281" height="3" rx="1.5" fill="url(#miniFill)"/>
+    <text class="fa" x="701" y="516" direction="rtl" text-anchor="start" font-size="11" fill="#8D93A8">آی‌پی بهینه: 104.28.211.7 · 42ms</text>
+  </g>
+</svg>

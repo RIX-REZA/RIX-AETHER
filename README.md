@@ -7,7 +7,7 @@
 
   <p>
     <a href="https://github.com/RIX-REZA/RIX-AETHER/releases/latest"><img src="https://img.shields.io/github/v/release/RIX-REZA/RIX-AETHER?style=for-the-badge&color=18C7B5&label=LATEST%20RELEASE" alt="Latest release"></a>
-    <a href="https://github.com/RIX-REZA/RIX-AETHER/releases"><img src="https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=for-the-badge&color=7186FF&label=DOWNLOADS" alt="Downloads"></a>
+    <a href="https://github.com/RIX-REZA/RIX-AETHER/releases"><img src="https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=for-the-badge&color=38BDF8&label=DOWNLOADS" alt="Downloads"></a>
     <a href="https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml"><img src="https://img.shields.io/github/actions/workflow/status/RIX-REZA/RIX-AETHER/android-rix.yml?branch=main&style=for-the-badge&label=ANDROID%20CI" alt="Android CI"></a>
   </p>
   <p>
@@ -37,9 +37,30 @@
   </tr>
 </table>
 
-<div align="center">
-  <img src="docs/home-screen.svg" alt="RIX application home screen" width="350">
-</div>
+## 🖼️ INTERFACE
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/home-screen.svg" alt="RIX for Android home screen: hamburger menu, connect orb, session clock and the optional-scan tip" width="250"><br>
+      <sub><strong>Android · home</strong> — hamburger drawer, the connect orb, the one-time optional-scan tip and the three live tiles.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/android-scanner.svg" alt="RIX for Android edge scanner: live 128 of 200 progress and a ranked list of addresses that answered" width="250"><br>
+      <sub><strong>Android · edge scanner</strong> — every candidate probed with real TCP + TLS/SNI, with live progress and a ranked list.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/windows-home.svg" alt="RIX for Windows home window: title bar with Telegram and GitHub icons, the connect dial and the exit IP" width="440"><br>
+      <sub><strong>Windows · home</strong> — icon-only Telegram and GitHub in the title bar, the connect dial, the exit IP and a one-line scan heartbeat.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/windows-scanner.svg" alt="RIX for Windows edge scanner: ranked address chips, the core-to-exit stage strip and the probe controls" width="440"><br>
+      <sub><strong>Windows · edge scanner</strong> — 128 / 200 progress, ranked address chips and the core → listener → tunnel → exit stage strip.</sub>
+    </td>
+  </tr>
+</table>
 
 ## 🕹️ COMMAND CENTER
 

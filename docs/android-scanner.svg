@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="900" viewBox="0 0 440 900" role="img" aria-label="RIX for Android 1.0.8 edge scanner: real TCP and TLS probes, live 128 of 200 progress, the address being tested, a ranked list of addresses that answered, and the note that a scan never blocks connecting">
+  <title>RIX for Android — edge scanner</title>
+  <desc>The 1.0.8 Android scanner screen: a back button and title, a card with the live 128 / 200 progress bar, the address currently being probed and a teal scan button, a ranked list of addresses that answered with their latency, and the explanation that every probe is a direct TCP and TLS handshake.</desc>
+
+  <defs>
+    <linearGradient id="screenBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B0E17"/>
+      <stop offset="100%" stop-color="#07090F"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#171C29" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#10141F" stop-opacity="0.86"/>
+    </linearGradient>
+    <linearGradient id="progress" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#12A08F"/>
+      <stop offset="100%" stop-color="#2BD9C4"/>
+    </linearGradient>
+    <radialGradient id="well" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2BD9C4" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#2BD9C4" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="deviceShadow" x="-30%" y="-20%" width="160%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <clipPath id="screenClip">
+      <rect x="30" y="26" width="380" height="848" rx="32"/>
+    </clipPath>
+  </defs>
+
+  <style>
+    .fa{font-family:Vazirmatn,'Noto Sans Arabic','Segoe UI',Tahoma,sans-serif}
+    .mono{font-family:'JetBrains Mono',Consolas,monospace}
+  </style>
+
+  <rect x="22" y="18" width="396" height="864" rx="40" fill="#05070C" stroke="#1B2233" stroke-width="2" filter="url(#deviceShadow)"/>
+  <rect x="30" y="26" width="380" height="848" rx="32" fill="url(#screenBg)"/>
+
+  <g clip-path="url(#screenClip)">
+    <ellipse cx="220" cy="140" rx="240" ry="200" fill="url(#well)"/>
+
+    <text class="mono" x="220" y="50" text-anchor="middle" font-size="10" fill="#8D93A8">12:04</text>
+
+    <!-- header: back at the start (right), title to its left -->
+    <g>
+      <rect x="352" y="56" width="40" height="40" rx="12" fill="#171C29" stroke="#232A3C"/>
+      <g fill="none" stroke="#ECEEF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="382" y1="76" x2="366" y2="76"/>
+        <path d="M373 69 l-7 7 7 7"/>
+      </g>
+      <text class="fa" x="340" y="74" direction="rtl" text-anchor="start" font-size="19" font-weight="600" fill="#ECEEF6">اسکنر لبه</text>
+      <text class="fa" x="340" y="92" direction="rtl" text-anchor="start" font-size="10.5" fill="#8D93A8">آزمایش واقعی TCP و TLS</text>
+    </g>
+
+    <!-- live scan card -->
+    <g>
+      <rect x="48" y="118" width="344" height="182" rx="22" fill="url(#card)" stroke="#232A3C"/>
+
+      <text class="fa" x="374" y="150" direction="rtl" text-anchor="start" font-size="12.5" fill="#ECEEF6">در حال آزمایش آدرس‌های کلودفلر…</text>
+
+      <rect x="66" y="168" width="308" height="8" rx="4" fill="#232A3C"/>
+      <rect x="66" y="168" width="197" height="8" rx="4" fill="url(#progress)"/>
+
+      <text class="mono" x="374" y="198" text-anchor="end" font-size="11" fill="#8D93A8">128 / 200</text>
+      <text class="mono" x="66" y="198" text-anchor="start" font-size="10.5" fill="#8D93A8">104.28.211.7</text>
+
+      <rect x="226" y="214" width="148" height="38" rx="12" fill="#2BD9C4"/>
+      <g fill="none" stroke="#06121A" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="354" cy="233" r="6"/>
+        <line x1="358.5" y1="237.5" x2="363" y2="242"/>
+      </g>
+      <text class="fa" x="346" y="238" direction="rtl" text-anchor="start" font-size="12" font-weight="600" fill="#06121A">در حال اسکن…</text>
+    </g>
+
+    <!-- ranked answers -->
+    <g>
+      <rect x="48" y="314" width="344" height="220" rx="22" fill="url(#card)" stroke="#232A3C"/>
+      <text class="fa" x="374" y="342" direction="rtl" text-anchor="start" font-size="11.5" fill="#8D93A8">آدرس‌های پاسخ‌داده</text>
+
+      <g>
+        <text class="mono" x="374" y="372" text-anchor="end" font-size="11" fill="#2BD9C4">1</text>
+        <text class="mono" x="346" y="372" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.211.7</text>
+        <text class="mono" x="66" y="372" text-anchor="start" font-size="10.5" fill="#8D93A8">42 ms</text>
+
+        <text class="mono" x="374" y="398" text-anchor="end" font-size="11" fill="#2BD9C4">2</text>
+        <text class="mono" x="346" y="398" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.209.13</text>
+        <text class="mono" x="66" y="398" text-anchor="start" font-size="10.5" fill="#8D93A8">47 ms</text>
+
+        <text class="mono" x="374" y="424" text-anchor="end" font-size="11" fill="#2BD9C4">3</text>
+        <text class="mono" x="346" y="424" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.210.91</text>
+        <text class="mono" x="66" y="424" text-anchor="start" font-size="10.5" fill="#8D93A8">51 ms</text>
+
+        <text class="mono" x="374" y="450" text-anchor="end" font-size="11" fill="#2BD9C4">4</text>
+        <text class="mono" x="346" y="450" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.214.6</text>
+        <text class="mono" x="66" y="450" text-anchor="start" font-size="10.5" fill="#8D93A8">58 ms</text>
+
+        <text class="mono" x="374" y="476" text-anchor="end" font-size="11" fill="#2BD9C4">5</text>
+        <text class="mono" x="346" y="476" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.213.44</text>
+        <text class="mono" x="66" y="476" text-anchor="start" font-size="10.5" fill="#8D93A8">63 ms</text>
+
+        <text class="mono" x="374" y="502" text-anchor="end" font-size="11" fill="#2BD9C4">6</text>
+        <text class="mono" x="346" y="502" text-anchor="end" font-size="11.5" fill="#ECEEF6">104.28.212.18</text>
+        <text class="mono" x="66" y="502" text-anchor="start" font-size="10.5" fill="#8D93A8">67 ms</text>
+      </g>
+    </g>
+
+    <text class="fa" x="392" y="562" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">هر آدرس مستقیم با TCP و TLS آزمایش می‌شود؛ هیچ ترافیکی</text>
+    <text class="fa" x="392" y="580" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">از تونل عبور نمی‌کند و اسکن هیچ‌وقت جلوی اتصال را</text>
+    <text class="fa" x="392" y="598" direction="rtl" text-anchor="start" font-size="10" fill="#8D93A8">نمی‌گیرد. اتصال همیشه اول با مسیر خود هسته برقرار می‌شود.</text>
+
+    <rect x="184" y="846" width="72" height="4" rx="2" fill="#232A3C"/>
+  </g>
+</svg>

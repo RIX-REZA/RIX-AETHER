@@ -7,7 +7,7 @@
 
   <p>
     <a href="https://github.com/RIX-REZA/RIX-AETHER/releases/latest"><img src="https://img.shields.io/github/v/release/RIX-REZA/RIX-AETHER?style=for-the-badge&color=18C7B5&label=LATEST%20RELEASE" alt="آخرین انتشار"></a>
-    <a href="https://github.com/RIX-REZA/RIX-AETHER/releases"><img src="https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=for-the-badge&color=7186FF&label=DOWNLOADS" alt="دانلودها"></a>
+    <a href="https://github.com/RIX-REZA/RIX-AETHER/releases"><img src="https://img.shields.io/github/downloads/RIX-REZA/RIX-AETHER/total?style=for-the-badge&color=38BDF8&label=DOWNLOADS" alt="دانلودها"></a>
     <a href="https://github.com/RIX-REZA/RIX-AETHER/actions/workflows/android-rix.yml"><img src="https://img.shields.io/github/actions/workflow/status/RIX-REZA/RIX-AETHER/android-rix.yml?branch=main&style=for-the-badge&label=ANDROID%20CI" alt="وضعیت CI اندروید"></a>
   </p>
   <p>
@@ -37,9 +37,30 @@
   </tr>
 </table>
 
-<div align="center">
-  <img src="docs/home-screen.svg" alt="صفحه اصلی برنامه RIX" width="350">
-</div>
+## 🖼️ رابط کاربری
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/home-screen.svg" alt="صفحه اصلی RIX در اندروید: منوی همبرگری، گوی اتصال، ساعت نشست و راهنمای اسکن اختیاری" width="250"><br>
+      <sub><strong>اندروید · خانه</strong> — کشوی همبرگری، گوی اتصال، راهنمای یک‌بارهٔ اسکن اختیاری و سه کاشی زنده.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/android-scanner.svg" alt="اسکنر لبه اندروید: پیشرفت زندهٔ ۱۲۸ از ۲۰۰ و فهرست رتبه‌بندی‌شدهٔ آدرس‌های پاسخ‌دهنده" width="250"><br>
+      <sub><strong>اندروید · اسکنر لبه</strong> — هر آدرس با TCP و TLS/SNI واقعی آزمایش می‌شود، با پیشرفت زنده و فهرست رتبه‌بندی‌شده.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/windows-home.svg" alt="پنجره اصلی RIX در ویندوز: نوار عنوان با آیکون تلگرام و گیت‌هاب، گوی اتصال و آی‌پی خروجی" width="440"><br>
+      <sub><strong>ویندوز · خانه</strong> — تلگرام و گیت‌هاب فقط آیکونی در نوار عنوان، گوی اتصال، آی‌پی خروجی و نبض یک‌خطی اسکن.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/windows-scanner.svg" alt="اسکنر لبه ویندوز: تراشه‌های رتبه‌بندی‌شدهٔ آدرس، نوار مرحله‌ها از هسته تا خروج و دکمه‌های آزمایش" width="440"><br>
+      <sub><strong>ویندوز · اسکنر لبه</strong> — پیشرفت ۱۲۸ از ۲۰۰، تراشه‌های رتبه‌بندی‌شده و نوار مرحله‌ها از هسته تا خروج.</sub>
+    </td>
+  </tr>
+</table>
 
 ## 🕹️ مرکز فرماندهی
 
