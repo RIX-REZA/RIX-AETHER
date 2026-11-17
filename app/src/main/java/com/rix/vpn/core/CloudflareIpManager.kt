@@ -814,7 +814,10 @@ object CloudflareIpManager {
             raw.soTimeout = PROBE_TIMEOUT_MS.toInt()
             raw.connect(java.net.InetSocketAddress(ip, port), PROBE_TIMEOUT_MS.toInt())
 
-            val sslSocket = javax.net.ssl.SSLSocketFactory.getDefault()
+            // SSLContext gives an SSLSocketFactory (the static
+            // SSLSocketFactory.getDefault() is typed as SocketFactory, which
+            // has no createSocket(Socket, ...) overload).
+            val sslSocket = javax.net.ssl.SSLContext.getDefault().socketFactory
                 .createSocket(raw, ip, port, true) as javax.net.ssl.SSLSocket
             sslSocket.sslParameters = sslSocket.sslParameters.apply {
                 serverNames = listOf(javax.net.ssl.SNIHostName(SNI_HOST))

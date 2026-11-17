@@ -315,7 +315,7 @@ private fun RixRoot(
     val onBackHome: () -> Unit = remember { { screen = Screen.HOME } }
 
     val goTo: (Screen) -> Unit = remember(drawerState) {
-        { next ->
+        { next: Screen ->
             screen = next
             scope.launch { drawerState.close() }
         }

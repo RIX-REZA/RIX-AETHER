@@ -59,18 +59,12 @@ import com.rix.vpn.core.RixRuntime
 import kotlinx.coroutines.delay
 
 /**
- * The home screen.
+ * The home screen, deliberately small.
  *
- * It reads top to bottom as one answer: what is happening, how far the
- * connection has actually got, how much is moving, and only then the settings
- * that change any of it. The two blocks above the tiles are the point of this
- * version:
- *
- *  - the stage strip lights each hop on evidence, so "connected" cannot be
- *    claimed by a listener that merely accepts (the same rule the Windows
- *    client follows);
- *  - the chart is drawn from the engine's own counters, differenced over time,
- *    so an idle tunnel draws a flat line rather than a plausible-looking curve.
+ * It answers one question -- what is happening right now -- with the header,
+ * the hero panel, the orb and the two counters. Everything else (the scanner,
+ * the settings and the log) lives behind the hamburger drawer, so the first
+ * screen is not a dashboard with several competing controls.
  *
  * The orb keeps the behaviour the user asked for and could not find: a second
  * tap while an attempt is in flight cancels it.
@@ -492,6 +486,117 @@ private fun ConnectingDots(color: Color) {
                 center = Offset(size.width * (0.18f + 0.32f * index), size.height / 2f)
             )
         }
+    }
+}
+
+/**
+ * The session timer.
+ *
+ * It is on its own so that the once-a-second tick recomposes this line and
+ * nothing else. The mark it counts from is the one [RixRuntime.markRunning]
+ * took, on the monotonic clock: a wall-clock correction would otherwise make
+ * the timer jump or run backwards, and a VPN is exactly the app opened on a
+ * phone that just came back from airplane mode.
+ */
+@Composable
+private fun SessionClock(startedAt: Long) {
+    var elapsed by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(startedAt) {
+        elapsed = 0L
+        if (startedAt <= 0L) return@LaunchedEffect
+        while (true) {
+            elapsed = ((SystemClock.elapsedRealtime() - startedAt) / 1000).coerceAtLeast(0L)
+            delay(1000)
+        }
+    }
+    MonoText(text = formatDuration(elapsed), color = RixColors.Text, size = 26)
+}
+
+/**
+ * A traffic tile that reads the counters on their own flow.
+ *
+ * The dash is not decoration: when the engine cannot answer, drawing "0 B"
+ * would claim the tunnel is up and moving nothing, which is the more
+ * convincing of the two wrong answers.
+ */
+@Composable
+private fun LiveStatTile(
+    label: String,
+    bytes: (RixRuntime.Traffic) -> Long,
+    accent: Color,
+    icon: ImageVector,
+    modifier: Modifier = Modifier
+) {
+    val traffic by RixRuntime.traffic.collectAsState()
+    StatTile(
+        label = label,
+        value = if (traffic.available) formatBytes(bytes(traffic)) else "—",
+        accent = accent,
+        icon = icon,
+        modifier = modifier
+    )
+}
+
+/**
+ * The panel the whole screen is about.
+ *
+ * A tinted, rounded well rather than another flat card: it gives the status,
+ * the orb and the session readings one shared surface, so the eye lands there
+ * first. The tint follows the phase, which means the error state is legible
+ * from across the room without reading a word.
+ */
+@Composable
+private fun HeroPanel(
+    accent: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(30.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        accent.copy(alpha = if (RixColors.isDark) 0.15f else 0.08f),
+                        RixColors.Surface.copy(alpha = 0.92f)
+                    )
+                )
+            )
+            .border(1.dp, accent.copy(alpha = 0.24f), RoundedCornerShape(30.dp))
+            .padding(horizontal = 14.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content
+    )
+}
+
+@Composable
+private fun StatusBadge(state: RixRuntime.State) {
+    val s = LocalStrings.current
+    val (label, color) = when (state.phase) {
+        RixRuntime.Phase.RUNNING -> s.s("متصل", "Connected") to RixColors.Teal
+        RixRuntime.Phase.CONNECTING -> s.s("در حال اتصال", "Connecting") to RixColors.Warning
+        RixRuntime.Phase.STARTING -> s.s("آماده‌سازی", "Preparing") to RixColors.Warning
+        RixRuntime.Phase.STOPPING -> s.s("قطع...", "Stopping") to RixColors.Warning
+        RixRuntime.Phase.ERROR -> s.s("خطا", "Error") to RixColors.Danger
+        RixRuntime.Phase.IDLE -> s.s("خاموش", "Off") to RixColors.TextMuted
+    }
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(end = 6.dp)
+                .height(7.dp)
+                .width(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(label, color = color, fontSize = 11.5.sp, maxLines = 1)
     }
 }
 
